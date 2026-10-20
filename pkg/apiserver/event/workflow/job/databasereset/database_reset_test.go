@@ -1,4 +1,4 @@
-package job
+package databasereset
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func (s *databaseResetComponentStore) Add(ctx context.Context, entity datastore.
 	if s.jobInfoWriteErr != nil {
 		return s.jobInfoWriteErr
 	}
-	copy := cloneDatabaseResetJobInfo(jobInfo)
+	copy := jobtest.CloneDatabaseResetJobInfo(jobInfo)
 	if copy.ID == 0 {
 		s.nextJobInfoID++
 		copy.ID = s.nextJobInfoID
@@ -83,7 +83,7 @@ func (s *databaseResetComponentStore) Put(ctx context.Context, entity datastore.
 	if s.jobInfoWriteErr != nil {
 		return s.jobInfoWriteErr
 	}
-	s.jobInfos[jobInfo.ID] = cloneDatabaseResetJobInfo(jobInfo)
+	s.jobInfos[jobInfo.ID] = jobtest.CloneDatabaseResetJobInfo(jobInfo)
 	return nil
 }
 
@@ -105,11 +105,11 @@ func (s *databaseResetComponentStore) List(ctx context.Context, query datastore.
 		if jobInfoQuery.TaskID != "" && jobInfo.TaskID != jobInfoQuery.TaskID {
 			continue
 		}
-		if !databaseResetMatchesInFilter(opts, "type", jobInfo.Type) ||
-			!databaseResetMatchesInFilter(opts, "service_name", jobInfo.ServiceName) {
+		if !jobtest.DatabaseResetMatchesInFilter(opts, "type", jobInfo.Type) ||
+			!jobtest.DatabaseResetMatchesInFilter(opts, "service_name", jobInfo.ServiceName) {
 			continue
 		}
-		result = append(result, cloneDatabaseResetJobInfo(jobInfo))
+		result = append(result, jobtest.CloneDatabaseResetJobInfo(jobInfo))
 	}
 	return result, nil
 }
@@ -120,7 +120,7 @@ func (s *databaseResetComponentStore) seedJobInfo(jobInfo *model.JobInfo) {
 	}
 	s.jobInfoMu.Lock()
 	defer s.jobInfoMu.Unlock()
-	copy := cloneDatabaseResetJobInfo(jobInfo)
+	copy := jobtest.CloneDatabaseResetJobInfo(jobInfo)
 	if copy.ID == 0 {
 		s.nextJobInfoID++
 		copy.ID = s.nextJobInfoID
@@ -129,32 +129,6 @@ func (s *databaseResetComponentStore) seedJobInfo(jobInfo *model.JobInfo) {
 		s.nextJobInfoID = copy.ID
 	}
 	s.jobInfos[copy.ID] = copy
-}
-
-func cloneDatabaseResetJobInfo(jobInfo *model.JobInfo) *model.JobInfo {
-	if jobInfo == nil {
-		return nil
-	}
-	copy := *jobInfo
-	return &copy
-}
-
-func databaseResetMatchesInFilter(opts *datastore.ListOptions, key, value string) bool {
-	if opts == nil {
-		return true
-	}
-	for _, filter := range opts.FilterOptions.In {
-		if filter.Key != key {
-			continue
-		}
-		for _, candidate := range filter.Values {
-			if candidate == value {
-				return true
-			}
-		}
-		return false
-	}
-	return true
 }
 
 func (s *databaseResetComponentStore) CompareAndSwapWithConditions(_ context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
@@ -181,7 +155,7 @@ func (s *databaseResetComponentStore) IsExistByCondition(_ context.Context, _ st
 }
 
 func TestDatabaseResetJobCtlResetsStandalonePVCWithoutRestartingServer(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -189,7 +163,7 @@ func TestDatabaseResetJobCtlResetsStandalonePVCWithoutRestartingServer(t *testin
 		TmpCreate: false,
 		Size:      "1Gi",
 	}})
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	api.Status = string(config.ComponentStatusRunning)
 	api.ReadyReplicas = 1
 	api.LastAbnormal = "unchanged"
@@ -230,7 +204,7 @@ func TestDatabaseResetJobCtlResetsStandalonePVCWithoutRestartingServer(t *testin
 }
 
 func TestDatabaseResetJobCtlIgnoresLegacyRestartComponentsAcrossShareStrategies(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -255,12 +229,12 @@ func TestDatabaseResetJobCtlIgnoresLegacyRestartComponentsAcrossShareStrategies(
 	result, statefulSet := databaseResetStatefulSet(t, db)
 	objects := []runtime.Object{statefulSet, firstAdditionalPVC(t, result)}
 	for _, testCase := range shareCases {
-		server := databaseResetServerComponent(t, testCase.name+"-web")
+		server := jobtest.DatabaseResetServerComponent(t, testCase.name+"-web")
 		server.Status = string(config.ComponentStatusRunning)
 		server.ReadyReplicas = 1
 		server.LastAbnormal = "unchanged-" + testCase.name
 		if testCase.shared {
-			server.Traits = mustDatabaseResetJSON(t, &spec.Traits{
+			server.Traits = jobtest.MustDatabaseResetJSON(t, &spec.Traits{
 				Share: &spec.ShareTraitSpec{Strategy: testCase.strategy},
 			})
 		}
@@ -469,10 +443,10 @@ func TestDatabaseResetJobCtlPreservesCheckpointedZeroReplicasOnUpdateFailure(t *
 }
 
 func TestDatabaseResetJobCtlIsolatesReplicaCheckpointsByExecutionKey(t *testing.T) {
-	mysql := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	mysql := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
-	redis := databaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
+	redis := jobtest.DatabaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/data", ClaimName: "redis-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(mysql, redis)
@@ -519,10 +493,10 @@ func TestDatabaseResetJobCtlIsolatesReplicaCheckpointsByExecutionKey(t *testing.
 }
 
 func TestDatabaseResetJobCtlPersistsParallelReplicaCheckpointsIndependently(t *testing.T) {
-	mysql := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	mysql := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
-	redis := databaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
+	redis := jobtest.DatabaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/data", ClaimName: "redis-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(mysql, redis)
@@ -564,7 +538,7 @@ func TestDatabaseResetJobCtlPersistsParallelReplicaCheckpointsIndependently(t *t
 }
 
 func TestDatabaseResetJobCtlRetriesFromUnpreparedCheckpointIdentity(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(db)
@@ -596,7 +570,7 @@ func TestDatabaseResetJobCtlRetriesFromUnpreparedCheckpointIdentity(t *testing.T
 }
 
 func TestDatabaseResetJobCtlFailsBeforeMutationWhenReplicaCheckpointCannotPersist(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(db)
@@ -632,7 +606,7 @@ func TestDatabaseResetJobCtlRejectsInvalidReplicaCheckpointBeforeMutation(t *tes
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+			db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 				Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 			}})
 			store := newDatabaseResetComponentStore(db)
@@ -657,7 +631,7 @@ func TestDatabaseResetJobCtlRejectsInvalidReplicaCheckpointBeforeMutation(t *tes
 }
 
 func TestDatabaseResetJobCtlRejectsMissingExecutionKeyBeforeMutation(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(db)
@@ -674,7 +648,7 @@ func TestDatabaseResetJobCtlRejectsMissingExecutionKeyBeforeMutation(t *testing.
 }
 
 func TestDatabaseResetJobCtlRejectsDuplicateExecutionCheckpointsBeforeMutation(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(db)
@@ -699,7 +673,7 @@ func TestDatabaseResetJobCtlRejectsDuplicateExecutionCheckpointsBeforeMutation(t
 }
 
 func TestDatabaseResetJobCtlSaveInfoUpsertsReplicaCheckpoint(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name: "data", Type: "persistent", MountPath: "/var/lib/mysql", ClaimName: "mysql-data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(db)
@@ -776,7 +750,7 @@ func TestDatabaseResetJobCtlInitSQLURLDoesNotApplyToRedis(t *testing.T) {
 	mysql := databaseResetStoreComponentWithInitSQLURL(t, "mysql", "https://files.example/game-1.0.0.sql", []spec.StorageTraitSpec{{
 		Name: "mysql-data", Type: "persistent", MountPath: "/var/lib/mysql", Size: "1Gi",
 	}})
-	redis := databaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
+	redis := jobtest.DatabaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
 		Name: "redis-data", Type: "persistent", MountPath: "/data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(mysql, redis)
@@ -797,7 +771,7 @@ func TestDatabaseResetJobCtlInitSQLURLDoesNotApplyToRedis(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlRejectsInitSQLURLWhenNoStatefulSetMatches(t *testing.T) {
-	redis := databaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
+	redis := jobtest.DatabaseResetStoreComponent(t, "redis", []spec.StorageTraitSpec{{
 		Name: "redis-data", Type: "persistent", MountPath: "/data", Size: "1Gi",
 	}})
 	store := newDatabaseResetComponentStore(redis)
@@ -817,7 +791,7 @@ func TestDatabaseResetJobCtlRejectsInitSQLURLWhenNoStatefulSetMatches(t *testing
 }
 
 func TestDatabaseResetJobCtlPreservesStoppedServer(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -825,7 +799,7 @@ func TestDatabaseResetJobCtlPreservesStoppedServer(t *testing.T) {
 		TmpCreate: false,
 		Size:      "1Gi",
 	}})
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	api.Status = string(config.ComponentStatusStopped)
 	api.ReadyReplicas = 0
 	api.LastAbnormal = "stopped by user"
@@ -858,7 +832,7 @@ func TestDatabaseResetJobCtlPreservesStoppedServer(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlDeletesVolumeClaimTemplatePVCWithoutRecreate(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -884,7 +858,7 @@ func TestDatabaseResetJobCtlDeletesVolumeClaimTemplatePVCWithoutRecreate(t *test
 }
 
 func TestDatabaseResetJobCtlKeepsSimilarPrefixTemplatePVC(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -919,7 +893,7 @@ func TestDatabaseResetJobCtlKeepsSimilarPrefixTemplatePVC(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlSkipsMissingVolumeClaimTemplatePVC(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -952,7 +926,7 @@ func TestDatabaseResetJobCtlSkipsMissingVolumeClaimTemplatePVC(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlFailsWhenStandalonePVCMissing(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -973,14 +947,14 @@ func TestDatabaseResetJobCtlFailsWhenStandalonePVCMissing(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlSkipsMissingServerDeployment(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
 		TmpCreate: false,
 		Size:      "1Gi",
 	}})
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(db, api)
 	result, statefulSet := databaseResetStatefulSet(t, db)
 	pvc := firstAdditionalPVC(t, result)
@@ -995,7 +969,7 @@ func TestDatabaseResetJobCtlSkipsMissingServerDeployment(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlReturnsErrorWhenStatefulSetMissing(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -1014,7 +988,7 @@ func TestDatabaseResetJobCtlReturnsErrorWhenStatefulSetMissing(t *testing.T) {
 }
 
 func TestDatabaseResetJobCtlTimesOutWhenPodsRemain(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", []spec.StorageTraitSpec{{
 		Name:      "mysql-data",
 		Type:      "persistent",
 		MountPath: "/var/lib/mysql",
@@ -1084,8 +1058,8 @@ func databaseResetTaskWithInitSQLURL(initSQLURL string, databaseComponents ...*m
 
 func databaseResetStoreComponentWithInitSQLURL(t *testing.T, name, initSQLURL string, storage []spec.StorageTraitSpec) *model.ApplicationComponent {
 	t.Helper()
-	component := databaseResetStoreComponent(t, name, storage)
-	component.Traits = mustDatabaseResetJSON(t, &spec.Traits{
+	component := jobtest.DatabaseResetStoreComponent(t, name, storage)
+	component.Traits = jobtest.MustDatabaseResetJSON(t, &spec.Traits{
 		Init: []spec.InitTraitSpec{{
 			Name:  "init-sql",
 			Image: "curlimages/curl:latest",
@@ -1109,42 +1083,6 @@ func databaseResetStatefulSetInitSQLURL(t *testing.T, statefulSet *appsv1.Statef
 	}
 	t.Fatal("StatefulSet does not contain init container SQL_URL")
 	return ""
-}
-
-func databaseResetStoreComponent(t *testing.T, name string, storage []spec.StorageTraitSpec) *model.ApplicationComponent {
-	t.Helper()
-	return &model.ApplicationComponent{
-		ID:              len(name),
-		AppID:           "app-1",
-		Name:            name,
-		Namespace:       "default",
-		Image:           "mysql:8.0",
-		Replicas:        1,
-		ComponentType:   config.StoreJob,
-		ResourceAppName: "demo",
-		Properties:      mustDatabaseResetJSON(t, &model.Properties{}),
-		Traits: mustDatabaseResetJSON(t, &spec.Traits{
-			Storage: storage,
-		}),
-	}
-}
-
-func databaseResetServerComponent(t *testing.T, name string) *model.ApplicationComponent {
-	t.Helper()
-	return &model.ApplicationComponent{
-		ID:              len(name) + 100,
-		AppID:           "app-1",
-		Name:            name,
-		Namespace:       "default",
-		Image:           "nginx:latest",
-		Replicas:        1,
-		ComponentType:   config.ServerJob,
-		ResourceAppName: "demo",
-		Properties: mustDatabaseResetJSON(t, &model.Properties{
-			Ports: []model.Ports{{Port: 8080}},
-		}),
-		Traits: mustDatabaseResetJSON(t, &spec.Traits{}),
-	}
 }
 
 func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponent) (*jobexec.GenerateServiceResult, *appsv1.StatefulSet) {
@@ -1187,13 +1125,6 @@ func databaseResetDeployment(t *testing.T, component *model.ApplicationComponent
 	deployment, ok := result.Service.(*appsv1.Deployment)
 	require.True(t, ok)
 	return deployment
-}
-
-func mustDatabaseResetJSON(t *testing.T, value interface{}) *model.JSONStruct {
-	t.Helper()
-	result, err := model.NewJSONStructByStruct(value)
-	require.NoError(t, err)
-	return result
 }
 
 func denyDatabaseResetInitSQLURLUpdate(client *fake.Clientset, deniedURL string) {
@@ -1247,7 +1178,7 @@ func databaseResetStoredJobInfoByExecutionKey(t *testing.T, store *databaseReset
 	for _, jobInfo := range store.jobInfos {
 		var checkpoint jobinfo.DatabaseResetReplicaCheckpoint
 		if json.Unmarshal([]byte(jobInfo.InternalInfo), &checkpoint) == nil && checkpoint.ExecutionKey == executionKey {
-			return cloneDatabaseResetJobInfo(jobInfo)
+			return jobtest.CloneDatabaseResetJobInfo(jobInfo)
 		}
 	}
 	t.Fatalf("database reset replica checkpoint for execution key %q not found", executionKey)

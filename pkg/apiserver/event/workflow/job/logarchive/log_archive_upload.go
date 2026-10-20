@@ -1,4 +1,4 @@
-package job
+package logarchive
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func SetArchiveUploader(uploader jobexec.ArchiveUploader) {
 	defaultArchiveUploader = uploader
 }
 
-func currentArchiveUploader() jobexec.ArchiveUploader {
+func CurrentArchiveUploader() jobexec.ArchiveUploader {
 	archiveUploaderMu.RLock()
 	defer archiveUploaderMu.RUnlock()
 	return defaultArchiveUploader

@@ -1,4 +1,4 @@
-package job
+package jobcloud
 
 import (
 	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"

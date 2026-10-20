@@ -8,7 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/logarchive"
 )
 
 func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.T) {
@@ -74,7 +74,7 @@ func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.
 		jobs := flattenJobBuckets(execution.Jobs)
 		require.Len(t, jobs, 1)
 		require.Equal(t, string(config.JobLogArchiveUpload), jobs[0].JobType)
-		info, ok := jobs[0].JobInfo.(*job.LogArchiveUploadJobInfo)
+		info, ok := jobs[0].JobInfo.(*logarchive.LogArchiveUploadJobInfo)
 		require.True(t, ok)
 		require.NotNil(t, info.Component)
 		require.Equal(t, jobs[0].Name, info.Component.Name)
@@ -150,7 +150,7 @@ func TestGenerateJobTasksPreservesLogArchivePathForNameBasedStep(t *testing.T) {
 	jobs := flattenJobBuckets(executions[0].Jobs)
 	require.Len(t, jobs, 1)
 	require.Equal(t, string(config.JobLogArchiveUpload), jobs[0].JobType)
-	info, ok := jobs[0].JobInfo.(*job.LogArchiveUploadJobInfo)
+	info, ok := jobs[0].JobInfo.(*logarchive.LogArchiveUploadJobInfo)
 	require.True(t, ok)
 	require.Equal(t, "/var/log/api", info.Path)
 	require.Equal(t, "api", info.Container)

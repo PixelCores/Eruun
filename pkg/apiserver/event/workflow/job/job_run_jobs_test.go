@@ -26,6 +26,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
@@ -388,7 +389,7 @@ func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testin
 			}))
 			defer server.Close()
 			task := &model.JobTask{Name: "callback", WorkspaceID: owner.WorkspaceID, TaskID: owner.TaskID,
-				ExecutionKey: TerminalCallbackExecutionKey(owner.TaskID, 0, "cancelled"), OwnerStatus: owner.Status,
+				ExecutionKey: jobcallback.TerminalCallbackExecutionKey(owner.TaskID, 0, "cancelled"), OwnerStatus: owner.Status,
 				JobType: string(config.JobDeployCallback), JobInfo: &jobinfo.CallbackJobInfo{Event: "cancelled", URL: server.URL}}
 			persistErr := errors.New("injected callback terminal persistence failure")
 			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("fail-terminal-callback-write", func(tx *gorm.DB) {

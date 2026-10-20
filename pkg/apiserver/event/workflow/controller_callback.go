@@ -13,7 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
@@ -101,7 +101,7 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		AppID:         task.AppID,
 		TaskID:        task.TaskID,
 		JobType:       string(config.JobDeployCallback),
-		ExecutionKey:  job.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, job.TerminalCallbackKeyEvent(status, event)),
+		ExecutionKey:  jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, jobcallback.TerminalCallbackKeyEvent(status, event)),
 		RunGeneration: task.RunGeneration,
 		OwnerStatus:   status,
 		RunToken:      task.RunToken,

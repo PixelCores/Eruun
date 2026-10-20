@@ -26,7 +26,7 @@ import (
 )
 
 func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
@@ -61,7 +61,7 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", nil)
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", nil)
 	store := newDatabaseResetComponentStore(db)
 	_, statefulSet := databaseResetStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
@@ -90,7 +90,7 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlSkipsStoppedComponent(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	api.Status = string(config.ComponentStatusStopped)
 	store := newDatabaseResetComponentStore(api)
 	deployment := databaseResetDeployment(t, api)
@@ -121,11 +121,11 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			api := databaseResetServerComponent(t, "api")
+			api := jobtest.DatabaseResetServerComponent(t, "api")
 			if !tt.wantSkip {
 				api.Replicas = 0
 			}
-			api.Traits = mustDatabaseResetJSON(t, &spec.Traits{
+			api.Traits = jobtest.MustDatabaseResetJSON(t, &spec.Traits{
 				Share: &spec.ShareTraitSpec{Strategy: tt.strategy},
 			})
 			store := newDatabaseResetComponentStore(api)
@@ -152,7 +152,7 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	client := fake.NewSimpleClientset()
 	task := versionRestartTask(api)
@@ -164,7 +164,7 @@ func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
@@ -182,7 +182,7 @@ func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
@@ -198,7 +198,7 @@ func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
@@ -227,7 +227,7 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 }
 
 func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", nil)
+	db := jobtest.DatabaseResetStoreComponent(t, "mysql", nil)
 	store := newDatabaseResetComponentStore(db)
 	_, statefulSet := databaseResetStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
@@ -256,7 +256,7 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 }
 
 func TestVersionRestartJobCtlFailsWhenResourceWaiterMissing(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := jobtest.DatabaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
