@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -521,6 +522,590 @@ var ProgrammingLanguagesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteProgrammingLanguage",
 			Handler:    _ProgrammingLanguagesService_DeleteProgrammingLanguage_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "eruun/v1/administration.proto",
+}
+
+const (
+	NodePoolsService_ListNodePools_FullMethodName       = "/eruun.v1.NodePoolsService/ListNodePools"
+	NodePoolsService_GetNodePool_FullMethodName         = "/eruun.v1.NodePoolsService/GetNodePool"
+	NodePoolsService_CreateNodePool_FullMethodName      = "/eruun.v1.NodePoolsService/CreateNodePool"
+	NodePoolsService_UpdateNodePool_FullMethodName      = "/eruun.v1.NodePoolsService/UpdateNodePool"
+	NodePoolsService_DeleteNodePool_FullMethodName      = "/eruun.v1.NodePoolsService/DeleteNodePool"
+	NodePoolsService_ListNodePoolOptions_FullMethodName = "/eruun.v1.NodePoolsService/ListNodePoolOptions"
+)
+
+// NodePoolsServiceClient is the client API for NodePoolsService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type NodePoolsServiceClient interface {
+	ListNodePools(ctx context.Context, in *ListNodePoolsRequest, opts ...grpc.CallOption) (*ListNodePoolsResponse, error)
+	GetNodePool(ctx context.Context, in *NodePoolNameRequest, opts ...grpc.CallOption) (*NodePool, error)
+	CreateNodePool(ctx context.Context, in *CreateNodePoolRequest, opts ...grpc.CallOption) (*NodePool, error)
+	UpdateNodePool(ctx context.Context, in *UpdateNodePoolRequest, opts ...grpc.CallOption) (*NodePool, error)
+	DeleteNodePool(ctx context.Context, in *NodePoolNameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListNodePoolOptions(ctx context.Context, in *ListNodePoolsRequest, opts ...grpc.CallOption) (*ListNodePoolOptionsResponse, error)
+}
+
+type nodePoolsServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewNodePoolsServiceClient(cc grpc.ClientConnInterface) NodePoolsServiceClient {
+	return &nodePoolsServiceClient{cc}
+}
+
+func (c *nodePoolsServiceClient) ListNodePools(ctx context.Context, in *ListNodePoolsRequest, opts ...grpc.CallOption) (*ListNodePoolsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNodePoolsResponse)
+	err := c.cc.Invoke(ctx, NodePoolsService_ListNodePools_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodePoolsServiceClient) GetNodePool(ctx context.Context, in *NodePoolNameRequest, opts ...grpc.CallOption) (*NodePool, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodePool)
+	err := c.cc.Invoke(ctx, NodePoolsService_GetNodePool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodePoolsServiceClient) CreateNodePool(ctx context.Context, in *CreateNodePoolRequest, opts ...grpc.CallOption) (*NodePool, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodePool)
+	err := c.cc.Invoke(ctx, NodePoolsService_CreateNodePool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodePoolsServiceClient) UpdateNodePool(ctx context.Context, in *UpdateNodePoolRequest, opts ...grpc.CallOption) (*NodePool, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodePool)
+	err := c.cc.Invoke(ctx, NodePoolsService_UpdateNodePool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodePoolsServiceClient) DeleteNodePool(ctx context.Context, in *NodePoolNameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, NodePoolsService_DeleteNodePool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodePoolsServiceClient) ListNodePoolOptions(ctx context.Context, in *ListNodePoolsRequest, opts ...grpc.CallOption) (*ListNodePoolOptionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNodePoolOptionsResponse)
+	err := c.cc.Invoke(ctx, NodePoolsService_ListNodePoolOptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// NodePoolsServiceServer is the server API for NodePoolsService service.
+// All implementations must embed UnimplementedNodePoolsServiceServer
+// for forward compatibility.
+type NodePoolsServiceServer interface {
+	ListNodePools(context.Context, *ListNodePoolsRequest) (*ListNodePoolsResponse, error)
+	GetNodePool(context.Context, *NodePoolNameRequest) (*NodePool, error)
+	CreateNodePool(context.Context, *CreateNodePoolRequest) (*NodePool, error)
+	UpdateNodePool(context.Context, *UpdateNodePoolRequest) (*NodePool, error)
+	DeleteNodePool(context.Context, *NodePoolNameRequest) (*emptypb.Empty, error)
+	ListNodePoolOptions(context.Context, *ListNodePoolsRequest) (*ListNodePoolOptionsResponse, error)
+	mustEmbedUnimplementedNodePoolsServiceServer()
+}
+
+// UnimplementedNodePoolsServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedNodePoolsServiceServer struct{}
+
+func (UnimplementedNodePoolsServiceServer) ListNodePools(context.Context, *ListNodePoolsRequest) (*ListNodePoolsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNodePools not implemented")
+}
+func (UnimplementedNodePoolsServiceServer) GetNodePool(context.Context, *NodePoolNameRequest) (*NodePool, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNodePool not implemented")
+}
+func (UnimplementedNodePoolsServiceServer) CreateNodePool(context.Context, *CreateNodePoolRequest) (*NodePool, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateNodePool not implemented")
+}
+func (UnimplementedNodePoolsServiceServer) UpdateNodePool(context.Context, *UpdateNodePoolRequest) (*NodePool, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateNodePool not implemented")
+}
+func (UnimplementedNodePoolsServiceServer) DeleteNodePool(context.Context, *NodePoolNameRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNodePool not implemented")
+}
+func (UnimplementedNodePoolsServiceServer) ListNodePoolOptions(context.Context, *ListNodePoolsRequest) (*ListNodePoolOptionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNodePoolOptions not implemented")
+}
+func (UnimplementedNodePoolsServiceServer) mustEmbedUnimplementedNodePoolsServiceServer() {}
+func (UnimplementedNodePoolsServiceServer) testEmbeddedByValue()                          {}
+
+// UnsafeNodePoolsServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to NodePoolsServiceServer will
+// result in compilation errors.
+type UnsafeNodePoolsServiceServer interface {
+	mustEmbedUnimplementedNodePoolsServiceServer()
+}
+
+func RegisterNodePoolsServiceServer(s grpc.ServiceRegistrar, srv NodePoolsServiceServer) {
+	// If the following call panics, it indicates UnimplementedNodePoolsServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&NodePoolsService_ServiceDesc, srv)
+}
+
+func _NodePoolsService_ListNodePools_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodePoolsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodePoolsServiceServer).ListNodePools(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodePoolsService_ListNodePools_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodePoolsServiceServer).ListNodePools(ctx, req.(*ListNodePoolsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodePoolsService_GetNodePool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodePoolNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodePoolsServiceServer).GetNodePool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodePoolsService_GetNodePool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodePoolsServiceServer).GetNodePool(ctx, req.(*NodePoolNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodePoolsService_CreateNodePool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNodePoolRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodePoolsServiceServer).CreateNodePool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodePoolsService_CreateNodePool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodePoolsServiceServer).CreateNodePool(ctx, req.(*CreateNodePoolRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodePoolsService_UpdateNodePool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNodePoolRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodePoolsServiceServer).UpdateNodePool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodePoolsService_UpdateNodePool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodePoolsServiceServer).UpdateNodePool(ctx, req.(*UpdateNodePoolRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodePoolsService_DeleteNodePool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodePoolNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodePoolsServiceServer).DeleteNodePool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodePoolsService_DeleteNodePool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodePoolsServiceServer).DeleteNodePool(ctx, req.(*NodePoolNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodePoolsService_ListNodePoolOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodePoolsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodePoolsServiceServer).ListNodePoolOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodePoolsService_ListNodePoolOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodePoolsServiceServer).ListNodePoolOptions(ctx, req.(*ListNodePoolsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// NodePoolsService_ServiceDesc is the grpc.ServiceDesc for NodePoolsService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var NodePoolsService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "eruun.v1.NodePoolsService",
+	HandlerType: (*NodePoolsServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListNodePools",
+			Handler:    _NodePoolsService_ListNodePools_Handler,
+		},
+		{
+			MethodName: "GetNodePool",
+			Handler:    _NodePoolsService_GetNodePool_Handler,
+		},
+		{
+			MethodName: "CreateNodePool",
+			Handler:    _NodePoolsService_CreateNodePool_Handler,
+		},
+		{
+			MethodName: "UpdateNodePool",
+			Handler:    _NodePoolsService_UpdateNodePool_Handler,
+		},
+		{
+			MethodName: "DeleteNodePool",
+			Handler:    _NodePoolsService_DeleteNodePool_Handler,
+		},
+		{
+			MethodName: "ListNodePoolOptions",
+			Handler:    _NodePoolsService_ListNodePoolOptions_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "eruun/v1/administration.proto",
+}
+
+const (
+	RBACProfilesService_ListRBACProfiles_FullMethodName       = "/eruun.v1.RBACProfilesService/ListRBACProfiles"
+	RBACProfilesService_GetRBACProfile_FullMethodName         = "/eruun.v1.RBACProfilesService/GetRBACProfile"
+	RBACProfilesService_CreateRBACProfile_FullMethodName      = "/eruun.v1.RBACProfilesService/CreateRBACProfile"
+	RBACProfilesService_UpdateRBACProfile_FullMethodName      = "/eruun.v1.RBACProfilesService/UpdateRBACProfile"
+	RBACProfilesService_DeleteRBACProfile_FullMethodName      = "/eruun.v1.RBACProfilesService/DeleteRBACProfile"
+	RBACProfilesService_ListRBACProfileOptions_FullMethodName = "/eruun.v1.RBACProfilesService/ListRBACProfileOptions"
+)
+
+// RBACProfilesServiceClient is the client API for RBACProfilesService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type RBACProfilesServiceClient interface {
+	ListRBACProfiles(ctx context.Context, in *ListRBACProfilesRequest, opts ...grpc.CallOption) (*ListRBACProfilesResponse, error)
+	GetRBACProfile(ctx context.Context, in *RBACProfileNameRequest, opts ...grpc.CallOption) (*RBACProfile, error)
+	CreateRBACProfile(ctx context.Context, in *CreateRBACProfileRequest, opts ...grpc.CallOption) (*RBACProfile, error)
+	UpdateRBACProfile(ctx context.Context, in *UpdateRBACProfileRequest, opts ...grpc.CallOption) (*RBACProfile, error)
+	DeleteRBACProfile(ctx context.Context, in *RBACProfileNameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListRBACProfileOptions(ctx context.Context, in *ListRBACProfilesRequest, opts ...grpc.CallOption) (*ListRBACProfileOptionsResponse, error)
+}
+
+type rBACProfilesServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewRBACProfilesServiceClient(cc grpc.ClientConnInterface) RBACProfilesServiceClient {
+	return &rBACProfilesServiceClient{cc}
+}
+
+func (c *rBACProfilesServiceClient) ListRBACProfiles(ctx context.Context, in *ListRBACProfilesRequest, opts ...grpc.CallOption) (*ListRBACProfilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRBACProfilesResponse)
+	err := c.cc.Invoke(ctx, RBACProfilesService_ListRBACProfiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rBACProfilesServiceClient) GetRBACProfile(ctx context.Context, in *RBACProfileNameRequest, opts ...grpc.CallOption) (*RBACProfile, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RBACProfile)
+	err := c.cc.Invoke(ctx, RBACProfilesService_GetRBACProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rBACProfilesServiceClient) CreateRBACProfile(ctx context.Context, in *CreateRBACProfileRequest, opts ...grpc.CallOption) (*RBACProfile, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RBACProfile)
+	err := c.cc.Invoke(ctx, RBACProfilesService_CreateRBACProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rBACProfilesServiceClient) UpdateRBACProfile(ctx context.Context, in *UpdateRBACProfileRequest, opts ...grpc.CallOption) (*RBACProfile, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RBACProfile)
+	err := c.cc.Invoke(ctx, RBACProfilesService_UpdateRBACProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rBACProfilesServiceClient) DeleteRBACProfile(ctx context.Context, in *RBACProfileNameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RBACProfilesService_DeleteRBACProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rBACProfilesServiceClient) ListRBACProfileOptions(ctx context.Context, in *ListRBACProfilesRequest, opts ...grpc.CallOption) (*ListRBACProfileOptionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRBACProfileOptionsResponse)
+	err := c.cc.Invoke(ctx, RBACProfilesService_ListRBACProfileOptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RBACProfilesServiceServer is the server API for RBACProfilesService service.
+// All implementations must embed UnimplementedRBACProfilesServiceServer
+// for forward compatibility.
+type RBACProfilesServiceServer interface {
+	ListRBACProfiles(context.Context, *ListRBACProfilesRequest) (*ListRBACProfilesResponse, error)
+	GetRBACProfile(context.Context, *RBACProfileNameRequest) (*RBACProfile, error)
+	CreateRBACProfile(context.Context, *CreateRBACProfileRequest) (*RBACProfile, error)
+	UpdateRBACProfile(context.Context, *UpdateRBACProfileRequest) (*RBACProfile, error)
+	DeleteRBACProfile(context.Context, *RBACProfileNameRequest) (*emptypb.Empty, error)
+	ListRBACProfileOptions(context.Context, *ListRBACProfilesRequest) (*ListRBACProfileOptionsResponse, error)
+	mustEmbedUnimplementedRBACProfilesServiceServer()
+}
+
+// UnimplementedRBACProfilesServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedRBACProfilesServiceServer struct{}
+
+func (UnimplementedRBACProfilesServiceServer) ListRBACProfiles(context.Context, *ListRBACProfilesRequest) (*ListRBACProfilesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRBACProfiles not implemented")
+}
+func (UnimplementedRBACProfilesServiceServer) GetRBACProfile(context.Context, *RBACProfileNameRequest) (*RBACProfile, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRBACProfile not implemented")
+}
+func (UnimplementedRBACProfilesServiceServer) CreateRBACProfile(context.Context, *CreateRBACProfileRequest) (*RBACProfile, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateRBACProfile not implemented")
+}
+func (UnimplementedRBACProfilesServiceServer) UpdateRBACProfile(context.Context, *UpdateRBACProfileRequest) (*RBACProfile, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateRBACProfile not implemented")
+}
+func (UnimplementedRBACProfilesServiceServer) DeleteRBACProfile(context.Context, *RBACProfileNameRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteRBACProfile not implemented")
+}
+func (UnimplementedRBACProfilesServiceServer) ListRBACProfileOptions(context.Context, *ListRBACProfilesRequest) (*ListRBACProfileOptionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRBACProfileOptions not implemented")
+}
+func (UnimplementedRBACProfilesServiceServer) mustEmbedUnimplementedRBACProfilesServiceServer() {}
+func (UnimplementedRBACProfilesServiceServer) testEmbeddedByValue()                             {}
+
+// UnsafeRBACProfilesServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to RBACProfilesServiceServer will
+// result in compilation errors.
+type UnsafeRBACProfilesServiceServer interface {
+	mustEmbedUnimplementedRBACProfilesServiceServer()
+}
+
+func RegisterRBACProfilesServiceServer(s grpc.ServiceRegistrar, srv RBACProfilesServiceServer) {
+	// If the following call panics, it indicates UnimplementedRBACProfilesServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&RBACProfilesService_ServiceDesc, srv)
+}
+
+func _RBACProfilesService_ListRBACProfiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRBACProfilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RBACProfilesServiceServer).ListRBACProfiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RBACProfilesService_ListRBACProfiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RBACProfilesServiceServer).ListRBACProfiles(ctx, req.(*ListRBACProfilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RBACProfilesService_GetRBACProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RBACProfileNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RBACProfilesServiceServer).GetRBACProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RBACProfilesService_GetRBACProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RBACProfilesServiceServer).GetRBACProfile(ctx, req.(*RBACProfileNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RBACProfilesService_CreateRBACProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateRBACProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RBACProfilesServiceServer).CreateRBACProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RBACProfilesService_CreateRBACProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RBACProfilesServiceServer).CreateRBACProfile(ctx, req.(*CreateRBACProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RBACProfilesService_UpdateRBACProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateRBACProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RBACProfilesServiceServer).UpdateRBACProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RBACProfilesService_UpdateRBACProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RBACProfilesServiceServer).UpdateRBACProfile(ctx, req.(*UpdateRBACProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RBACProfilesService_DeleteRBACProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RBACProfileNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RBACProfilesServiceServer).DeleteRBACProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RBACProfilesService_DeleteRBACProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RBACProfilesServiceServer).DeleteRBACProfile(ctx, req.(*RBACProfileNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RBACProfilesService_ListRBACProfileOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRBACProfilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RBACProfilesServiceServer).ListRBACProfileOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RBACProfilesService_ListRBACProfileOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RBACProfilesServiceServer).ListRBACProfileOptions(ctx, req.(*ListRBACProfilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// RBACProfilesService_ServiceDesc is the grpc.ServiceDesc for RBACProfilesService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var RBACProfilesService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "eruun.v1.RBACProfilesService",
+	HandlerType: (*RBACProfilesServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListRBACProfiles",
+			Handler:    _RBACProfilesService_ListRBACProfiles_Handler,
+		},
+		{
+			MethodName: "GetRBACProfile",
+			Handler:    _RBACProfilesService_GetRBACProfile_Handler,
+		},
+		{
+			MethodName: "CreateRBACProfile",
+			Handler:    _RBACProfilesService_CreateRBACProfile_Handler,
+		},
+		{
+			MethodName: "UpdateRBACProfile",
+			Handler:    _RBACProfilesService_UpdateRBACProfile_Handler,
+		},
+		{
+			MethodName: "DeleteRBACProfile",
+			Handler:    _RBACProfilesService_DeleteRBACProfile_Handler,
+		},
+		{
+			MethodName: "ListRBACProfileOptions",
+			Handler:    _RBACProfilesService_ListRBACProfileOptions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1,8 +1,8 @@
 # 设置页接口接入方案（现有接口驱动）
 
-> 状态：Current。本文面向前端设置页接入，只描述当前后端已经实现的 `/api/v1/settings` 能力，不从设计稿或本地偏好反推新接口。
+> 状态：Current。本文面向前端设置页接入，描述当前后端已经实现的 `/api/v1/settings`、节点池和 RBAC 配置能力，不从设计稿或本地偏好反推新接口。
 
-登录和空间管理使用 [账号与空间接入文档](account-auth-workspaces.md)。本页接口仅系统管理员可访问；认证配置从部署 Secret 加载。
+登录和空间管理使用 [账号与空间接入文档](account-auth-workspaces.md)。系统设置和配置管理接口仅系统管理员可访问；节点池和 RBAC 配置另提供空间成员只读选项接口。认证配置从部署 Secret 加载。
 
 ## Summary
 
@@ -274,3 +274,106 @@ Content-Type: application/json
 
 - v1 不新增后端接口，不新增 setting type。
 - 设置页目标是管理当前已经支持的系统设置，不承担 workspace preference 持久化。
+
+
+## 节点池与 RBAC 配置
+
+两类配置由系统管理员统一维护，对全部空间提供名字和描述。配置存储在 MySQL 的 `eruun_node_pools` 和 `eruun_rbac_profiles` 表，以 `name` 为主键，不使用缓存。当前这些接口只维护配置；组件 DSL 和部署渲染尚未接入这些配置。现有 `nodeSelector`、`rbacPolicies` 系统设置接口继续保留原有行为。
+
+### 管理员接口
+
+所有管理接口要求 Bearer 登录且用户为系统管理员（`minimum = "system"`），空间管理员仍无权访问。列表按名字升序返回。
+
+| 方法 | 节点池 | RBAC 配置 | 成功响应的 data |
+| --- | --- | --- | --- |
+| GET | `/api/v1/admin/node-pools` | `/api/v1/admin/rbac-profiles` | `{"nodePools": [NodePool]}` / `{"rbacProfiles": [RBACProfile]}` |
+| POST | `/api/v1/admin/node-pools` | `/api/v1/admin/rbac-profiles` | 201，对象本身 |
+| GET | `/api/v1/admin/node-pools/:name` | `/api/v1/admin/rbac-profiles/:name` | 200，对象本身 |
+| PUT | `/api/v1/admin/node-pools/:name` | `/api/v1/admin/rbac-profiles/:name` | 200，更新后的对象 |
+| DELETE | `/api/v1/admin/node-pools/:name` | `/api/v1/admin/rbac-profiles/:name` | 204，无响应体 |
+
+除 204 外，成功和错误响应使用统一的 `{code, message, data}` envelope。请求严格拒绝未知字段。`name` 创建后不可修改；PUT 主体不允许携带 `name`，仅以路径参数标识对象。PUT 整体替换所有可变字段，省略 `description` 或 `tolerations` 会清空它们；必需的 `nodeSelector` 或 `rules` 不可省略。
+
+创建节点池：
+
+```http
+POST /api/v1/admin/node-pools
+Content-Type: application/json
+Authorization: Bearer <access-token>
+
+{
+  "name": "gpu-a100",
+  "description": "A100 推理节点",
+  "nodeSelector": {"eruun.io/pool": "gpu-a100"},
+  "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+}
+```
+
+201 响应：
+
+```json
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "name": "gpu-a100",
+    "description": "A100 推理节点",
+    "nodeSelector": {"eruun.io/pool": "gpu-a100"},
+    "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+    "createTime": "2026-10-21T00:00:00Z",
+    "updateTime": "2026-10-21T00:00:00Z"
+  }
+}
+```
+
+创建 RBAC 配置：
+
+```http
+POST /api/v1/admin/rbac-profiles
+Content-Type: application/json
+Authorization: Bearer <access-token>
+
+{
+  "name": "pod-reader",
+  "description": "读取本空间的 Pod 和日志",
+  "rules": [{"apiGroups": [""], "resources": ["pods", "pods/log"], "verbs": ["get", "list", "watch"]}]
+}
+```
+
+201 响应的 `data` 为上述对象加 `createTime`、`updateTime`。管理员列表和单项查询返回完整配置。删除不检查引用，也不触发部署。
+
+### 成员只读接口
+
+`GET /api/v1/node-pools`、`GET /api/v1/rbac-profiles` 要求已登录并具有当前空间的 `viewer` 或更高角色；使用 `X-Eruun-Workspace-ID` 选择空间，缺省使用个人空间。这两个接口只返回名字和描述，不返回 `nodeSelector`、`tolerations`、`rules` 或时间字段。
+
+```json
+{"code":0,"message":"","data":{"nodePools":[{"name":"gpu-a100","description":"A100 推理节点"}]}}
+```
+
+```json
+{"code":0,"message":"","data":{"rbacProfiles":[{"name":"pod-reader","description":"读取本空间的 Pod 和日志"}]}}
+```
+
+空列表为 `[]`；没有描述时成员选项的 `description` 为 `""`。
+
+### 校验和错误码
+
+- `name` 必须为 DNS-1123 label，最长 63 字符；不修剪或自动改写名字。
+- `nodeSelector` 至少一项；键必须为合法的 Kubernetes 标签键，值必须为合法且非空的标签值。
+- `tolerations[].operator` 必须显式为 `Equal` 或 `Exists`；`Exists` 的 `value` 必须为空；`Equal` 的 `key` 不能为空；非空 `key` 必须为合法标签键。`effect` 只能为空、`NoSchedule`、`PreferNoSchedule` 或 `NoExecute`；仅 `NoExecute` 可设置 `tolerationSeconds`。
+- `rules` 至少一条，每条 `verbs` 和 `resources` 都不能为空。禁止 `nonResourceURLs`；`apiGroups` 禁止 `rbac.authorization.k8s.io` 和 `*`；`verbs` 禁止 `bind`、`escalate`、`impersonate` 和 `*`；`resources` 禁止 `*` 和 `serviceaccounts/token`。保留 `resourceNames`，用于缩小规则范围。
+
+校验失败返回 400，消息指出具体字段，例如 `rules[1].verbs`。`34xxx` 已被 Job 错误码占用，配置使用 `35xxx`：
+
+| 错误 | HTTP | 业务码 |
+| --- | --- | --- |
+| `ErrNodePoolInvalid` | 400 | 35000 |
+| `ErrNodePoolExists` | 409 | 35001 |
+| `ErrNodePoolNotFound` | 404 | 35002 |
+| `ErrRBACProfileInvalid` | 400 | 35010 |
+| `ErrRBACProfileExists` | 409 | 35011 |
+| `ErrRBACProfileNotFound` | 404 | 35012 |
+
+重名创建返回 Exists；查询、更新或删除不存在的合法名字返回 NotFound。
+
+启动 schema 迁移会自动创建两张配置表。已删除从旧 Profile 表导入系统设置并删表的迁移，因此重启不会删除 `eruun_rbac_profiles`；本次不搬迁旧配置数据。

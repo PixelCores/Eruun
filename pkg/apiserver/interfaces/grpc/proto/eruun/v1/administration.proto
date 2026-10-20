@@ -5,6 +5,8 @@ package eruun.v1;
 option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1";
 
 import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+import "eruun/v1/applications.proto";
 import "google/protobuf/timestamp.proto";
 
 service SettingsService {
@@ -77,3 +79,84 @@ message ProgrammingLanguage {
 
 message ListProgrammingLanguagesResponse { repeated ProgrammingLanguage languages = 1; }
 message DeleteProgrammingLanguageResponse { string id = 1; }
+
+message NodePoolToleration {
+  string key = 1;
+  string operator = 2;
+  string value = 3;
+  string effect = 4;
+  optional int64 toleration_seconds = 5;
+}
+
+service NodePoolsService {
+  rpc ListNodePools(ListNodePoolsRequest) returns (ListNodePoolsResponse);
+  rpc GetNodePool(NodePoolNameRequest) returns (NodePool);
+  rpc CreateNodePool(CreateNodePoolRequest) returns (NodePool);
+  rpc UpdateNodePool(UpdateNodePoolRequest) returns (NodePool);
+  rpc DeleteNodePool(NodePoolNameRequest) returns (google.protobuf.Empty);
+  rpc ListNodePoolOptions(ListNodePoolsRequest) returns (ListNodePoolOptionsResponse);
+}
+message ListNodePoolsRequest {}
+message NodePoolNameRequest { string name = 1; }
+message CreateNodePoolRequest {
+  string name = 1;
+  string description = 2;
+  map<string, string> node_selector = 3;
+  repeated NodePoolToleration tolerations = 4;
+}
+message UpdateNodePoolRequest {
+  // name identifies the existing configuration and is immutable.
+  string name = 1;
+  string description = 2;
+  map<string, string> node_selector = 3;
+  repeated NodePoolToleration tolerations = 4;
+}
+message NodePool {
+  string name = 1;
+  string description = 2;
+  map<string, string> node_selector = 3;
+  repeated NodePoolToleration tolerations = 4;
+  google.protobuf.Timestamp create_time = 5;
+  google.protobuf.Timestamp update_time = 6;
+}
+message NodePoolOption {
+  string name = 1;
+  string description = 2;
+}
+message ListNodePoolsResponse { repeated NodePool node_pools = 1; }
+message ListNodePoolOptionsResponse { repeated NodePoolOption node_pools = 1; }
+
+service RBACProfilesService {
+  rpc ListRBACProfiles(ListRBACProfilesRequest) returns (ListRBACProfilesResponse);
+  rpc GetRBACProfile(RBACProfileNameRequest) returns (RBACProfile);
+  rpc CreateRBACProfile(CreateRBACProfileRequest) returns (RBACProfile);
+  rpc UpdateRBACProfile(UpdateRBACProfileRequest) returns (RBACProfile);
+  rpc DeleteRBACProfile(RBACProfileNameRequest) returns (google.protobuf.Empty);
+  rpc ListRBACProfileOptions(ListRBACProfilesRequest) returns (ListRBACProfileOptionsResponse);
+}
+message ListRBACProfilesRequest {}
+message RBACProfileNameRequest { string name = 1; }
+message CreateRBACProfileRequest {
+  string name = 1;
+  string description = 2;
+  repeated AppSpecRBACRuleSpec rules = 3;
+}
+message UpdateRBACProfileRequest {
+  // name identifies the existing configuration and is immutable.
+  string name = 1;
+  string description = 2;
+  repeated AppSpecRBACRuleSpec rules = 3;
+}
+message RBACProfile {
+  string name = 1;
+  string description = 2;
+  repeated AppSpecRBACRuleSpec rules = 3;
+  google.protobuf.Timestamp create_time = 4;
+  google.protobuf.Timestamp update_time = 5;
+}
+message RBACProfileOption {
+  string name = 1;
+  string description = 2;
+}
+message ListRBACProfilesResponse { repeated RBACProfile rbac_profiles = 1; }
+message ListRBACProfileOptionsResponse { repeated RBACProfileOption rbac_profiles = 1; }

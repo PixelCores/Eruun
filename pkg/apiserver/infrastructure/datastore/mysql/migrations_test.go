@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -213,7 +214,8 @@ func TestRunSchemaMigrationKeepsMarkerIncompleteWhenMigrationProbeFails(t *testi
 	ctx, cancel := context.WithCancel(context.Background())
 	err = runSchemaMigration(ctx, db, func() error {
 		cancel()
-		return migrateSystemSettings(ctx, db)
+		_, err := schemaTableExists(ctx, db, (&model.SystemSetting{}).TableName())
+		return err
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -247,11 +249,6 @@ func TestMigrationSettingsHaveTimestamps(t *testing.T) {
 		migrate           func(context.Context, *gorm.DB) error
 	}{
 		{"schema marker", schemaMigrationMarker, writeSchemaMigrationMarker},
-		{"imported setting", model.SystemSettingTypeNodeSelector, func(ctx context.Context, db *gorm.DB) error {
-			return migrateSettingFromTable(ctx, db, "legacy_profiles", model.SystemSettingTypeNodeSelector, func(rows []nodeSelectorProfileRow) (json.RawMessage, error) {
-				return json.Marshal(rows)
-			})
-		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
@@ -268,10 +265,6 @@ func TestMigrationSettingsHaveTimestamps(t *testing.T) {
 			sqlDB.SetMaxOpenConns(1)
 			t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 			require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.Applications{}))
-			require.NoError(t, db.Table("legacy_profiles").AutoMigrate(&nodeSelectorProfileRow{}))
-			require.NoError(t, db.Table("legacy_profiles").Create(&nodeSelectorProfileRow{
-				ID: "profile-1", Name: "local", Selection: json.RawMessage(`{"region":"local"}`),
-			}).Error)
 
 			require.NoError(t, tc.migrate(context.Background(), db))
 			var setting model.SystemSetting
@@ -513,4 +506,39 @@ func insertValuesByColumn(t *testing.T, statement string, vars []interface{}) ma
 		values[strings.Trim(strings.TrimSpace(column), "`")] = vars[index]
 	}
 	return values
+}
+
+func TestMigrateSchemaPreservesSchedulingProfilesAndSettings(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	models, err := model.BuiltinModels()
+	require.NoError(t, err)
+	ctx := context.Background()
+	require.NoError(t, migrateSchema(ctx, db, models))
+	profile := model.RBACProfile{Name: "reader", Rules: []spec.RBACRuleSpec{{Resources: []string{"pods"}, Verbs: []string{"get"}}}}
+	pool := model.NodePool{Name: "cpu", NodeSelector: map[string]string{"pool": "cpu"}}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&pool).Error)
+	for _, kind := range []string{model.SystemSettingTypeNodeSelector, model.SystemSettingTypeRBACPolicies} {
+		require.NoError(t, db.Create(&model.SystemSetting{Type: kind, Value: json.RawMessage(`[]`)}).Error)
+	}
+	// Exercise the complete startup migration twice, including an existing marker.
+	for range 2 {
+		require.NoError(t, migrateSchema(ctx, db, models))
+		var got model.RBACProfile
+		require.NoError(t, db.First(&got, "name = ?", profile.Name).Error)
+		require.Equal(t, profile, got)
+		var gotPool model.NodePool
+		require.NoError(t, db.First(&gotPool, "name = ?", pool.Name).Error)
+		require.Equal(t, pool, gotPool)
+		for _, kind := range []string{model.SystemSettingTypeNodeSelector, model.SystemSettingTypeRBACPolicies} {
+			var setting model.SystemSetting
+			require.NoError(t, db.First(&setting, "type = ?", kind).Error)
+			require.JSONEq(t, `[]`, string(setting.Value))
+		}
+	}
 }

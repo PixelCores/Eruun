@@ -16,6 +16,8 @@ Helm 和静态清单让当前 Leader 提供 `0.0.0.0:9000`，固定 Leader Clust
 
 失败使用标准 gRPC status；`google.rpc.ErrorInfo` 的 metadata 中包含 `business_code`，文案只使用审核过的安全消息。HTTP 某些 `200 + 业务错误码` 响应在 gRPC 中是失败 status；业务部分成功仍返回强类型成功响应。客户端应以 status code 做分支，以业务 code 做更细的业务处理，而非解析 message 文本。
 
+节点池和 RBAC 配置分别使用 `NodePoolsService`、`RBACProfilesService`：管理方法要求 `system`，`ListNodePoolOptions` 和 `ListRBACProfileOptions` 要求 `viewer`，只返回名字和描述。更新请求的 `name` 是对象标识，其余字段整体替换；删除成功返回 `google.protobuf.Empty`。配置字段、校验和 `35xxx` 业务码见 [设置页接口](settings-page-api.md#节点池与-rbac-配置)。400 映射为 `InvalidArgument`，404 为 `NotFound`，409 沿用公共映射为 `FailedPrecondition`。
+
 ## 分块与取消
 
 `JobsService.UploadJobDataset` 是客户端流，首个 `UploadDatasetPart` 提交元数据，其余分块提交压缩包数据；单块上限 64 KiB，压缩包总上限 64 MiB，上传截止 300 秒。`JobsService.DownloadJobResult`、`DownloadJobDelivery`、`DownloadJobDataset` 及组件文件/日志归档导出为服务端文件流。`ApplicationService.StreamComponentLogs` 与 `StreamComponentShell` 为服务端事件流，事件内容用 `bytes` 保持原始字节。普通单次请求的服务器接收上限为 24 MiB。取消 RPC 会关闭底层 reader、临时文件和执行资源；调用方也应使用有界 context。
@@ -86,10 +88,22 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 115 条；以下 100 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 127 条；以下 112 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
+| `GET /api/v1/admin/node-pools` | `/eruun.v1.NodePoolsService/ListNodePools` |
+| `GET /api/v1/admin/node-pools/:name` | `/eruun.v1.NodePoolsService/GetNodePool` |
+| `POST /api/v1/admin/node-pools` | `/eruun.v1.NodePoolsService/CreateNodePool` |
+| `PUT /api/v1/admin/node-pools/:name` | `/eruun.v1.NodePoolsService/UpdateNodePool` |
+| `DELETE /api/v1/admin/node-pools/:name` | `/eruun.v1.NodePoolsService/DeleteNodePool` |
+| `GET /api/v1/node-pools` | `/eruun.v1.NodePoolsService/ListNodePoolOptions` |
+| `GET /api/v1/admin/rbac-profiles` | `/eruun.v1.RBACProfilesService/ListRBACProfiles` |
+| `GET /api/v1/admin/rbac-profiles/:name` | `/eruun.v1.RBACProfilesService/GetRBACProfile` |
+| `POST /api/v1/admin/rbac-profiles` | `/eruun.v1.RBACProfilesService/CreateRBACProfile` |
+| `PUT /api/v1/admin/rbac-profiles/:name` | `/eruun.v1.RBACProfilesService/UpdateRBACProfile` |
+| `DELETE /api/v1/admin/rbac-profiles/:name` | `/eruun.v1.RBACProfilesService/DeleteRBACProfile` |
+| `GET /api/v1/rbac-profiles` | `/eruun.v1.RBACProfilesService/ListRBACProfileOptions` |
 | `DELETE /api/v1/applications/:appID` | `/eruun.v1.ApplicationService/DeleteApplication` |
 | `DELETE /api/v1/applications/:appID/resources` | `/eruun.v1.ApplicationService/CleanupApplicationResources` |
 | `DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID` | `/eruun.v1.ApplicationService/DeleteWorkflowSchedule` |

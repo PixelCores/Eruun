@@ -31,6 +31,7 @@ func TestBuiltinModelsReturnsOrderedIsolatedSnapshots(t *testing.T) {
 		"eruun_job_artifact", "eruun_artifact_chunk", "eruun_job_delivery", "eruun_job_sandbox", "eruun_job_checkpoint", "eruun_resource_creation_budget",
 		"eruun_system_setting",
 		"eruun_programming_languages",
+		"eruun_node_pools", "eruun_rbac_profiles",
 		"eruun_job_result_outbox",
 		"eruun_workflow_schedule",
 	}, modelTableNames(first))
@@ -64,7 +65,7 @@ func TestBuiltinModelsSupportsConcurrentSnapshots(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			models, err := BuiltinModels()
-			if err == nil && len(models) != 22 {
+			if err == nil && len(models) != 24 {
 				err = &unexpectedBuiltinModelCount{count: len(models)}
 			}
 			errors <- err
