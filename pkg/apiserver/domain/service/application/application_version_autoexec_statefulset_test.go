@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -403,64 +404,45 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 	sharedTraits.Share = &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)}
 	shared := *nonShared
 	shared.Traits = mustJSONStruct(&sharedTraits)
-	nonSharedCleanup := model.VersionUpdateCleanupComponent{
-		Component: nonShared, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
-		StatefulSetPVCTemplatesToDelete: []string{"data"},
+	identity := func(component *model.ApplicationComponent) string {
+		statefulSet, err := workflowservice.RenderComponentStatefulSet(component)
+		require.NoError(t, err)
+		return statefulSet.Namespace + "/" + statefulSet.Name
 	}
-	sharedCleanup := model.VersionUpdateCleanupComponent{
-		Component: &shared, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
-		StatefulSetPVCTemplatesToDelete: []string{"data"},
-	}
-	nonSharedIdentity, err := versionUpdateCleanupStatefulSetIdentity(nonSharedCleanup)
-	require.NoError(t, err)
-	sharedIdentity, err := versionUpdateCleanupStatefulSetIdentity(sharedCleanup)
-	require.NoError(t, err)
+	nonSharedIdentity, sharedIdentity := identity(nonShared), identity(&shared)
 	require.NotEqual(t, nonSharedIdentity, sharedIdentity)
 
 	marker, err := versionUpdateCleanupJobInfoMarker(true, []string{"data"})
 	require.NoError(t, err)
-	pending := make(map[string]map[string]*pendingStatefulSetPVCDeletion)
-	failedJob := func(taskID string) []*model.JobInfo {
-		return []*model.JobInfo{{
+	store := newInMemoryAppStore()
+	addAttempt := func(taskID string, status config.Status, component *model.ApplicationComponent) {
+		payload, err := json.Marshal(model.VersionUpdateCleanupInfo{
+			Source:  config.JobInfoSourceVersionUpdateRemove,
+			Version: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+			Components: []model.VersionUpdateCleanupComponent{{
+				Component: component, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
+				StatefulSetPVCTemplatesToDelete: []string{"data"},
+			}},
+		})
+		require.NoError(t, err)
+		store.tasks[taskID] = &model.WorkflowQueue{TaskID: taskID, AppID: "app-1", Status: status, CleanupInfo: string(payload)}
+		store.jobs = append(store.jobs, &model.JobInfo{
 			TaskID: taskID, Type: string(config.JobCleanupResources), ServiceName: "mysql",
-			Status: string(config.StatusFailed), InternalInfo: marker,
-		}}
+			Status: string(status), InternalInfo: marker,
+		})
 	}
-	valid, err := updatePendingStatefulSetDeletion(
-		pending,
-		&model.WorkflowQueue{TaskID: "task-old", Status: config.StatusFailed},
-		failedJob("task-old"),
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
-		nonSharedCleanup,
-	)
-	require.NoError(t, err)
-	require.True(t, valid)
+	addAttempt("task-old", config.StatusFailed, nonShared)
+	addAttempt("task-shared-completed", config.StatusCompleted, &shared)
 
-	completedSharedJob := failedJob("task-shared-completed")
-	completedSharedJob[0].Status = string(config.StatusCompleted)
-	valid, err = updatePendingStatefulSetDeletion(
-		pending,
-		&model.WorkflowQueue{TaskID: "task-shared-completed", Status: config.StatusCompleted},
-		completedSharedJob,
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
-		sharedCleanup,
-	)
+	pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 	require.NoError(t, err)
-	require.True(t, valid)
 	require.Contains(t, pending["mysql"], nonSharedIdentity)
 	require.NotContains(t, pending["mysql"], sharedIdentity)
 
-	valid, err = updatePendingStatefulSetDeletion(
-		pending,
-		&model.WorkflowQueue{TaskID: "task-shared-failed", Status: config.StatusFailed},
-		failedJob("task-shared-failed"),
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
-		sharedCleanup,
-	)
+	addAttempt("task-shared-failed", config.StatusFailed, &shared)
+	pending, err = workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 	require.NoError(t, err)
-	require.True(t, valid)
 	require.Len(t, pending["mysql"], 2)
 	_, err = selectPendingStatefulSetPVCDeletion(pending["mysql"], nonShared)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "multiple resource identities")
+	require.ErrorContains(t, err, "multiple resource identities")
 }

@@ -54,7 +54,7 @@ func (w *workflowServiceImpl) ClaimTaskForDispatch(ctx context.Context, task *mo
 		if current.AppID == "" || current.AppID != task.AppID {
 			return fmt.Errorf("workflow task %s changed application from %q to %q", task.TaskID, task.AppID, current.AppID)
 		}
-		_, migrationTask, err := statefulSetCleanupInfoForFence(current)
+		_, migrationTask, err := statefulSetCleanupInfo(current)
 		if err != nil {
 			return err
 		}

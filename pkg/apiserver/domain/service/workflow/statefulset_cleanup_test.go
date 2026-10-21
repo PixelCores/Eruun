@@ -465,7 +465,7 @@ func newStatefulSetCleanupFenceStore(t *testing.T, cleanupVersion int, cleanupSt
 		return store, workflow
 	}
 	cleanupComponent := model.VersionUpdateCleanupComponent{
-		Component:                  &model.ApplicationComponent{ID: 1, AppID: workflow.AppID, Name: "db", Namespace: "default"},
+		Component:                  &model.ApplicationComponent{ID: 1, AppID: workflow.AppID, Name: "db", Namespace: "default", ComponentType: config.StoreJob},
 		ResourceAppName:            "shop",
 		RequireStatefulSetDeletion: true,
 	}
@@ -517,6 +517,7 @@ func newMixedStatefulSetCleanupFenceStore(
 	cleanupInfo.Components = append(cleanupInfo.Components, model.VersionUpdateCleanupComponent{
 		Component: &model.ApplicationComponent{
 			ID: 2, AppID: workflow.AppID, Name: "cache", Namespace: "default", ResourceAppName: "shop",
+			ComponentType: config.StoreJob,
 		},
 		ResourceAppName:                 "shop",
 		RequireStatefulSetDeletion:      true,
