@@ -14,8 +14,11 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	containerutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/container"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
 )
@@ -520,8 +523,12 @@ func TestMigrateSchemaPreservesSchedulingProfilesAndSettings(t *testing.T) {
 	require.NoError(t, migrateSchema(ctx, db, models))
 	pool := model.NodePool{Name: "cpu", NodeSelector: map[string]string{"pool": "cpu"}}
 	require.NoError(t, db.Create(&pool).Error)
-	for _, kind := range []string{model.SystemSettingTypeNodeSelector, model.SystemSettingTypeRBACPolicies} {
-		require.NoError(t, db.Create(&model.SystemSetting{Type: kind, Value: json.RawMessage(`[]`)}).Error)
+	settings := []model.SystemSetting{
+		{Type: model.SystemSettingTypeURLSecurityPolicy, Value: json.RawMessage(`{}`)},
+		{Type: model.SystemSettingTypePodRestartMonitor, Value: json.RawMessage(`{"enabled":true,"windowSeconds":1800,"threshold":3}`)},
+	}
+	for i := range settings {
+		require.NoError(t, db.Create(&settings[i]).Error)
 	}
 	// Exercise the complete startup migration twice, including an existing marker.
 	for range 2 {
@@ -529,10 +536,70 @@ func TestMigrateSchemaPreservesSchedulingProfilesAndSettings(t *testing.T) {
 		var gotPool model.NodePool
 		require.NoError(t, db.First(&gotPool, "name = ?", pool.Name).Error)
 		require.Equal(t, pool, gotPool)
-		for _, kind := range []string{model.SystemSettingTypeNodeSelector, model.SystemSettingTypeRBACPolicies} {
+		for _, want := range settings {
 			var setting model.SystemSetting
-			require.NoError(t, db.First(&setting, "type = ?", kind).Error)
-			require.JSONEq(t, `[]`, string(setting.Value))
+			require.NoError(t, db.First(&setting, "type = ?", want.Type).Error)
+			require.JSONEq(t, string(want.Value), string(setting.Value))
 		}
+	}
+}
+
+func TestMigrateSchemaDeletesRemovedSystemSettings(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true,
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	ctx := context.Background()
+	// A missing table is a no-op; the cleanup must not create schema itself.
+	require.NoError(t, deleteRemovedSystemSettings(ctx, db))
+	require.False(t, db.Migrator().HasTable(&model.SystemSetting{}))
+	models, err := model.BuiltinModels()
+	require.NoError(t, err)
+	require.NoError(t, migrateSchema(ctx, db, models))
+	settings := []model.SystemSetting{
+		{Type: "aliyunCloud", Value: json.RawMessage(`{"accessKeySecret":"synthetic-removed-secret"}`)},
+		{Type: "nodeSelector", Value: json.RawMessage(`{}`)},
+		{Type: "rbacPolicies", Value: json.RawMessage(`[]`)},
+		{Type: model.SystemSettingTypeURLSecurityPolicy, Value: json.RawMessage(`{"allowedHostPatterns":["*.svc.cluster.local"]}`)},
+		{Type: "migration.keep.v1", Value: json.RawMessage(`{"completed":true}`)},
+	}
+	for i := range settings {
+		require.NoError(t, db.Create(&settings[i]).Error)
+	}
+	store := &sqlstore.Driver{Client: *db}
+	repo := repository.NewSystemSettingRepositoryWithStore(store)
+	svc := systemsetting.NewSystemSettingService()
+	beans := containerutil.NewContainer()
+	require.NoError(t, beans.ProvideWithName("datastore", store))
+	require.NoError(t, beans.Provides(repo, svc))
+	require.NoError(t, beans.Populate())
+	before, err := svc.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, before, 4)
+	exposed, err := json.Marshal(before)
+	require.NoError(t, err)
+	require.Contains(t, string(exposed), "accessKeySecret")
+	// Exercise the actual startup path twice, preserving supported and internal rows.
+	for range 2 {
+		require.NoError(t, migrateSchema(ctx, db, models))
+		var types []string
+		require.NoError(t, db.Model(&model.SystemSetting{}).Pluck("type", &types).Error)
+		require.ElementsMatch(t, []string{model.SystemSettingTypeURLSecurityPolicy, "migration.keep.v1", schemaMigrationMarker}, types)
+		var marker model.SystemSetting
+		require.NoError(t, db.First(&marker, "type = ?", "migration.keep.v1").Error)
+		require.JSONEq(t, `{"completed":true}`, string(marker.Value))
+		after, err := svc.List(ctx)
+		require.NoError(t, err)
+		require.Len(t, after, 1)
+		require.Equal(t, model.SystemSettingTypeURLSecurityPolicy, after[0].Type)
+		require.JSONEq(t, string(settings[3].Value), string(after[0].Value))
+		payload, err := json.Marshal(after)
+		require.NoError(t, err)
+		require.NotContains(t, string(payload), "accessKeySecret")
 	}
 }

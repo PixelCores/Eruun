@@ -3,8 +3,6 @@ package model
 import "encoding/json"
 
 const (
-	SystemSettingTypeNodeSelector      = "nodeSelector"
-	SystemSettingTypeRBACPolicies      = "rbacPolicies"
 	SystemSettingTypeURLSecurityPolicy = "urlSecurityPolicy"
 	SystemSettingTypePodRestartMonitor = "podRestartMonitor"
 	SystemSettingTypeWorkflowScheduler = "workflow_scheduler"
