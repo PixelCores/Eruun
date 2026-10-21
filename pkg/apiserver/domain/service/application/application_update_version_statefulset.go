@@ -11,10 +11,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func preflightVersionUpdateStatefulSets(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec, fullRecreate bool) ([]domainspec.ComponentUpdateSpec, error) {
@@ -72,11 +71,11 @@ func renderVersionUpdateStatefulSetTransition(component *model.ApplicationCompon
 		return nil, nil, err
 	}
 
-	currentStatefulSet, err := renderVersionUpdateStatefulSet(component)
+	currentStatefulSet, err := workflowservice.RenderComponentStatefulSet(component)
 	if err != nil {
 		return nil, nil, err
 	}
-	desiredStatefulSet, err := renderVersionUpdateStatefulSet(desiredComponent)
+	desiredStatefulSet, err := workflowservice.RenderComponentStatefulSet(desiredComponent)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -176,22 +175,6 @@ func versionUpdateComponentSnapshot(current *model.ApplicationComponent, desired
 	snapshot.Properties = properties
 	snapshot.Traits = traits
 	return &snapshot, nil
-}
-
-func renderVersionUpdateStatefulSet(component *model.ApplicationComponent) (*appsv1.StatefulSet, error) {
-	snapshot := *component
-	result, err := jobdeploy.GenerateStoreService(&snapshot, workflowtraits.IdentityProfiles(&snapshot))
-	if err != nil {
-		return nil, fmt.Errorf("%w: render StatefulSet for component %s: %w", bcode.ErrApplicationConfig, component.Name, err)
-	}
-	if result == nil {
-		return nil, fmt.Errorf("%w: component %s cannot render desired StatefulSet", bcode.ErrApplicationConfig, component.Name)
-	}
-	statefulSet, ok := result.Service.(*appsv1.StatefulSet)
-	if !ok || statefulSet == nil {
-		return nil, fmt.Errorf("%w: component %s rendered unexpected StatefulSet type %T", bcode.ErrApplicationConfig, component.Name, result.Service)
-	}
-	return statefulSet, nil
 }
 
 func validateStatefulSetImmutableTransition(componentName string, current, desired *appsv1.StatefulSet) error {

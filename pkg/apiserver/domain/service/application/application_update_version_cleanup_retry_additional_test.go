@@ -10,6 +10,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -98,7 +99,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing
 		inMemoryAppStore: store,
 		taskIDs:          []string{first.TaskID, second.TaskID, third.TaskID},
 	}
-	pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), orderedStore, "app-1")
+	pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), orderedStore, "app-1")
 	require.NoError(t, err)
 	require.Empty(t, pending)
 }
@@ -150,46 +151,20 @@ func TestUpdateVersionPendingStatefulSetDeletionV2RequiresFullRebuild(t *testing
 }
 
 func TestPendingStatefulSetDeletionV2TracksAndClearsSuccessfulRetry(t *testing.T) {
-	component := statefulSetDeletionV2Component("mysql-headless")
-	cleanupComponent := model.VersionUpdateCleanupComponent{
-		Component:                  component,
-		ResourceAppName:            "shop",
-		RequireStatefulSetDeletion: true,
-	}
-	marker, err := versionUpdateCleanupJobInfoMarker(true, nil)
-	require.NoError(t, err)
-	job := func(taskID string, status config.Status) []*model.JobInfo {
-		return []*model.JobInfo{{
-			TaskID: taskID, Type: string(config.JobCleanupResources), ServiceName: component.Name,
-			Status: string(status), InternalInfo: marker,
-		}}
-	}
-	pending := make(map[string]map[string]*pendingStatefulSetPVCDeletion)
+	store := newInMemoryAppStore()
+	addStatefulSetDeletionV2Attempt(t, store, "failed-v2", config.StatusFailed, config.StatusFailed, nil, time.Time{})
 
-	valid, err := updatePendingStatefulSetDeletion(
-		pending,
-		&model.WorkflowQueue{TaskID: "failed-v2", Status: config.StatusFailed},
-		job("failed-v2", config.StatusFailed),
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-		cleanupComponent,
-	)
+	pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 	require.NoError(t, err)
-	require.True(t, valid)
 	require.Len(t, pending["mysql"], 1)
 	for _, plan := range pending["mysql"] {
-		require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, plan.cleanupVersion)
-		require.Empty(t, plan.templates)
+		require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, plan.CleanupVersion)
+		require.Empty(t, plan.Templates)
 	}
 
-	valid, err = updatePendingStatefulSetDeletion(
-		pending,
-		&model.WorkflowQueue{TaskID: "completed-v2", Status: config.StatusCompleted},
-		job("completed-v2", config.StatusCompleted),
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-		cleanupComponent,
-	)
+	addStatefulSetDeletionV2Attempt(t, store, "completed-v2", config.StatusCompleted, config.StatusCompleted, []string{"failed-v2"}, time.Time{})
+	pending, err = workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 	require.NoError(t, err)
-	require.True(t, valid)
 	require.Empty(t, pending)
 }
 
@@ -207,41 +182,15 @@ func TestPendingStatefulSetDeletionRequiresCompletedCleanupAndWorkflow(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			component := statefulSetDeletionV2Component("mysql-headless")
-			cleanupComponent := model.VersionUpdateCleanupComponent{
-				Component: component, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
-			}
-			marker, err := versionUpdateCleanupJobInfoMarker(true, nil)
-			require.NoError(t, err)
-			pending := make(map[string]map[string]*pendingStatefulSetPVCDeletion)
-			job := func(taskID string, status config.Status) []*model.JobInfo {
-				return []*model.JobInfo{{
-					TaskID: taskID, Type: string(config.JobCleanupResources), ServiceName: component.Name,
-					Status: string(status), InternalInfo: marker,
-				}}
-			}
+			store := newInMemoryAppStore()
+			addStatefulSetDeletionV2Attempt(t, store, "initial-failure", config.StatusFailed, config.StatusFailed, nil, time.Time{})
+			addStatefulSetDeletionV2Attempt(t, store, "unproven-attempt", tt.taskStatus, tt.jobStatus, []string{"initial-failure"}, time.Time{})
 
-			valid, err := updatePendingStatefulSetDeletion(
-				pending,
-				&model.WorkflowQueue{TaskID: "initial-failure", Status: config.StatusFailed},
-				job("initial-failure", config.StatusFailed),
-				model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-				cleanupComponent,
-			)
-			require.NoError(t, err)
-			require.True(t, valid)
-
-			valid, err = updatePendingStatefulSetDeletion(
-				pending,
-				&model.WorkflowQueue{TaskID: "unproven-attempt", Status: tt.taskStatus},
-				job("unproven-attempt", tt.jobStatus),
-				model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-				cleanupComponent,
-			)
+			pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 			require.NoError(t, err)
-			require.True(t, valid)
 			require.Len(t, pending["mysql"], 1)
+			require.Equal(t, []string{"initial-failure", "unproven-attempt"}, pendingStatefulSetCleanupTaskIDs(pending))
 		})
 	}
 }
@@ -268,7 +217,7 @@ func TestLoadPendingStatefulSetDeletionReturnsWorkflowConflictBcodes(t *testing.
 			store := newInMemoryAppStore()
 			addStatefulSetDeletionV2History(t, store, tt.taskStatus, tt.jobStatus)
 
-			_, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+			_, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 			require.ErrorIs(t, err, tt.want)
 		})
@@ -292,7 +241,7 @@ func TestLoadPendingStatefulSetDeletionTreatsPreStartJobOnTerminalTaskAsPending(
 			store := newInMemoryAppStore()
 			addStatefulSetDeletionV2History(t, store, tt.taskStatus, tt.jobStatus)
 
-			pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+			pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 			require.NoError(t, err)
 			require.Len(t, pending["mysql"], 1)
@@ -313,7 +262,7 @@ func TestLoadPendingStatefulSetDeletionCompletedResolverClearsPreStartTerminalAt
 		time.Time{},
 	)
 
-	pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 	require.NoError(t, err)
 	require.Equal(t, []string{"failed-before-cleanup"}, pendingStatefulSetCleanupTaskIDs(pending))
 
@@ -327,7 +276,7 @@ func TestLoadPendingStatefulSetDeletionCompletedResolverClearsPreStartTerminalAt
 		time.Time{},
 	)
 
-	pending, err = loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	pending, err = workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 	require.NoError(t, err)
 	require.Empty(t, pending)
 }
@@ -336,12 +285,12 @@ func TestLoadPendingStatefulSetDeletionKeepsUnknownJobStatusInternal(t *testing.
 	store := newInMemoryAppStore()
 	addStatefulSetDeletionV2History(t, store, config.StatusCompleted, config.Status("draining"))
 
-	_, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	_, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, bcode.ErrWorkflowTaskRunning)
 	require.NotErrorIs(t, err, bcode.ErrWorkflowTaskCancelling)
-	require.Contains(t, err.Error(), `cleanup job is "draining"`)
+	require.Contains(t, err.Error(), `unsupported status "draining"`)
 }
 
 func TestLoadPendingStatefulSetDeletionReturnsWorkflowConflictBeforeJobCreation(t *testing.T) {
@@ -349,7 +298,7 @@ func TestLoadPendingStatefulSetDeletionReturnsWorkflowConflictBeforeJobCreation(
 	addStatefulSetDeletionV2History(t, store, config.StatusWaiting, config.StatusWaiting)
 	store.jobs = nil
 
-	_, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	_, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 	require.ErrorIs(t, err, bcode.ErrWorkflowTaskRunning)
 }
@@ -359,7 +308,7 @@ func TestLoadPendingStatefulSetDeletionRetainsTerminalTaskBeforeJobCreation(t *t
 	addStatefulSetDeletionV2History(t, store, config.StatusFailed, config.StatusFailed)
 	store.jobs = nil
 
-	pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 	require.NoError(t, err)
 	require.Len(t, pending["mysql"], 1)
@@ -395,14 +344,14 @@ func TestLoadPendingStatefulSetDeletionUsesExplicitCausalityInsteadOfCreateTime(
 				inMemoryAppStore: store,
 				taskIDs:          []string{"failed-1", "failed-2", "recovered"},
 			}
-			pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), orderedStore, "app-1")
+			pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), orderedStore, "app-1")
 
 			require.NoError(t, err)
 			require.Empty(t, pending, "a successful resolver must close both failed attempts regardless of wall-clock order")
 
 			addStatefulSetDeletionV2Attempt(t, store, "independent-failure", config.StatusFailed, config.StatusFailed, nil, tt.times[3])
 			orderedStore.taskIDs = append(orderedStore.taskIDs, "independent-failure")
-			pending, err = loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), orderedStore, "app-1")
+			pending, err = workflowservice.LoadPendingStatefulSetCleanups(context.Background(), orderedStore, "app-1")
 
 			require.NoError(t, err)
 			require.Len(t, pending["mysql"], 1)
@@ -416,7 +365,7 @@ func TestLoadPendingStatefulSetDeletionDoesNotGuessLegacyRecoveryOrder(t *testin
 	addStatefulSetDeletionV2Attempt(t, store, "legacy-failure", config.StatusFailed, config.StatusFailed, nil, time.Unix(200, 0))
 	addStatefulSetDeletionV2Attempt(t, store, "legacy-success", config.StatusCompleted, config.StatusCompleted, nil, time.Unix(100, 0))
 
-	pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"legacy-failure"}, pendingStatefulSetCleanupTaskIDs(pending))
@@ -426,7 +375,7 @@ func TestLoadPendingStatefulSetDeletionRejectsUnknownResolutionTask(t *testing.T
 	store := newInMemoryAppStore()
 	addStatefulSetDeletionV2Attempt(t, store, "recovered", config.StatusCompleted, config.StatusCompleted, []string{"missing"}, time.Time{})
 
-	_, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	_, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 	require.ErrorContains(t, err, "resolves unknown StatefulSet cleanup task missing")
 }
@@ -436,7 +385,7 @@ func TestLoadPendingStatefulSetDeletionRejectsResolutionCycle(t *testing.T) {
 	addStatefulSetDeletionV2Attempt(t, store, "failed-1", config.StatusFailed, config.StatusFailed, []string{"failed-2"}, time.Time{})
 	addStatefulSetDeletionV2Attempt(t, store, "failed-2", config.StatusFailed, config.StatusFailed, []string{"failed-1"}, time.Time{})
 
-	_, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+	_, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 	require.ErrorContains(t, err, "resolution graph contains a cycle")
 }
@@ -499,7 +448,7 @@ func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T)
 				addAttempt("resolver-2", config.StatusCompleted, version, template, []string{"failed"})
 			}
 
-			pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+			pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 			if tt.err != "" {
 				require.ErrorContains(t, err, tt.err)
@@ -512,20 +461,18 @@ func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T)
 }
 
 func TestPendingStatefulSetDeletionV2RejectsPVCTemplatePlan(t *testing.T) {
-	_, err := updatePendingStatefulSetDeletion(
-		make(map[string]map[string]*pendingStatefulSetPVCDeletion),
-		&model.WorkflowQueue{TaskID: "invalid-v2"},
-		nil,
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-		model.VersionUpdateCleanupComponent{
-			Component:                       statefulSetDeletionV2Component("mysql-headless"),
-			RequireStatefulSetDeletion:      true,
-			StatefulSetPVCTemplatesToDelete: []string{"data"},
-		},
-	)
+	store := newInMemoryAppStore()
+	addStatefulSetDeletionV2Attempt(t, store, "invalid-v2", config.StatusFailed, config.StatusFailed, nil, time.Time{})
+	var info model.VersionUpdateCleanupInfo
+	require.NoError(t, json.Unmarshal([]byte(store.tasks["invalid-v2"].CleanupInfo), &info))
+	info.Components[0].StatefulSetPVCTemplatesToDelete = []string{"data"}
+	payload, err := json.Marshal(info)
+	require.NoError(t, err)
+	store.tasks["invalid-v2"].CleanupInfo = string(payload)
 
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "v2 cannot contain a StatefulSet PVC deletion plan")
+	_, err = workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
+
+	require.ErrorContains(t, err, "v2 cannot contain a StatefulSet PVC deletion plan")
 }
 
 func TestLoadPendingStatefulSetDeletionTracksMixedV2V3Components(t *testing.T) {
@@ -579,18 +526,18 @@ func TestLoadPendingStatefulSetDeletionTracksMixedV2V3Components(t *testing.T) {
 				},
 			)
 
-			pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+			pending, err := workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
 
 			require.NoError(t, err)
 			require.Len(t, pending, 2, "a terminal workflow failure keeps every destructive component pending")
 			require.Len(t, pending["mysql"], 1)
 			for _, plan := range pending["mysql"] {
-				require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, plan.cleanupVersion)
+				require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, plan.CleanupVersion)
 				require.Empty(t, pendingStatefulSetPVCTemplateNames(plan))
 			}
 			require.Len(t, pending["redis"], 1)
 			for _, plan := range pending["redis"] {
-				require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, plan.cleanupVersion)
+				require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, plan.CleanupVersion)
 				require.Equal(t, []string{"data"}, pendingStatefulSetPVCTemplateNames(plan))
 			}
 		})
@@ -705,5 +652,48 @@ func statefulSetDeletionV2Traits(serviceName string) apisv1.Traits {
 			Selector: map[string]string{spec.LabelComponentName: "mysql"},
 			Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
+	}
+}
+
+// TestStatefulSetCleanupFenceAndResumeAgree covers histories on which the
+// workflow fence and the UpdateVersion resume used to reach different verdicts.
+func TestStatefulSetCleanupFenceAndResumeAgree(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		mutate  func(t *testing.T, store *inMemoryAppStore)
+		wantErr string
+	}{
+		{
+			name: "component re-added under the same StatefulSet",
+			mutate: func(t *testing.T, store *inMemoryAppStore) {
+				addStatefulSetDeletionV2Attempt(t, store, "failed-readded", config.StatusFailed, config.StatusFailed, nil, time.Time{})
+				var info model.VersionUpdateCleanupInfo
+				require.NoError(t, json.Unmarshal([]byte(store.tasks["failed-readded"].CleanupInfo), &info))
+				info.Components[0].Component.ID = 202
+				payload, err := json.Marshal(info)
+				require.NoError(t, err)
+				store.tasks["failed-readded"].CleanupInfo = string(payload)
+			},
+			wantErr: "component ID changed",
+		},
+		{
+			name: "removal marker with an invalid field",
+			mutate: func(t *testing.T, store *inMemoryAppStore) {
+				store.jobs[0].InternalInfo = `{"source":"version_update_remove","version":"invalid","requireStatefulSetDeletion":true}`
+			},
+			wantErr: "decode cleanup job marker",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			addStatefulSetDeletionV2Attempt(t, store, "failed-original", config.StatusFailed, config.StatusFailed, nil, time.Time{})
+			tc.mutate(t, store)
+
+			fenceErr := workflowservice.EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
+			_, resumeErr := pendingVersionUpdateStatefulSetPVCDeletionsForRequest(context.Background(), store, "app-1", nil, true)
+
+			require.ErrorContains(t, fenceErr, tc.wantErr)
+			require.ErrorContains(t, resumeErr, tc.wantErr)
+		})
 	}
 }
