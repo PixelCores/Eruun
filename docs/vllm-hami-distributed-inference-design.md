@@ -8,7 +8,7 @@
 
 - 通过 `POST /api/v1/applications/create-and-exec` 创建并执行 Application。
 - 使用 `job` 准备数据，使用 `webservice` 运行长期服务。
-- 通过 storage、env/envFrom、service、ingress、probes、targetWorkEnv、securityPolicy 和 RBAC Traits 组合容器工作负载。
+- 通过 storage、env/envFrom、service、ingress、probes、nodePool、securityPolicy Traits 组合容器工作负载。
 - 把 `traits.resources.gpu` 映射为 `nvidia.com/gpu` request/limit。
 - 用 Workflow、数据库 lease/fencing、日志和组件状态管理部署过程。
 

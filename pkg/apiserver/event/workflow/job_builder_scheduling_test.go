@@ -24,7 +24,7 @@ func TestSchedulingClassesPreserveDependenciesAndSubstepOverride(t *testing.T) {
 				{Name: "second", WorkflowType: config.JobDeploy},
 				{Name: "third", WorkflowType: config.JobDeploy, SchedulingClass: "normal"},
 			}}}}
-			groups, err := buildWorkflowStepExecutionGroups(context.Background(), steps, components, &model.WorkflowQueue{AppID: "app", TaskID: "task"}, 60)
+			groups, err := buildWorkflowStepExecutionGroups(context.Background(), nil, steps, components, &model.WorkflowQueue{AppID: "app", TaskID: "task"}, 60)
 			if err != nil {
 				t.Fatal(err)
 			}

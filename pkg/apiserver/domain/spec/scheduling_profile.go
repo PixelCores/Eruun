@@ -9,7 +9,7 @@ import (
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
-// ValidateNodeSelectorEntry shares the label rules with targetWorkEnv validation.
+// ValidateNodeSelectorEntry validates the label rules used by node pools.
 func ValidateNodeSelectorEntry(key, value string) (keyError, valueError string) {
 	if causes := k8svalidation.IsQualifiedName(key); len(causes) > 0 {
 		keyError = "key must be a valid label key: " + strings.Join(causes, "; ")
@@ -76,44 +76,6 @@ func ValidateNodePool(name string, selector map[string]string, tolerations []cor
 		}
 		if t.TolerationSeconds != nil && t.Effect != corev1.TaintEffectNoExecute {
 			return fmt.Errorf("%s.tolerationSeconds: only allowed with NoExecute", field)
-		}
-	}
-	return nil
-}
-
-func ValidateRBACProfile(name string, rules []RBACRuleSpec) error {
-	if err := ValidateSchedulingProfileName(name); err != nil {
-		return err
-	}
-	if len(rules) == 0 {
-		return fmt.Errorf("rules: at least one rule is required")
-	}
-	for i, rule := range rules {
-		field := fmt.Sprintf("rules[%d]", i)
-		if len(rule.Verbs) == 0 {
-			return fmt.Errorf("%s.verbs: at least one verb is required", field)
-		}
-		if len(rule.Resources) == 0 {
-			return fmt.Errorf("%s.resources: at least one resource is required", field)
-		}
-		if len(rule.NonResourceURLs) > 0 {
-			return fmt.Errorf("%s.nonResourceURLs: not allowed", field)
-		}
-		for _, group := range rule.APIGroups {
-			if group == "rbac.authorization.k8s.io" || group == "*" {
-				return fmt.Errorf("%s.apiGroups: %q is not allowed", field, group)
-			}
-		}
-		for _, verb := range rule.Verbs {
-			switch verb {
-			case "bind", "escalate", "impersonate", "*":
-				return fmt.Errorf("%s.verbs: %q is not allowed", field, verb)
-			}
-		}
-		for _, resource := range rule.Resources {
-			if resource == "*" || resource == "serviceaccounts/token" {
-				return fmt.Errorf("%s.resources: %q is not allowed", field, resource)
-			}
 		}
 	}
 	return nil

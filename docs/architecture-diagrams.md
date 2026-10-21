@@ -77,7 +77,7 @@ sequenceDiagram
 flowchart LR
     App["Application<br/>workspace 归属"]
     Components["Components<br/>webservice / store / job / scheduledjob<br/>config / secret"]
-    Traits["Traits<br/>storage / env / resources / security / RBAC / …"]
+    Traits["Traits<br/>storage / env / resources / security / nodePool / …"]
     Workflow["Workflow<br/>StepByStep 或 DAG"]
     WorkspaceJob["独立空间 Job<br/>command 或 job + traits.eval，无 AppID"]
     JobTask["JobTask<br/>内部执行动作"]
@@ -95,7 +95,7 @@ flowchart LR
 
 - Component 描述要运行或生成的对象。
 - Trait 为 Component 增加正交能力；它不是独立运行实体。
-- 图中包含引擎内部扩展；空间业务路径拒绝额外 RBAC、任意 ServiceAccount、host/跨 namespace 操作及 NodePort/LoadBalancer，不能仅凭类型或 Trait 的存在判断可用权限。
+- 图中包含引擎内部扩展；空间组件按名引用管理员定义的节点池；拒绝任意内联 RBAC、任意 ServiceAccount、host/跨 namespace 操作及 NodePort/LoadBalancer，不能仅凭类型或 Trait 的存在判断可用权限。
 - Workflow 引用 Component 并定义执行顺序、审批和失败策略。
 - 独立空间 Job 直接声明任务规格，复用相同的调度、执行租约和 Job 生命周期。
 - JobTask 是内部执行计划，JobInfo 保存执行明细；它们不形成新的用户侧顶层队列。
@@ -127,7 +127,7 @@ flowchart TB
 | env / envFrom | 主容器、init container 或 sidecar |
 | resources / probes / securityContext | 容器字段 |
 | nodeSelector / ServiceAccount / rollout | Pod 或 workload 字段 |
-| ingress / RBAC 等 AdditionalObjects | 独立 Kubernetes 资源 Job |
+| ingress 等 AdditionalObjects | 独立 Kubernetes 资源 Job |
 | service / share | Service 生成及资源调和/清理路径 |
 
 ## 5. 当前与未来的文档分界

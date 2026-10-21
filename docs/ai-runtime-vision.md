@@ -16,7 +16,7 @@ Eruun 已经是一套可运行的 Kubernetes 应用与工作流运行时，但�
 | --- | --- | --- |
 | 控制面 | 同构节点选出 Leader，其他节点执行任务；MySQL 保存 Workflow 状态和执行 ownership | 继续作为 Agent、评测与模型任务的统一控制面 |
 | 工作负载 | `webservice`、`store`、`job`、`scheduledjob`、`config` 和 `secret` 组件；Service 由 Trait 声明 | 表达常驻 Agent、一次性 Agent 任务和模型服务，但暂不冻结新组件类型 |
-| 扩展能力 | 已实现 storage、env、resources、securityPolicy、RBAC、probes、init、sidecar、ingress、service、share、rollout 等 Traits | 增加 Agent 所需能力前先判断能否组合已有 Trait，避免按产品名新增专用 Trait |
+| 扩展能力 | 已实现 storage、env、resources、securityPolicy、nodePool、probes、init、sidecar、ingress、service、share、rollout 等 Traits | 增加 Agent 所需能力前先判断能否组合已有 Trait，避免按产品名新增专用 Trait |
 | 安全 | 账号与空间授权、Kubernetes RBAC、容器 SecurityContext、Secret/ConfigMap 引用和 URL 安全策略 | 增加工具授权、出站访问、凭据委派、审批、审计和撤销的一致边界 |
 | 执行 | Workflow 支持 StepByStep/DAG、审批、取消、超时、回调、租约和 fencing | 承载 Agent 任务、评测、数据处理及模型制品准备 |
 | AI 专用能力 | 已有独立 command Job、独立与应用 Workflow 内评测、任务包和结果制品；尚无通用 Agent、MCP、向量化、vLLM 或托管模型 API | 在现有空间 Job 和 Harbor Runner 上增量演进，其余能力按路线图逐层实现并标记 Current |
@@ -49,7 +49,7 @@ Agent 权限必须分层描述，不能用一个笼统的“permissions”开关
 | 层次 | 需要控制的内容 | 可复用基础 |
 | --- | --- | --- |
 | 平台授权 | 谁可以创建、执行、观察、取消或审批工作负载 | Eruun 账号、空间和角色授权 |
-| Kubernetes 身份 | Pod 可访问哪些 Kubernetes API 和资源 | ServiceAccount、RBAC Trait、namespace 隔离 |
+| Kubernetes 身份 | Pod 可访问哪些 Kubernetes API 和资源 | ServiceAccount 引用、namespace 隔离 |
 | 容器权限 | 用户、Linux capabilities、只读文件系统、权限提升 | SecurityPolicy Trait 与 Pod Security |
 | 数据与凭据 | 哪个执行可以读取哪个 Secret、ConfigMap、数据集或制品 | 引用式挂载、短期凭据、按任务作用域授权 |
 | 网络访问 | 允许访问的 MCP、模型、对象存储和外部 API | NetworkPolicy、URL 策略、出口代理或策略执行点 |

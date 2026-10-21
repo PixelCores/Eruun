@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -92,15 +93,17 @@ type validationServiceImpl struct {
 	URLSecurityPolicyProvider *urlpolicy.Provider
 	AppRepo                   repository.ApplicationRepository
 	ComponentRepo             repository.ComponentRepository
+	NodePoolRepo              repository.NodePoolRepository
 }
 
 // NewValidationService creates a validator with its application dependencies.
-func NewValidationService(cfg *config.Config, policy *urlpolicy.Provider, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository) ValidationService {
+func NewValidationService(cfg *config.Config, policy *urlpolicy.Provider, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, nodePoolRepo repository.NodePoolRepository) ValidationService {
 	return &validationServiceImpl{
 		Cfg:                       cfg,
 		URLSecurityPolicyProvider: policy,
 		AppRepo:                   appRepo,
 		ComponentRepo:             componentRepo,
+		NodePoolRepo:              nodePoolRepo,
 	}
 }
 
@@ -191,6 +194,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				effectiveReq.Components[i] = comp
 			}
 			errors = append(errors, v.validateComponent(comp, fieldPrefix, componentNames)...)
+			errors = append(errors, traitvalidation.ValidateProfiles(ctx, v.NodePoolRepo, comp.Traits, fieldPrefix+".traits")...)
 		}
 	}
 

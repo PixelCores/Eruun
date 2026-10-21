@@ -7,10 +7,12 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 func buildWorkflowStepExecutionGroups(
 	ctx context.Context,
+	ds datastore.DataStore,
 	workflowSteps *model.WorkflowSteps,
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
@@ -21,7 +23,7 @@ func buildWorkflowStepExecutionGroups(
 	}
 	stepGroups := make([][]StepExecution, len(workflowSteps.Steps))
 	for stepIndex, step := range workflowSteps.Steps {
-		executions, err := buildWorkflowStepExecutions(ctx, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds)
+		executions, err := buildWorkflowStepExecutions(ctx, ds, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds)
 		if err != nil {
 			return nil, fmt.Errorf("build workflow step %s: %w", step.Name, err)
 		}
@@ -35,6 +37,7 @@ func buildWorkflowStepExecutionGroups(
 
 func buildWorkflowStepExecutions(
 	ctx context.Context,
+	ds datastore.DataStore,
 	stepIndex int,
 	step *model.WorkflowStep,
 	componentMap map[string]*model.ApplicationComponent,
@@ -51,7 +54,7 @@ func buildWorkflowStepExecutions(
 		}}, nil
 	}
 	if len(step.SubSteps) > 0 {
-		return buildSubStepExecutions(ctx, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
+		return buildSubStepExecutions(ctx, ds, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
 	}
 
 	componentNames := step.ComponentNames()
@@ -62,11 +65,11 @@ func buildWorkflowStepExecutions(
 		return buildDatabaseResetStepExecution(ctx, step.Name, componentNames, step.Properties, componentMap, task, defaultJobTimeoutSeconds, workflowStepExecutionKey(stepIndex, 0))
 	}
 	if mode.IsParallel() && len(componentNames) > 1 {
-		return buildParallelComponentExecution(ctx, step.Name, "parallel-group", mode, componentNames, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+		return buildParallelComponentExecution(ctx, ds, step.Name, "parallel-group", mode, componentNames, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
 			return workflowStepExecutionKey(stepIndex, componentIndex)
 		})
 	}
-	return buildSequentialComponentExecutions(ctx, componentNames, config.WorkflowModeStepByStep, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+	return buildSequentialComponentExecutions(ctx, ds, componentNames, config.WorkflowModeStepByStep, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
 		return workflowStepExecutionKey(stepIndex, componentIndex)
 	}, func(name string) string {
 		return name
@@ -75,6 +78,7 @@ func buildWorkflowStepExecutions(
 
 func buildSubStepExecutions(
 	ctx context.Context,
+	ds datastore.DataStore,
 	stepIndex int,
 	step *model.WorkflowStep,
 	mode config.WorkflowMode,
@@ -83,13 +87,13 @@ func buildSubStepExecutions(
 	defaultJobTimeoutSeconds int64,
 ) ([]StepExecution, error) {
 	if mode.IsParallel() {
-		return buildParallelSubStepExecution(ctx, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
+		return buildParallelSubStepExecution(ctx, ds, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
 	}
 
 	var executions []StepExecution
 	for subStepIndex, sub := range step.SubSteps {
 		componentNames := sub.ComponentNames()
-		subExecutions, err := buildSequentialSubStepExecution(ctx, componentNames, sub, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+		subExecutions, err := buildSequentialSubStepExecution(ctx, ds, componentNames, sub, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
 			return workflowSubStepExecutionKey(stepIndex, subStepIndex, componentIndex)
 		})
 		if err != nil {
@@ -102,6 +106,7 @@ func buildSubStepExecutions(
 
 func buildParallelSubStepExecution(
 	ctx context.Context,
+	ds datastore.DataStore,
 	stepIndex int,
 	step *model.WorkflowStep,
 	mode config.WorkflowMode,
@@ -114,7 +119,7 @@ func buildParallelSubStepExecution(
 		componentNames := sub.ComponentNames()
 		subBuckets := newJobBuckets()
 		if err := appendComponentGroup(
-			ctx,
+			ctx, ds,
 			subBuckets,
 			componentNames,
 			sub.WorkflowType,
@@ -143,9 +148,9 @@ func buildParallelSubStepExecution(
 	}}, nil
 }
 
-func buildSequentialSubStepExecution(ctx context.Context, componentNames []string, sub *model.WorkflowSubStep, componentMap map[string]*model.ApplicationComponent, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, executionKeyForComponent func(componentIndex int) string) ([]StepExecution, error) {
+func buildSequentialSubStepExecution(ctx context.Context, ds datastore.DataStore, componentNames []string, sub *model.WorkflowSubStep, componentMap map[string]*model.ApplicationComponent, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, executionKeyForComponent func(componentIndex int) string) ([]StepExecution, error) {
 	buckets := newJobBuckets()
-	if err := appendComponentGroup(ctx, buckets, componentNames, sub.WorkflowType, sub.Properties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
+	if err := appendComponentGroup(ctx, ds, buckets, componentNames, sub.WorkflowType, sub.Properties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
 		return nil, err
 	}
 	if bucketsEmpty(buckets) {
@@ -181,6 +186,7 @@ func applyExecutionSchedulingClass(execution *StepExecution, class string) {
 
 func buildParallelComponentExecution(
 	ctx context.Context,
+	ds datastore.DataStore,
 	stepName string,
 	fallbackStepName string,
 	mode config.WorkflowMode,
@@ -193,7 +199,7 @@ func buildParallelComponentExecution(
 	executionKeyForComponent func(componentIndex int) string,
 ) ([]StepExecution, error) {
 	buckets := newJobBuckets()
-	if err := appendComponentGroup(ctx, buckets, componentNames, workflowType, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
+	if err := appendComponentGroup(ctx, ds, buckets, componentNames, workflowType, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
 		return nil, err
 	}
 	if bucketsEmpty(buckets) {
@@ -231,6 +237,7 @@ func buildDatabaseResetStepExecution(
 
 func buildSequentialComponentExecutions(
 	ctx context.Context,
+	ds datastore.DataStore,
 	componentNames []string,
 	mode config.WorkflowMode,
 	workflowType config.JobType,
@@ -245,7 +252,7 @@ func buildSequentialComponentExecutions(
 	for componentIndex, name := range componentNames {
 		buckets := newJobBuckets()
 		if err := appendComponentGroup(
-			ctx,
+			ctx, ds,
 			buckets,
 			[]string{name},
 			workflowType,

@@ -12,7 +12,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -32,6 +31,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func (c *applicationsServiceImpl) CleanupApplicationResources(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesResponse, error) {
@@ -281,7 +281,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		result, err := jobdeploy.GenerateWebService(componentPtr, &props)
+		result, err := jobdeploy.GenerateWebService(componentPtr, &props, workflowtraits.IdentityProfiles(componentPtr))
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		}
 		reporter.record("Deployment", deployNS, deployName, c.deleteDeployment(ctx, deployNS, deployName))
 	case config.StoreJob:
-		result, err := jobdeploy.GenerateStoreService(componentPtr)
+		result, err := jobdeploy.GenerateStoreService(componentPtr, workflowtraits.IdentityProfiles(componentPtr))
 		if err != nil {
 			return err
 		}
@@ -327,7 +327,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			c.deleteEvaluationJobsForComponent(ctx, componentPtr, reporter)
 			break
 		}
-		result, err := jobdeploy.GenerateInstantJob(componentPtr, &props, props.RunPolicy)
+		result, err := jobdeploy.GenerateInstantJob(componentPtr, &props, props.RunPolicy, workflowtraits.IdentityProfiles(componentPtr))
 		if err != nil {
 			return err
 		}
@@ -504,19 +504,6 @@ func (c *applicationsServiceImpl) deleteAdditionalObjects(ctx context.Context, f
 		case *networkingv1.Ingress:
 			ns := pickNamespace(resource.Namespace, fallbackNamespace)
 			reporter.record("Ingress", ns, resource.Name, c.deleteIngress(ctx, ns, resource.Name))
-		case *corev1.ServiceAccount:
-			ns := pickNamespace(resource.Namespace, fallbackNamespace)
-			klog.V(4).Infof("cleanup: preserving serviceaccount %s/%s", ns, resource.Name)
-		case *rbacv1.Role:
-			ns := pickNamespace(resource.Namespace, fallbackNamespace)
-			klog.V(4).Infof("cleanup: preserving role %s/%s", ns, resource.Name)
-		case *rbacv1.RoleBinding:
-			ns := pickNamespace(resource.Namespace, fallbackNamespace)
-			klog.V(4).Infof("cleanup: preserving rolebinding %s/%s", ns, resource.Name)
-		case *rbacv1.ClusterRole:
-			klog.V(4).Infof("cleanup: preserving clusterrole %s", resource.Name)
-		case *rbacv1.ClusterRoleBinding:
-			klog.V(4).Infof("cleanup: preserving clusterrolebinding %s", resource.Name)
 		default:
 			klog.V(4).Infof("cleanup: unsupported additional object type %T", obj)
 		}
@@ -669,7 +656,7 @@ func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Con
 		if err != nil {
 			klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
 		}
-		result, err := jobdeploy.GenerateScheduledCronJob(component, props, normalized)
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, normalized, workflowtraits.IdentityProfiles(component))
 		if err != nil {
 			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), err)
 			return

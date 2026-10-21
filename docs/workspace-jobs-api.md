@@ -58,7 +58,7 @@
 
 stage 依次执行；同一 stage 的多个 step 并行执行。命令默认超时 3600 秒，范围 1–86400 秒；可选 `retry: {"backoffLimit": 2}` 控制 Kubernetes Job 的失败重试次数，范围 0–10，省略时默认 0。评测 step（`type: job`）不接受 `retry`，即使 `backoffLimit` 为 0 也会拒绝；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制，继续使用既有 execution identity、Runner claim 和恢复协议。当前支持可复用 JobDefinition、手动、延迟和 cron 触发，以及 cron 的 Forbid、Allow、Replace 并发策略；平台级重跑尚未实现。
 
-command step 的 `traits` 与 Application 组件使用同一规格，经现有 trait 处理器应用。拒绝 `ingress`、`service`、`rollout`、`share`；顶层以及 init/sidecar 嵌套 traits 都会检查附属资源。`persistent` 存储只能引用已有 PVC，不能指定 `tmpCreate`、`size`、`storageClass`；处理器为此返回的 PVC 对象不会生成创建任务，Pod 只引用现有 claim。其他任何附属资源（包括新建 PVC、RBAC 的 ServiceAccount/Role/Binding、Ingress）均在提交时拒绝，错误指出具体 trait。共享工作存储由顶层 `volume` 声明。
+command step 的 `traits` 与 Application 组件使用同一规格，经现有 trait 处理器应用。拒绝 `ingress`、`service`、`rollout`、`share`；顶层以及 init/sidecar 嵌套 traits 都会检查附属资源。`persistent` 存储只能引用已有 PVC，不能指定 `tmpCreate`、`size`、`storageClass`；处理器为此返回的 PVC 对象不会生成创建任务，Pod 只引用现有 claim。其他任何附属资源（包括新建 PVC、Ingress）均在提交时拒绝，错误指出具体 trait。共享工作存储由顶层 `volume` 声明。
 
 例如，为不同 stage 的命令共享文件，在顶层添加 `"volume": {"size": "1Gi", "storageClass": "<storage-class>", "accessMode": "ReadWriteOnce"}`。`storageClass` 必须位于管理员配置的 `workspace.storageClasses` 白名单；省略时也要求管理员已允许使用默认存储类，未授权的存储类会在现有资源准备流程中被拒绝。省略 accessMode 时默认为 `ReadWriteOnce`；任何 stage 有多个 step 时必须使用 `ReadWriteMany`。声明 volume 后，`workspace` 卷名和 `/workspace` 挂载路径保留给运行卷，顶层及 init/sidecar traits 的 storage 不能占用。平台先创建本次运行专属的 `eruun-job-<taskID>-work` PVC，再将其挂载到每个 command step 的 `/workspace`；eval step 不挂载此卷。维护循环以集群中带 `eruun.io/job-task` label 的存活 PVC 为待办，跨 namespace 每页列出 100 个，并通过 `Limit/Continue` 翻页，不扫描历史运行。按 label 值读取运行后，仅在其为独立 Job（`type == job`、`appId` 为空）、声明了 volume，且 PVC 名称与运行卷名相符、namespace 与所属空间一致时才允许清理；找不到运行时保留 PVC，其余身份或声明不匹配记录错误并跳过。运行进入终态后删除，取消运行仍等待既有取消恢复确认 Job 已停止；删除附带 UID 和 ResourceVersion 前置条件，不存在视为完成，其他删除错误记录后在下一轮重试。已有 PVC 和其他资源不会由此清理。真实 RWX 支持、挂载和回收仍需在目标存储类验证。
 
@@ -378,3 +378,5 @@ go test -race -tags=integration ./pkg/apiserver/jobs ./pkg/apiserver/jobs/artifa
 ```
 
 需要 `MYSQL_TEST_DSN` 和 `MINIO_TEST_CONFIG` 指向隔离环境；未配置时集成部分跳过，不能作为真实数据库验证。Runner claim 的 MySQL 测试验证行锁下只有一个 Pod 获胜。Python 测试和本地镜像构建见 [Runner README](../pkg/apiserver/jobs/runners/harbor/README.md)。不同付费模型、私有镜像仓库、生产 CNI 网络规则，以及真实集群 OOM/网络恢复矩阵仍需部署方验证。
+
+command 步骤可通过 `traits.nodePool` 引用管理员创建的节点池，提交和部署构建时均查 MySQL，写入 Pod 的 `nodeSelector` 与 `tolerations`。init/sidecar 内不支持节点池引用。

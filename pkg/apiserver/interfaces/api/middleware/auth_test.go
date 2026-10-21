@@ -213,7 +213,7 @@ func TestSchedulingProfileRouteAuthorization(t *testing.T) {
 	router := gin.New()
 	router.Use(Auth(AuthOptions{Accounts: accounts}))
 	called := 0
-	for _, path := range []string{"node-pools", "rbac-profiles"} {
+	for _, path := range []string{"node-pools"} {
 		for _, route := range []struct{ verb, suffix string }{{"GET", ""}, {"POST", ""}, {"GET", "/:name"}, {"PUT", "/:name"}, {"DELETE", "/:name"}} {
 			router.Handle(route.verb, "/api/v1/admin/"+path+route.suffix, func(c *gin.Context) { called++; c.Status(200) })
 		}

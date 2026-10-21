@@ -432,6 +432,11 @@ func (s *inMemoryAppStore) DeleteByFilter(context.Context, datastore.Entity, *da
 
 func (s *inMemoryAppStore) Get(_ context.Context, entity datastore.Entity) error {
 	switch v := entity.(type) {
+	case *model.NodePool:
+		if v.Name == "original" || v.Name == "override" {
+			return nil
+		}
+		return datastore.ErrRecordNotExist
 	case *model.Applications:
 		if v.ID != "" {
 			if app, ok := s.apps[v.ID]; ok {

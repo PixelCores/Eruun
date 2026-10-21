@@ -17,7 +17,7 @@ import (
 
 // buildCommandJob applies the shared component traits to a normalized Job step.
 // Existing PVC references returned by ApplyTraits remain externally owned.
-func buildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.Traits) (*batchv1.Job, error) {
+func buildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.Traits, profiles traitprocessors.Profiles) (*batchv1.Job, error) {
 	if len(validation.IsDNS1123Label(name)) != 0 || len(validation.IsDNS1123Label(namespace)) != 0 {
 		return nil, fmt.Errorf("invalid Job name or namespace")
 	}
@@ -42,7 +42,7 @@ func buildCommandJob(name, namespace string, command spec.CommandJobSpec, traits
 	if err != nil {
 		return nil, fmt.Errorf("encode Job traits: %w", err)
 	}
-	additional, err := traitprocessors.ApplyTraits(&model.ApplicationComponent{Name: name, Namespace: namespace, Traits: componentTraits}, workload)
+	additional, err := traitprocessors.ApplyTraits(&model.ApplicationComponent{Name: name, Namespace: namespace, Traits: componentTraits}, workload, profiles)
 	if err != nil {
 		return nil, fmt.Errorf("render Job traits: %w", err)
 	}

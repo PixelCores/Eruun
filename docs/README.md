@@ -71,8 +71,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/domain/service/application` | 应用生命周期与组件业务规则 | 应用变更、组件查询、Informer 运行态回写 | `SyncComponentStatus` 负责状态保护、条件写入和缓存失效；server 只装配有界回调 |
 | `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
-| `pkg/apiserver/event/workflow/job` | Job 执行入口（`RunJobs`、`initJobCtl` 工厂、`Pool`、评测恢复），具体能力分在子包 | 新增 Job 类型、调整执行主流程；Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行在 `jobdeploy` | 子包单向依赖：`jobinfo`（JobInfo 记录、载荷、检查点）→ `jobexec`（Runtime、控制器基类、K8s Job 原语、共享资源保护、清理跟踪、取消恢复）→ `jobdeploy` → `jobcleanup`、`jobresult` → `jobinstant`、`jobdelay`、`databasereset`、`logarchive`、`jobcallback`；ConfigMap/Secret 内部执行输入在 `jobinfo/configmap_input.go`；分层见 `job-package-layering-design.md` |
-| `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
+| `pkg/apiserver/event/workflow/job` | Job 执行入口（`RunJobs`、`initJobCtl` 工厂、`Pool`、评测恢复），具体能力分在子包 | 新增 Job 类型、调整执行主流程；Deployment、StatefulSet、Service、PVC、Secret 等资源执行在 `jobdeploy` | 子包单向依赖：`jobinfo`（JobInfo 记录、载荷、检查点）→ `jobexec`（Runtime、控制器基类、K8s Job 原语、共享资源保护、清理跟踪、取消恢复）→ `jobdeploy` → `jobcleanup`、`jobresult` → `jobinstant`、`jobdelay`、`databasereset`、`logarchive`、`jobcallback`；ConfigMap/Secret 内部执行输入在 `jobinfo/configmap_input.go`；分层见 `job-package-layering-design.md` |
+| `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、nodePool、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
 | `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、MySQL、Informer、锁、可观测性 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则 |
@@ -108,7 +108,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
-| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 100 条 HTTP 路由—RPC 对照 |
+| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 106 条 HTTP 路由—RPC 对照 |
 | `canonical-json-profile.md` | Current | 面向 Agent 的唯一 Application/Workflow JSON、Schema、Try、read-edit-submit、幂等与 allowedActions 契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
@@ -202,7 +202,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
-| [`node-pool-and-rbac-profile-design.md`](node-pool-and-rbac-profile-design.md) | Draft / Proposal | 管理员定义节点池与 RBAC 配置、组件按名引用，替换 `targetWorkEnv`、`traits.rbac` 与只写不读的 `nodeSelector`/`rbacPolicies` 设置 |
+| [`node-pool-design.md`](node-pool-design.md) | Draft / Proposal | 管理员定义节点池，组件使用 `nodePool`；显式解析、渲染、组件 RBAC 删除和后续权限收敛 |
 | `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
 | [`harbor-runtime-stage1-plan.md`](harbor-runtime-stage1-plan.md) | Draft / Proposal | 第一阶段主 PR（实施中）：代码与手工压测交付、共享观察、按需 Sandbox、预算和真实规模验收 |
 | [`harbor-runtime-stage1-discussion.md`](harbor-runtime-stage1-discussion.md) | Draft / Proposal | 第一阶段讨论与评审核验：需求和代码依据、观察/标签迁移、协议发布、结果交付、纠正项及待冻结决策 |

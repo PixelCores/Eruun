@@ -28,6 +28,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type DatabaseResetJobCtl struct {
@@ -222,7 +223,7 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 			continue
 		}
 		component := normalizeDatabaseResetComponent(rawComponent)
-		result, err := jobdeploy.GenerateStoreService(component)
+		result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
 		if err != nil {
 			return nil, err
 		}

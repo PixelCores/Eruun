@@ -29,15 +29,15 @@ func buildVersionUpdateCleanupInfo(
 		if err != nil {
 			return nil, err
 		}
-		if action != spec.ComponentActionRemove {
-			continue
-		}
 		key := strings.ToLower(strings.TrimSpace(update.Name))
 		if key == "" {
 			continue
 		}
 		comp, exists := componentMap[key]
 		if !exists || comp == nil {
+			continue
+		}
+		if action != spec.ComponentActionRemove {
 			continue
 		}
 		insertBeforeStepIndex := cleanupAppendStepIndex
@@ -229,7 +229,6 @@ func versionUpdateCleanupTraitsDescriptor(raw *model.JSONStruct) (*model.JSONStr
 		Sidecar: versionUpdateCleanupSidecarTraits(traits.Sidecar),
 		Service: versionUpdateCleanupServiceTraits(traits.Service),
 		Ingress: versionUpdateCleanupIngressTraits(traits.Ingress),
-		RBAC:    versionUpdateCleanupRBACTraits(traits.RBAC),
 	}
 	if traits.Share != nil {
 		descriptor.Share = &spec.ShareTraitSpec{Strategy: strings.TrimSpace(traits.Share.Strategy)}
@@ -239,8 +238,7 @@ func versionUpdateCleanupTraitsDescriptor(raw *model.JSONStruct) (*model.JSONStr
 		len(descriptor.Init) == 0 &&
 		len(descriptor.Sidecar) == 0 &&
 		len(descriptor.Service) == 0 &&
-		len(descriptor.Ingress) == 0 &&
-		len(descriptor.RBAC) == 0 {
+		len(descriptor.Ingress) == 0 {
 		return nil, nil
 	}
 	return model.NewJSONStructByStruct(descriptor)
@@ -373,41 +371,6 @@ func versionUpdateCleanupIngressRoutes(routes []spec.IngressRoutes) []spec.Ingre
 				ServicePort: route.Backend.ServicePort,
 				Weight:      route.Backend.Weight,
 			},
-		})
-	}
-	return out
-}
-
-func versionUpdateCleanupRBACTraits(policies []spec.RBACPolicySpec) []spec.RBACPolicySpec {
-	if len(policies) == 0 {
-		return nil
-	}
-	out := make([]spec.RBACPolicySpec, 0, len(policies))
-	for _, policy := range policies {
-		out = append(out, spec.RBACPolicySpec{
-			ServiceAccount: strings.TrimSpace(policy.ServiceAccount),
-			Namespace:      strings.TrimSpace(policy.Namespace),
-			ClusterScope:   policy.ClusterScope,
-			RoleName:       strings.TrimSpace(policy.RoleName),
-			BindingName:    strings.TrimSpace(policy.BindingName),
-			Rules:          versionUpdateCleanupRBACRules(policy.Rules),
-		})
-	}
-	return out
-}
-
-func versionUpdateCleanupRBACRules(rules []spec.RBACRuleSpec) []spec.RBACRuleSpec {
-	if len(rules) == 0 {
-		return nil
-	}
-	out := make([]spec.RBACRuleSpec, 0, len(rules))
-	for _, rule := range rules {
-		out = append(out, spec.RBACRuleSpec{
-			APIGroups:       append([]string(nil), rule.APIGroups...),
-			Resources:       append([]string(nil), rule.Resources...),
-			ResourceNames:   append([]string(nil), rule.ResourceNames...),
-			NonResourceURLs: append([]string(nil), rule.NonResourceURLs...),
-			Verbs:           append([]string(nil), rule.Verbs...),
 		})
 	}
 	return out

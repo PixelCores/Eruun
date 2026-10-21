@@ -236,7 +236,7 @@ func (c *DeployJobCtl) timeout() int64 {
 	return c.Job.Timeout
 }
 
-func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties) (*jobexec.GenerateServiceResult, error) {
+func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties, profiles traitsPlu.Profiles) (*jobexec.GenerateServiceResult, error) {
 	deploymentName := naming.WebServiceName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 	var ContainerPort []corev1.ContainerPort
@@ -290,7 +290,7 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 		},
 	}
 
-	additionalObjects, err := traitsPlu.ApplyTraits(component, deployment)
+	additionalObjects, err := traitsPlu.ApplyTraits(component, deployment, profiles)
 	if err != nil {
 		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}

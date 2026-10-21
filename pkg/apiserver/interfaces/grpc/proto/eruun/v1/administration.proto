@@ -6,7 +6,6 @@ option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/p
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/empty.proto";
-import "eruun/v1/applications.proto";
 import "google/protobuf/timestamp.proto";
 
 service SettingsService {
@@ -125,38 +124,3 @@ message NodePoolOption {
 }
 message ListNodePoolsResponse { repeated NodePool node_pools = 1; }
 message ListNodePoolOptionsResponse { repeated NodePoolOption node_pools = 1; }
-
-service RBACProfilesService {
-  rpc ListRBACProfiles(ListRBACProfilesRequest) returns (ListRBACProfilesResponse);
-  rpc GetRBACProfile(RBACProfileNameRequest) returns (RBACProfile);
-  rpc CreateRBACProfile(CreateRBACProfileRequest) returns (RBACProfile);
-  rpc UpdateRBACProfile(UpdateRBACProfileRequest) returns (RBACProfile);
-  rpc DeleteRBACProfile(RBACProfileNameRequest) returns (google.protobuf.Empty);
-  rpc ListRBACProfileOptions(ListRBACProfilesRequest) returns (ListRBACProfileOptionsResponse);
-}
-message ListRBACProfilesRequest {}
-message RBACProfileNameRequest { string name = 1; }
-message CreateRBACProfileRequest {
-  string name = 1;
-  string description = 2;
-  repeated AppSpecRBACRuleSpec rules = 3;
-}
-message UpdateRBACProfileRequest {
-  // name identifies the existing configuration and is immutable.
-  string name = 1;
-  string description = 2;
-  repeated AppSpecRBACRuleSpec rules = 3;
-}
-message RBACProfile {
-  string name = 1;
-  string description = 2;
-  repeated AppSpecRBACRuleSpec rules = 3;
-  google.protobuf.Timestamp create_time = 4;
-  google.protobuf.Timestamp update_time = 5;
-}
-message RBACProfileOption {
-  string name = 1;
-  string description = 2;
-}
-message ListRBACProfilesResponse { repeated RBACProfile rbac_profiles = 1; }
-message ListRBACProfileOptionsResponse { repeated RBACProfileOption rbac_profiles = 1; }

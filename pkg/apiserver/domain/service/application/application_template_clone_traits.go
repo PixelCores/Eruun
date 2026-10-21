@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -149,16 +148,6 @@ func rewriteTraitsForTemplateWithPersistentStorageIdentities(traits *apisv1.Trai
 	rewriteTemplateStorageTraits(traits, oldName, newName, baseName, rewriteNameCandidate, persistentStorageIdentities, collectTopLevelStorageIdentities)
 	if err := rewriteTemplateNetworkTraits(traits, oldName, newName, baseName, namespace, rewriteMap, rewriteNameCandidate, originalPodLabels, rewrittenPodLabels); err != nil {
 		return err
-	}
-
-	for i := range traits.RBAC {
-		policy := &traits.RBAC[i]
-		// RBAC 资源保持名称不变，但命名空间与组件命名空间对齐（为空则用默认命名空间）。
-		if namespace != "" {
-			policy.Namespace = namespace
-		} else if policy.Namespace == "" {
-			policy.Namespace = config.DefaultNamespace
-		}
 	}
 
 	for i := range traits.EnvFrom {

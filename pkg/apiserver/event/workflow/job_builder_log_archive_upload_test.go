@@ -37,7 +37,7 @@ func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.
 		AppID:      "app-1",
 	}
 
-	executions, err := buildWorkflowStepExecutions(context.Background(), 0, &model.WorkflowStep{
+	executions, err := buildWorkflowStepExecutions(context.Background(), nil, 0, &model.WorkflowStep{
 		Name:         "log-archive-upload",
 		WorkflowType: config.JobLogArchiveUpload,
 		Mode:         config.WorkflowModeStepByStep,

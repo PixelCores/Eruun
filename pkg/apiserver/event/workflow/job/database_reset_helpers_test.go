@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type databaseResetComponentStore struct {
@@ -128,7 +129,7 @@ func (s *databaseResetComponentStore) IsExistByCondition(_ context.Context, _ st
 
 func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponent) (*jobexec.GenerateServiceResult, *appsv1.StatefulSet) {
 	t.Helper()
-	result, err := jobdeploy.GenerateStoreService(component)
+	result, err := jobdeploy.GenerateStoreService(component, workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func databaseResetDeployment(t *testing.T, component *model.ApplicationComponent
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := jobdeploy.GenerateWebService(component, &properties)
+	result, err := jobdeploy.GenerateWebService(component, &properties, workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}

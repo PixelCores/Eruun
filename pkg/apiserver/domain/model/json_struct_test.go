@@ -32,7 +32,7 @@ func TestNewJSONStructByStructPreservesJSONContract(t *testing.T) {
 		{"typed nil", typedNil},
 		{"empty map", map[string]any{}},
 		{"properties", Properties{Ports: []Ports{}, Secret: map[string]string{"value": "yes"}, StartTime: 9007199254740991}},
-		{"nested traits", Traits{Sidecar: []spec.SidecarTraitsSpec{{Name: "logger", Image: "logger:1"}}, TargetWorkEnv: map[string]string{"zone": "a"}}},
+		{"nested traits", Traits{Sidecar: []spec.SidecarTraitsSpec{{Name: "logger", Image: "logger:1"}}, NodePool: "batch"}},
 		{"numbers", map[string]any{"int": int64(42), "negative": -5, "fraction": 1.25}},
 		{"tags and custom JSON", struct {
 			Name    string          `json:"displayName" yaml:"differentName"`

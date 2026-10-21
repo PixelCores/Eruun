@@ -9,7 +9,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -126,63 +125,6 @@ func TestCleanupApplicationResourcesPreservesStoragePVC(t *testing.T) {
 	require.NotContains(t, resp.DeletedResources, "PersistentVolumeClaim:default/default-logs-pvc")
 
 	_, err = clientset.CoreV1().PersistentVolumeClaims("default").Get(context.Background(), "default-logs-pvc", metav1.GetOptions{})
-	require.NoError(t, err)
-}
-
-func TestCleanupApplicationResourcesPreservesTraitGeneratedRBAC(t *testing.T) {
-
-	app := &model.Applications{ID: "app-rbac", Name: "demo-rbac", Namespace: "ops"}
-	component := &model.ApplicationComponent{
-		Name: "labeler", AppID: app.ID, Namespace: app.Namespace,
-		ComponentType: config.ServerJob, Replicas: 1, Image: "busybox:latest",
-		Traits: mustJSONStruct(&spec.Traits{
-			RBAC: []spec.RBACPolicySpec{
-				{
-					ServiceAccount: "pod-labeler-sa", RoleName: "pod-labeler-role", BindingName: "pod-labeler-binding",
-					Rules: []spec.RBACRuleSpec{{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "patch"}}},
-				},
-				{
-					ServiceAccount: "cluster-labeler-sa", ClusterScope: true,
-					RoleName: "pod-labeler-cluster-role", BindingName: "pod-labeler-cluster-binding",
-					Rules: []spec.RBACRuleSpec{{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get"}}},
-				},
-			},
-		}),
-	}
-	store := &cleanupStore{
-		app: app, components: []*model.ApplicationComponent{component},
-		applications: map[string]*model.Applications{app.ID: app},
-	}
-	deploymentName := naming.WebServiceName(component.Name, app.Name)
-	clientset := fake.NewSimpleClientset(
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deploymentName, Namespace: app.Namespace}},
-		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-sa", Namespace: app.Namespace}},
-		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "cluster-labeler-sa", Namespace: app.Namespace}},
-		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-role", Namespace: app.Namespace}},
-		&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-binding", Namespace: app.Namespace}},
-		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-cluster-role"}},
-		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-cluster-binding"}},
-	)
-	svc := &applicationsServiceImpl{
-		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:     clientset, Store: store,
-		AppRepo: &mockCleanupAppRepo{store: store}, ComponentRepo: &mockCleanupComponentRepo{store: store},
-	}
-
-	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
-	require.NoError(t, err)
-	require.Contains(t, resp.DeletedResources, "Deployment:"+app.Namespace+"/"+deploymentName)
-	_, err = clientset.CoreV1().ServiceAccounts(app.Namespace).Get(context.Background(), "pod-labeler-sa", metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = clientset.CoreV1().ServiceAccounts(app.Namespace).Get(context.Background(), "cluster-labeler-sa", metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = clientset.RbacV1().Roles(app.Namespace).Get(context.Background(), "pod-labeler-role", metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = clientset.RbacV1().RoleBindings(app.Namespace).Get(context.Background(), "pod-labeler-binding", metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = clientset.RbacV1().ClusterRoles().Get(context.Background(), "pod-labeler-cluster-role", metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = clientset.RbacV1().ClusterRoleBindings().Get(context.Background(), "pod-labeler-cluster-binding", metav1.GetOptions{})
 	require.NoError(t, err)
 }
 

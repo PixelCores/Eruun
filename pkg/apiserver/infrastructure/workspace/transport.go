@@ -364,9 +364,6 @@ func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spe
 	if traits == nil {
 		return nil
 	}
-	if len(traits.RBAC) > 0 {
-		return bcode.ErrForbidden
-	}
 	if err := validateContainerSecurity(traits.SecurityPolicy); err != nil {
 		return err
 	}

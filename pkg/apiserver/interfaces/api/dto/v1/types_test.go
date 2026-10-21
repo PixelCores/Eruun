@@ -149,8 +149,8 @@ func TestUpdateVersionRequestComponentJSONContract(t *testing.T) {
 		},
 		{
 			name:  "all component fields",
-			input: `{"version":"2.0.0","components":[{"action":"add","name":"worker","image":"example/worker:v2","replicas":2,"env":{"MODE":"override"},"type":"webservice","properties":{"env":{"MODE":"base"}},"traits":{"targetWorkEnv":{"pool":"batch"}}}]}`,
-			want:  `{"version":"2.0.0","components":[{"action":"add","name":"worker","image":"example/worker:v2","replicas":2,"env":{"MODE":"override"},"type":"webservice","properties":{"ports":null,"env":{"MODE":"base"},"conf":null,"secret":null,"command":null,"labels":null},"traits":{"targetWorkEnv":{"pool":"batch"}}}]}`,
+			input: `{"version":"2.0.0","components":[{"action":"add","name":"worker","image":"example/worker:v2","replicas":2,"env":{"MODE":"override"},"type":"webservice","properties":{"env":{"MODE":"base"}},"traits":{"nodePool":"batch"}}]}`,
+			want:  `{"version":"2.0.0","components":[{"action":"add","name":"worker","image":"example/worker:v2","replicas":2,"env":{"MODE":"override"},"type":"webservice","properties":{"ports":null,"env":{"MODE":"base"},"conf":null,"secret":null,"command":null,"labels":null},"traits":{"nodePool":"batch"}}]}`,
 		},
 	}
 	for _, tt := range tests {
@@ -526,4 +526,21 @@ func TestApplicationBaseJSONIncludesZeroResources(t *testing.T) {
 	require.Empty(t, resources["cpuLimit"])
 	require.Empty(t, resources["memLimit"])
 	require.Zero(t, resources["replicas"])
+}
+
+func TestRequestsRejectRemovedComponentPermissions(t *testing.T) {
+	for _, field := range []string{"rbac", "rbac" + "Profile"} {
+		t.Run(field, func(t *testing.T) {
+			traits := `{"` + field + `":null}`
+			for _, request := range []struct {
+				body string
+				out  any
+			}{
+				{`{"components":[{"name":"api","traits":` + traits + `}]}`, &CreateApplicationsRequest{}},
+				{`{"components":[{"name":"api","traits":` + traits + `}]}`, &UpdateVersionRequest{}},
+			} {
+				require.ErrorContains(t, decodeStrictJSON([]byte(request.body), request.out), `unknown field "`+field+`"`)
+			}
+		})
+	}
 }

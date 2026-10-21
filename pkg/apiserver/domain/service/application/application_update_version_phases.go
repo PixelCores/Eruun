@@ -216,6 +216,9 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err != nil {
 		return err
 	}
+	if err := c.validateComponentProfiles(ctx, resolvedComponents); err != nil {
+		return err
+	}
 	if err := c.validateVersionUpdateWorkspaceComponents(ctx, run, resolvedComponents); err != nil {
 		return err
 	}

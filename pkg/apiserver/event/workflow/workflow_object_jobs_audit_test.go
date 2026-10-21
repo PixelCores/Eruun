@@ -9,7 +9,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -136,110 +135,6 @@ func TestCreateObjectJobsFromResultIgnoresConfigAndSecret(t *testing.T) {
 	require.Empty(t, jobs, "configmap/secret should be ignored; dedicated jobs exist elsewhere")
 }
 
-func TestCreateObjectJobsFromResultRBAC(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name:      "Labeler",
-		AppID:     "App-2",
-		Namespace: "ops",
-	}
-	task := &model.WorkflowQueue{
-		WorkflowID: "wf-rbac",
-		ProjectID:  "proj-rbac",
-		AppID:      component.AppID,
-	}
-
-	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-sa"}}
-	role := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-role"},
-		Rules: []rbacv1.PolicyRule{{
-			Verbs:     []string{"get"},
-			APIGroups: []string{""},
-			Resources: []string{"pods"},
-		}},
-	}
-	binding := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-binding"},
-		Subjects: []rbacv1.Subject{{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      sa.Name,
-			Namespace: component.Namespace,
-		}},
-		RoleRef: rbacv1.RoleRef{
-			Kind:     "Role",
-			APIGroup: rbacv1.GroupName,
-			Name:     role.Name,
-		},
-	}
-	clusterRole := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-cluster-role"},
-		Rules: []rbacv1.PolicyRule{{
-			Verbs:     []string{"list"},
-			APIGroups: []string{""},
-			Resources: []string{"pods"},
-		}},
-	}
-	clusterBinding := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-cluster-binding"},
-		Subjects: []rbacv1.Subject{{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      sa.Name,
-			Namespace: component.Namespace,
-		}},
-		RoleRef: rbacv1.RoleRef{
-			Kind:     "ClusterRole",
-			APIGroup: rbacv1.GroupName,
-			Name:     clusterRole.Name,
-		},
-	}
-
-	objs := []client.Object{sa, role, binding, clusterRole, clusterBinding}
-	jobs, err := createObjectJobsFromResult(objs, component, task, nil, int64(config.DefaultJobTaskTimeout.Seconds()), shareConfigForComponent(component, decodeComponentTraits(component)))
-	require.NoError(t, err)
-	require.Len(t, jobs, 5)
-
-	jobTypes := make(map[string]bool)
-	for _, job := range jobs {
-		jobTypes[job.JobType] = true
-		require.NotNil(t, job.JobInfo)
-		var labels map[string]string
-		switch job.JobType {
-		case string(config.JobDeployServiceAccount):
-			saObj, ok := job.JobInfo.(*corev1.ServiceAccount)
-			require.True(t, ok)
-			require.Equal(t, component.Namespace, saObj.Namespace)
-			labels = saObj.Labels
-		case string(config.JobDeployRole):
-			roleObj, ok := job.JobInfo.(*rbacv1.Role)
-			require.True(t, ok)
-			require.Equal(t, component.Namespace, roleObj.Namespace)
-			labels = roleObj.Labels
-		case string(config.JobDeployRoleBinding):
-			bindingObj, ok := job.JobInfo.(*rbacv1.RoleBinding)
-			require.True(t, ok)
-			require.Equal(t, component.Namespace, bindingObj.Namespace)
-			labels = bindingObj.Labels
-		case string(config.JobDeployClusterRole):
-			clusterRoleObj, ok := job.JobInfo.(*rbacv1.ClusterRole)
-			require.True(t, ok)
-			labels = clusterRoleObj.Labels
-		case string(config.JobDeployClusterRoleBinding):
-			clusterBindingObj, ok := job.JobInfo.(*rbacv1.ClusterRoleBinding)
-			require.True(t, ok)
-			labels = clusterBindingObj.Labels
-		default:
-			t.Fatalf("unexpected job type %s", job.JobType)
-		}
-		require.Equal(t, "ops", labels[spec.LabelShareName])
-		require.Equal(t, string(spec.ShareStrategyDefault), labels[spec.LabelShareStrategy])
-	}
-
-	require.True(t, jobTypes[string(config.JobDeployServiceAccount)])
-	require.True(t, jobTypes[string(config.JobDeployRole)])
-	require.True(t, jobTypes[string(config.JobDeployRoleBinding)])
-	require.True(t, jobTypes[string(config.JobDeployClusterRole)])
-	require.True(t, jobTypes[string(config.JobDeployClusterRoleBinding)])
-}
-
 func TestSecretJobNameNormalization(t *testing.T) {
 	secretProps, err := model.NewJSONStructByStruct(model.Properties{Secret: map[string]string{"token": "value"}})
 	require.NoError(t, err)
@@ -259,7 +154,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	buckets, err := buildJobsForComponent(ctx, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+	buckets, err := buildJobsForComponent(ctx, nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +192,7 @@ func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 		TaskID:     "task-share",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +234,7 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 	}
 	task := &model.WorkflowQueue{WorkflowID: "wf-1", AppID: "app-1", TaskID: "task-1"}
 
-	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +287,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -418,7 +313,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -441,7 +336,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -462,7 +357,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -498,8 +393,8 @@ func TestCreateObjectJobsFromResult_ShareIgnoreSkipsAdditionalJobs(t *testing.T)
 	}
 
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data"}}
-	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "cache-sa"}}
-	jobs, err := createObjectJobsFromResult([]client.Object{pvc, sa}, component, task, nil, int64(config.DefaultJobTaskTimeout.Seconds()), shareConfigForComponent(component, decodeComponentTraits(component)))
+	ingress := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "cache-route"}}
+	jobs, err := createObjectJobsFromResult([]client.Object{pvc, ingress}, component, task, nil, int64(config.DefaultJobTaskTimeout.Seconds()), shareConfigForComponent(component, decodeComponentTraits(component)))
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
 	for _, job := range jobs {
@@ -566,7 +461,7 @@ func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *t
 		TaskID:     "task-service",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,7 +553,7 @@ func TestBuildJobsForComponent_StoreServiceTraitPrecedesStatefulSet(t *testing.T
 		TaskID:     "task-store",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +592,7 @@ func TestBuildJobsForComponent_DefaultServiceFromPortsUsesHighPriority(t *testin
 		TaskID:     "task-ports",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
 	if err != nil {
 		t.Fatal(err)
 	}

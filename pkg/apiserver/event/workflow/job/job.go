@@ -84,16 +84,6 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 		return jobdeploy.NewDeploySecretJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployIngress):
 		return jobdeploy.NewDeployIngressJobCtl(job, runtime, runtime.ShareLocker)
-	case string(config.JobDeployServiceAccount):
-		return jobdeploy.NewDeployServiceAccountJobCtl(job, runtime, runtime.ShareLocker)
-	case string(config.JobDeployRole):
-		return jobdeploy.NewDeployRoleJobCtl(job, runtime, runtime.ShareLocker)
-	case string(config.JobDeployRoleBinding):
-		return jobdeploy.NewDeployRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
-	case string(config.JobDeployClusterRole):
-		return jobdeploy.NewDeployClusterRoleJobCtl(job, runtime, runtime.ShareLocker)
-	case string(config.JobDeployClusterRoleBinding):
-		return jobdeploy.NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return jobinstant.NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
@@ -172,10 +162,6 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *jobexec.Runtime) e
 			}
 			if err := access.NewStore(store).Get(ctx, &model.Applications{ID: task.AppID}); err != nil {
 				return err
-			}
-			switch config.JobType(task.JobType) {
-			case config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding:
-				return fmt.Errorf("job type %s is forbidden in workspaces", task.JobType)
 			}
 		}
 	}
@@ -701,11 +687,6 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployConfigMap,
 		config.JobDeploySecret,
 		config.JobDeployIngress,
-		config.JobDeployServiceAccount,
-		config.JobDeployRole,
-		config.JobDeployRoleBinding,
-		config.JobDeployClusterRole,
-		config.JobDeployClusterRoleBinding,
 		config.JobDeployInstant,
 		config.JobDeployScheduled,
 		config.JobCleanupResources,

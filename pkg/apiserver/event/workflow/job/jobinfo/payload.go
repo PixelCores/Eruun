@@ -10,7 +10,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -220,24 +219,4 @@ func CallbackInfoFromJobInfo(job *model.JobTask) (*CallbackJobInfo, error) {
 
 func CleanupComponentFromJobInfo(job *model.JobTask) (*model.ApplicationComponent, error) {
 	return RequiredJobInfo[*model.ApplicationComponent](job)
-}
-
-func ServiceAccountFromJobInfo(job *model.JobTask) (*corev1.ServiceAccount, error) {
-	return RequiredJobInfo[*corev1.ServiceAccount](job)
-}
-
-func RoleFromJobInfo(job *model.JobTask) (*rbacv1.Role, error) {
-	return RequiredJobInfo[*rbacv1.Role](job)
-}
-
-func RoleBindingFromJobInfo(job *model.JobTask) (*rbacv1.RoleBinding, error) {
-	return RequiredJobInfo[*rbacv1.RoleBinding](job)
-}
-
-func ClusterRoleFromJobInfo(job *model.JobTask) (*rbacv1.ClusterRole, error) {
-	return RequiredJobInfo[*rbacv1.ClusterRole](job)
-}
-
-func ClusterRoleBindingFromJobInfo(job *model.JobTask) (*rbacv1.ClusterRoleBinding, error) {
-	return RequiredJobInfo[*rbacv1.ClusterRoleBinding](job)
 }

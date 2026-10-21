@@ -89,7 +89,7 @@ func TestValidationService_TryApplication_EmitsComponentsArray(t *testing.T) {
 }
 
 func TestValidationService_TryApplication_RejectsInvalidAppCallbackURL(t *testing.T) {
-	svc := NewValidationService(nil, newTestURLSecurityPolicyProvider(t, spec.DefaultURLSecurityPolicy()), nil, nil)
+	svc := NewValidationService(nil, newTestURLSecurityPolicyProvider(t, spec.DefaultURLSecurityPolicy()), nil, nil, nil)
 	req := validCallbackTryApplicationRequest()
 	req.Callback = &apisv1.WorkflowCallback{
 		Success: "ftp://example.com/callback",
@@ -129,7 +129,7 @@ func TestValidationService_TryApplication_CreateChecksExistingAppResourceCollisi
 		ComponentType: config.ServerJob,
 		Image:         "nginx:latest",
 	}
-	svc := NewValidationService(nil, nil, repository.NewApplicationRepository(store), repository.NewComponentRepository(store))
+	svc := NewValidationService(nil, nil, repository.NewApplicationRepository(store), repository.NewComponentRepository(store), nil)
 
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",

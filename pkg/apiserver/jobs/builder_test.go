@@ -28,7 +28,7 @@ func TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace(t *testing.T) {
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: command.TaskID}
 	require.NoError(t, f.raw.Get(ctx, parent))
-	stages, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(context.Background(), nil, parent, "space-ns")
 	require.NoError(t, err)
 	require.Len(t, stages, 1)
 	require.Len(t, stages[0], 1)
@@ -71,7 +71,7 @@ func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, raw.Get(ctx, parent))
-	stages, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(context.Background(), nil, parent, "space-ns")
 	require.NoError(t, err)
 	require.Len(t, stages, 1)
 	require.Len(t, stages[0], 1)
@@ -214,7 +214,7 @@ func TestBuildTaskCompilesStagesWithOwnedVolumeAndExistingReferences(t *testing.
 	raw, err := json.Marshal(declaration)
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: "1234567890abcdef12345678", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob, JobSpec: string(raw)}
-	stages, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(context.Background(), nil, parent, "space-ns")
 	require.NoError(t, err)
 	require.Len(t, stages, 2)
 	require.Len(t, stages[0], 3, "only the owned volume gets a PVC task; existing claims stay references")
@@ -253,6 +253,6 @@ func TestBuildTaskRejectsInvalidGeneratedNameForPersistedTask(t *testing.T) {
 	request := commandRequest()
 	raw, err := json.Marshal(request.JobSpec)
 	require.NoError(t, err)
-	_, err = BuildTask(&model.WorkflowQueue{TaskID: strings.Repeat("a", 60), WorkspaceID: "space", Type: config.WorkflowTaskTypeJob, JobSpec: string(raw)}, "space-ns")
+	_, err = BuildTask(context.Background(), nil, &model.WorkflowQueue{TaskID: strings.Repeat("a", 60), WorkspaceID: "space", Type: config.WorkflowTaskTypeJob, JobSpec: string(raw)}, "space-ns")
 	require.ErrorContains(t, err, "invalid Job name", "BuildTask still rejects a persisted run whose generated name is not a DNS label")
 }

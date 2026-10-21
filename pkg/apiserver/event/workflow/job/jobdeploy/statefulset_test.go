@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func int64Ptr(v int64) *int64 { return &v }
@@ -238,7 +239,7 @@ func TestGenerateStoreService_UsesCommand(t *testing.T) {
 		Properties: propsJSON,
 	}
 
-	result, err := GenerateStoreService(component)
+	result, err := GenerateStoreService(component, workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +298,7 @@ func TestGenerateStoreService_UsesHeadlessServiceTraitName(t *testing.T) {
 		Traits:        traitsJSON,
 	}
 
-	result, err := GenerateStoreService(component)
+	result, err := GenerateStoreService(component, workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +319,7 @@ func TestGenerateStoreService_DefaultsServiceNameWithoutHeadlessTrait(t *testing
 		ComponentType: config.StoreJob,
 	}
 
-	result, err := GenerateStoreService(component)
+	result, err := GenerateStoreService(component, workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +348,7 @@ func TestGenerateStoreService_BoundsStatefulSetNameAndUsesStableSelector(t *test
 		Properties:      properties,
 	}
 
-	result, err := GenerateStoreService(component)
+	result, err := GenerateStoreService(component, workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,6 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -519,9 +518,7 @@ func TestMigrateSchemaPreservesSchedulingProfilesAndSettings(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, migrateSchema(ctx, db, models))
-	profile := model.RBACProfile{Name: "reader", Rules: []spec.RBACRuleSpec{{Resources: []string{"pods"}, Verbs: []string{"get"}}}}
 	pool := model.NodePool{Name: "cpu", NodeSelector: map[string]string{"pool": "cpu"}}
-	require.NoError(t, db.Create(&profile).Error)
 	require.NoError(t, db.Create(&pool).Error)
 	for _, kind := range []string{model.SystemSettingTypeNodeSelector, model.SystemSettingTypeRBACPolicies} {
 		require.NoError(t, db.Create(&model.SystemSetting{Type: kind, Value: json.RawMessage(`[]`)}).Error)
@@ -529,9 +526,6 @@ func TestMigrateSchemaPreservesSchedulingProfilesAndSettings(t *testing.T) {
 	// Exercise the complete startup migration twice, including an existing marker.
 	for range 2 {
 		require.NoError(t, migrateSchema(ctx, db, models))
-		var got model.RBACProfile
-		require.NoError(t, db.First(&got, "name = ?", profile.Name).Error)
-		require.Equal(t, profile, got)
 		var gotPool model.NodePool
 		require.NoError(t, db.First(&gotPool, "name = ?", pool.Name).Error)
 		require.Equal(t, pool, gotPool)

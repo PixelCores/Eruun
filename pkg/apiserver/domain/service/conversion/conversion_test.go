@@ -965,7 +965,7 @@ subjects:
 	require.Contains(t, resp.Warnings, "service no-selector has no selector; skipped")
 	require.Contains(t, resp.Warnings, "service orphan has no matching workload; skipped")
 	require.Contains(t, resp.Warnings, "ingress orphan-ingress has no matching component; skipped")
-	require.Contains(t, resp.Warnings, "rolebinding bad-binding missing roleRef; skipped")
+	require.Contains(t, resp.Warnings, "RoleBinding/bad-binding: RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据")
 }
 
 func TestConvertKubeResources_UsesFileURL(t *testing.T) {
@@ -1186,23 +1186,11 @@ spec:
 
 	api := findComponent(resp.Components, "api")
 	require.NotNil(t, api)
-	require.Len(t, api.Traits.RBAC, 1)
-	policy := api.Traits.RBAC[0]
-	require.Equal(t, "app-sa", policy.ServiceAccount)
-	require.NotNil(t, policy.ServiceAccountLabels)
-	require.Equal(t, "app-sa", policy.ServiceAccountLabels[spec.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyDefault), policy.ServiceAccountLabels[spec.LabelShareStrategy])
-	require.NotNil(t, policy.RoleLabels)
-	require.Equal(t, "app-role", policy.RoleLabels[spec.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyDefault), policy.RoleLabels[spec.LabelShareStrategy])
-	require.NotNil(t, policy.BindingLabels)
-	require.Equal(t, "app-binding", policy.BindingLabels[spec.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyDefault), policy.BindingLabels[spec.LabelShareStrategy])
-
+	require.Contains(t, resp.Warnings, "ServiceAccount/app-sa: RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据")
+	require.Contains(t, resp.Warnings, "Role/app-role: RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据")
+	require.Contains(t, resp.Warnings, "RoleBinding/app-binding: RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据")
 	worker := findComponent(resp.Components, "worker")
 	require.NotNil(t, worker)
-	require.Len(t, worker.Traits.RBAC, 1)
-	require.Equal(t, "app-sa", worker.Traits.RBAC[0].ServiceAccount)
 }
 
 func TestConvertKubeResources_ResourcesSharePVC(t *testing.T) {
@@ -1338,7 +1326,7 @@ spec:
 	}
 }
 
-func TestConvertKubeResources_TargetWorkEnv(t *testing.T) {
+func TestConvertKubeResources_NodePoolWarning(t *testing.T) {
 	yamlText := `
 apiVersion: apps/v1
 kind: Deployment
@@ -1371,7 +1359,8 @@ spec:
 
 	backend := findComponent(resp.Components, "backend")
 	require.NotNil(t, backend)
-	require.Equal(t, map[string]string{"app": "lab"}, backend.Traits.TargetWorkEnv)
+	require.Empty(t, backend.Traits.NodePool)
+	require.Contains(t, resp.Warnings, "Deployment/backend: nodeSelector/tolerations 未转换，请在组件上选择 nodePool")
 }
 
 func findComponent(components []apis.CreateComponentRequest, name string) *apis.CreateComponentRequest {
@@ -1441,5 +1430,46 @@ func TestReadYAMLFromURLSizeLimit(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, payload, string(data))
 		})
+	}
+}
+
+func TestConvertSchedulingAndRBACObjectsOnlyWarn(t *testing.T) {
+	yamlText := `
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: api}
+spec:
+  template:
+    spec:
+      tolerations: [{key: gpu, operator: Exists}]
+      containers: [{name: api, image: nginx:1.27}]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: api-sa}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: reader}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: reader}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cluster-reader}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: cluster-reader}
+`
+	components, warnings, err := convertKubeYAMLToComponents(yamlText)
+	require.NoError(t, err)
+	require.Len(t, components, 1)
+	require.Empty(t, components[0].Traits.NodePool)
+	require.Contains(t, warnings, "Deployment/api: nodeSelector/tolerations 未转换，请在组件上选择 nodePool")
+	for _, name := range []string{"ServiceAccount/api-sa", "Role/reader", "RoleBinding/reader", "ClusterRole/cluster-reader", "ClusterRoleBinding/cluster-reader"} {
+		require.Contains(t, warnings, name+": RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据")
 	}
 }

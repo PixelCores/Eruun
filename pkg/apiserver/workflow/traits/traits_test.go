@@ -10,7 +10,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -84,7 +83,7 @@ func TestEnvProcessor(t *testing.T) {
 		workload := mockWorkload.DeepCopy()
 
 		// --- Act ---
-		_, err := ApplyTraits(mockComponent, workload)
+		_, err := ApplyTraits(mockComponent, workload, Profiles{})
 
 		// --- Assert ---
 		assert.NoError(t, err)
@@ -120,7 +119,7 @@ func TestEnvProcessor(t *testing.T) {
 		}
 
 		// --- Act ---
-		_, err := ApplyTraits(componentWithEmptyTraits, workload)
+		_, err := ApplyTraits(componentWithEmptyTraits, workload, Profiles{})
 
 		// --- Assert ---
 		assert.NoError(t, err)
@@ -183,7 +182,7 @@ func TestSecurityPolicyTrait(t *testing.T) {
 		},
 	}
 
-	_, err := ApplyTraits(component, workload)
+	_, err := ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 
 	mainContainer := findContainer(workload.Spec.Template.Spec.Containers, "main-app")
@@ -206,13 +205,13 @@ func TestSecurityPolicyTrait(t *testing.T) {
 	require.Equal(t, int64(2000), *sidecarContainer.SecurityContext.RunAsUser)
 }
 
-func TestTargetWorkEnvTrait(t *testing.T) {
+func TestNodePoolTrait(t *testing.T) {
 
 	component := &model.ApplicationComponent{
 		Name:  "backend",
 		Image: "nginx:latest",
 		Traits: toJSONStruct(model.Traits{
-			TargetWorkEnv: map[string]string{"app": "lab"},
+			NodePool: "batch",
 		}),
 	}
 
@@ -232,9 +231,10 @@ func TestTargetWorkEnvTrait(t *testing.T) {
 		},
 	}
 
-	_, err := ApplyTraits(component, workload)
+	_, err := ApplyTraits(component, workload, Profiles{NodePool: &model.NodePool{Name: "batch", NodeSelector: map[string]string{"app": "lab"}, Tolerations: []corev1.Toleration{{Key: "gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}}}})
 	require.NoError(t, err)
 	require.Equal(t, "lab", workload.Spec.Template.Spec.NodeSelector["app"])
+	require.Len(t, workload.Spec.Template.Spec.Tolerations, 1)
 }
 
 // --- Helper Functions ---
@@ -321,7 +321,7 @@ func TestApplyTraits_FinalSimplifiedEnvs(t *testing.T) {
 	}
 
 	// 3. Apply the traits.
-	_, err = ApplyTraits(component, workload)
+	_, err = ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 
 	// 4. Assertions
@@ -646,7 +646,7 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 	}
 
 	// 3. Apply the traits.
-	_, err = ApplyTraits(component, workload)
+	_, err = ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 	require.Len(t, workload.Spec.Template.Spec.InitContainers, 2)
 	for _, container := range workload.Spec.Template.Spec.InitContainers {
@@ -657,202 +657,6 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 	yamlBytes, err := yaml.Marshal(workload.Spec.Template.Spec)
 	require.NoError(t, err)
 	fmt.Println(string(yamlBytes))
-}
-
-func TestApplyTraitsBindsServiceAccount(t *testing.T) {
-	automount := true
-	traitsStruct := &spec.Traits{
-		RBAC: []spec.RBACPolicySpec{
-			{
-				ServiceAccount:             "pod-labeler-sa",
-				ServiceAccountAutomountSAT: &automount,
-				Rules: []spec.RBACRuleSpec{
-					{
-						Verbs:     []string{"get"},
-						Resources: []string{"pods"},
-					},
-				},
-			},
-		},
-	}
-	traitsJSON, err := model.NewJSONStructByStruct(traitsStruct)
-	require.NoError(t, err)
-	raw, err := json.Marshal(traitsJSON)
-	require.NoError(t, err)
-	var parsed spec.Traits
-	require.NoError(t, json.Unmarshal(raw, &parsed))
-	require.NotNil(t, parsed.RBAC[0].ServiceAccountAutomountSAT)
-	require.True(t, *parsed.RBAC[0].ServiceAccountAutomountSAT)
-
-	component := &model.ApplicationComponent{
-		Name:      "worker",
-		Namespace: "demo",
-		Traits:    traitsJSON,
-	}
-
-	workload := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{Name: component.Name, Namespace: component.Namespace},
-		Spec: appsv1.StatefulSetSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{Name: component.Name, Image: "example.com/worker:latest"}},
-				},
-			},
-		},
-	}
-
-	additional, err := ApplyTraits(component, workload)
-	require.NoError(t, err)
-	require.NotNil(t, additional)
-	require.GreaterOrEqual(t, len(additional), 3)
-	sa, ok := additional[0].(*corev1.ServiceAccount)
-	require.True(t, ok)
-	require.NotNil(t, sa.AutomountServiceAccountToken)
-	require.True(t, *sa.AutomountServiceAccountToken)
-	t.Logf("podSpec SA=%s automount ptr=%v", workload.Spec.Template.Spec.ServiceAccountName, workload.Spec.Template.Spec.AutomountServiceAccountToken)
-	require.Equal(t, "pod-labeler-sa", workload.Spec.Template.Spec.ServiceAccountName)
-	require.NotNil(t, workload.Spec.Template.Spec.AutomountServiceAccountToken)
-	require.True(t, *workload.Spec.Template.Spec.AutomountServiceAccountToken)
-}
-
-func TestRBACProcessor_NamespaceRole(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name:      "backend",
-		Namespace: "demo",
-	}
-	policies := []spec.RBACPolicySpec{
-		{
-			ServiceAccount: "custom-sa",
-			Rules: []spec.RBACRuleSpec{
-				{
-					APIGroups: []string{""},
-					Resources: []string{"pods"},
-					Verbs:     []string{"get", "list"},
-				},
-			},
-			ServiceAccountLabels: map[string]string{"app": "Penalty Shootout 2026"},
-			RoleLabels:           map[string]string{"role": "Reader Role"},
-			BindingLabels:        map[string]string{"binding": "Reader Binding"},
-		},
-	}
-
-	res, err := processRBAC(&TraitContext{Component: component}, policies)
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	require.Len(t, res.AdditionalObjects, 3)
-	require.Equal(t, "custom-sa", res.ServiceAccountName)
-	require.Nil(t, res.AutomountServiceAccountToken)
-
-	sa, ok := res.AdditionalObjects[0].(*corev1.ServiceAccount)
-	require.True(t, ok)
-	require.Equal(t, "custom-sa", sa.Name)
-	require.Equal(t, "demo", sa.Namespace)
-	require.Equal(t, "penalty-shootout-2026", sa.Labels["app"])
-
-	role, ok := res.AdditionalObjects[1].(*rbacv1.Role)
-	require.True(t, ok)
-	require.Equal(t, "custom-sa-role", role.Name)
-	require.Equal(t, "demo", role.Namespace)
-	require.Equal(t, 1, len(role.Rules))
-	require.Equal(t, []string{"get", "list"}, role.Rules[0].Verbs)
-	require.Equal(t, "reader-role", role.Labels["role"])
-
-	binding, ok := res.AdditionalObjects[2].(*rbacv1.RoleBinding)
-	require.True(t, ok)
-	require.Equal(t, "custom-sa-binding", binding.Name)
-	require.Equal(t, "demo", binding.Namespace)
-	require.Equal(t, "reader-binding", binding.Labels["binding"])
-	require.Equal(t, 1, len(binding.Subjects))
-	require.Equal(t, "custom-sa", binding.Subjects[0].Name)
-	require.Equal(t, "Role", binding.RoleRef.Kind)
-	require.Equal(t, "custom-sa-role", binding.RoleRef.Name)
-}
-
-func TestRBACProcessor_ClusterScope(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name:      "controller",
-		Namespace: "system",
-	}
-	policies := []spec.RBACPolicySpec{
-		{
-			ClusterScope: true,
-			ServiceAccountLabels: map[string]string{
-				"app": "Controller App",
-			},
-			RoleLabels: map[string]string{
-				"role": "Cluster Reader",
-			},
-			BindingLabels: map[string]string{
-				"binding": "Cluster Reader Binding",
-			},
-			Rules: []spec.RBACRuleSpec{
-				{
-					APIGroups: []string{"apps"},
-					Resources: []string{"deployments"},
-					Verbs:     []string{"update"},
-				},
-			},
-		},
-	}
-
-	res, err := processRBAC(&TraitContext{Component: component}, policies)
-	require.NoError(t, err)
-	require.Len(t, res.AdditionalObjects, 3)
-	require.Equal(t, "controller-sa", res.ServiceAccountName)
-	require.Nil(t, res.AutomountServiceAccountToken)
-
-	sa := res.AdditionalObjects[0].(*corev1.ServiceAccount)
-	require.Equal(t, "controller-sa", sa.Name)
-	require.Equal(t, "system", sa.Namespace)
-	require.Equal(t, "controller-app", sa.Labels["app"])
-
-	clusterRole := res.AdditionalObjects[1].(*rbacv1.ClusterRole)
-	require.Equal(t, "controller-sa-role", clusterRole.Name)
-	require.Equal(t, "cluster-reader", clusterRole.Labels["role"])
-	require.Equal(t, []string{"apps"}, clusterRole.Rules[0].APIGroups)
-
-	clusterBinding := res.AdditionalObjects[2].(*rbacv1.ClusterRoleBinding)
-	require.Equal(t, "controller-sa-binding", clusterBinding.Name)
-	require.Equal(t, "cluster-reader-binding", clusterBinding.Labels["binding"])
-	require.Equal(t, "ClusterRole", clusterBinding.RoleRef.Kind)
-	require.Equal(t, "controller-sa-role", clusterBinding.RoleRef.Name)
-	require.Equal(t, "system", clusterBinding.Subjects[0].Namespace)
-}
-
-func TestRBACProcessor_ServiceAccountSelectionAndAutomount(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name:      "worker",
-		Namespace: "ops",
-	}
-	automount := false
-	policies := []spec.RBACPolicySpec{
-		{
-			ServiceAccount:             "pod-labeler-sa",
-			ServiceAccountAutomountSAT: &automount,
-			Rules: []spec.RBACRuleSpec{
-				{
-					Resources: []string{"pods"},
-					Verbs:     []string{"patch"},
-				},
-			},
-		},
-		{
-			ServiceAccount: "secondary-sa",
-			Rules: []spec.RBACRuleSpec{
-				{
-					Resources: []string{"configmaps"},
-					Verbs:     []string{"get"},
-				},
-			},
-		},
-	}
-
-	res, err := processRBAC(&TraitContext{Component: component}, policies)
-	require.NoError(t, err)
-	require.Equal(t, "pod-labeler-sa", res.ServiceAccountName, "first policy should determine bound serviceAccount")
-	require.NotNil(t, res.AutomountServiceAccountToken)
-	require.False(t, *res.AutomountServiceAccountToken)
-	require.Len(t, res.AdditionalObjects, 6, "two policies emit two RBAC sets plus serviceAccounts")
 }
 
 func TestResourcesProcessor(t *testing.T) {
@@ -885,7 +689,7 @@ func TestResourcesProcessor(t *testing.T) {
 	}
 
 	// Apply traits
-	_, err := ApplyTraits(component, workload)
+	_, err := ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 
 	// Verify resources were applied to the main container
@@ -950,7 +754,7 @@ func TestResourcesProcessor_WithSidecar(t *testing.T) {
 	}
 
 	// Apply traits
-	_, err := ApplyTraits(component, workload)
+	_, err := ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 
 	// Verify sidecar container was created with resources
@@ -1015,7 +819,7 @@ func TestApplyTraits_SidecarTrait_WithNestedTraits(t *testing.T) {
 	// 3. Apply the traits.
 	// Reset processors for a clean test to avoid double registration panics.
 
-	_, err = ApplyTraits(component, workload)
+	_, err = ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 
 	// 4. Marshal and print for snapshot verification.
@@ -1332,7 +1136,7 @@ func TestApplyStorageToStatefulSet(t *testing.T) {
 		},
 	}
 
-	objects, err := ApplyTraits(component, sts)
+	objects, err := ApplyTraits(component, sts, Profiles{})
 	require.NoError(t, err)
 	require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
 	template := sts.Spec.VolumeClaimTemplates[0]

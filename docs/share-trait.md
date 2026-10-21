@@ -8,19 +8,12 @@ Share trait 用于在命名空间内复用组件资源。它只包含策略选�
 
 ## 策略选项
 
-- `default`：命名空间内若已存在相同 share-name 的资源，则跳过该 Job；否则创建/更新资源。RBAC 采用下述专用调和语义。
+- `default`：命名空间内若已存在相同 share-name 的资源，则跳过该 Job；否则创建/更新资源。
 - `ignore`：无论是否存在资源，直接在工作流中跳过该 Job。
 - `force`：不进行共享判断，正常创建/更新资源（与未启用 share 的行为一致）。
 
-除 RBAC 外，未配置 `traits.share` 时行为保持不变。
+未配置 `traits.share` 时不添加共享生命周期。
 
-## RBAC 的隐式共享生命周期
-
-ServiceAccount、Role、RoleBinding、ClusterRole 和 ClusterRoleBinding 即使没有配置 `traits.share`，也会自动写入 `strategy=default` 的共享标识，shareName 仍按组件 namespace 生成。该默认值只定义永久共享生命周期，不复用普通资源“发现同 share-name 即跳过”的行为：RBAC Job 会继续正常创建或更新目标资源。
-
-RBAC 调和继续遵守现有托管边界：同名对象不是 Eruun 托管资源时不会覆盖。显式 `share=ignore` 仍直接将 RBAC Job 标记为 `skipped`；`default` 和 `force` 均执行正常调和。
-
-五类 RBAC 都是永久保留资源。Job 失败局部回滚、`cleanup_resources`、组件移除、`cleanup_all`、应用同步资源清理和应用删除均不会删除这些对象。
 
 ## 异常状态下的回收例外
 
@@ -49,7 +42,7 @@ RBAC 调和继续遵守现有托管边界：同名对象不是 Eruun 托管资�
 - `eruun.io/share-name`：使用组件所属的 `namespace`，转换为 RFC1123 格式并裁剪至 63 字符。
 - `eruun.io/share-strategy`：策略值（`default`/`ignore`/`force`）。
 
-这些 label 会被写入该组件产生的所有资源（含 trait 追加的 PVC、RBAC、Ingress 等）。
+这些 label 会被写入该组件产生的所有资源（含 trait 追加的 PVC、Ingress 等）。
 
 运行时选择器与资源共享判断是两套不同语义：
 
@@ -86,7 +79,6 @@ RBAC 调和继续遵守现有托管边界：同名对象不是 Eruun 托管资�
 2) 对 `namespace` 执行 RFC1123 规范化（小写、非法字符替换为 `-`、截断至 63 字符）。  
 3) 若 `namespace` 为空或规范化后为空，则回退到 `component.name` + `component.type` 组合。
 
-> 对 ClusterRole/ClusterRoleBinding，shareName 仍按组件 namespace 写入共享生命周期标签；`default/force` 不会基于该值执行共享 List 或跳过，`ignore` 仍直接跳过，已有同名对象是否更新由 Eruun 托管标签校验决定。
 
 ### 策略执行流程
 
@@ -94,7 +86,6 @@ RBAC 调和继续遵守现有托管边界：同名对象不是 Eruun 托管资�
   1) Job 运行前读取资源标签中的 `eruun.io/share-name` 与 `eruun.io/share-strategy`。
   2) 通过 label selector（`eruun.io/share-name=<shareName>`）进行 List 判断是否已存在共享资源。
   3) 若存在，Job 标记为 `skipped` 并返回；否则进入创建/更新流程。
-  4) RBAC 是例外：带隐式或显式 `default` 的五类 RBAC 不执行上述 List 跳过判断，始终进入正常调和。
 - `ignore`
   - Job 直接标记为 `skipped`，不执行任何 K8s API 调用。
 - `force`
@@ -107,7 +98,6 @@ RBAC 调和继续遵守现有托管边界：同名对象不是 Eruun 托管资�
 - 使用 `pkg/apiserver/infrastructure/locker` 统一的锁抽象。
 - 生产路径要求存在 Redis 分布式锁；缺少 Redis 客户端或锁初始化失败时，`default` 策略直接失败，不自动回退到内存锁或 no-op 锁。
 - 锁 key 格式：`eruun-share:<resourceKind>:<shareName>`，涵盖 Deployment、StatefulSet、Service、ConfigMap、Secret、PVC、Ingress、Job 和 CronJob 等执行共享 List 判断的资源。
-- 五类 RBAC 不执行共享 List 判断，也不获取该 Redis 锁；`default` / `force` 直接进入 Kubernetes 幂等调和，`ignore` 仍在调和前标记为 `skipped`。
 
 ### JobInfo 落库
 
@@ -149,7 +139,7 @@ JSON 请求示例：
 
 1) 首次执行工作流：资源正常创建。
 2) 再次执行：
-   - `default`：普通资源对应 Job 状态为 `skipped`；RBAC Job 正常调和。
+   - `default`：普通资源对应 Job 状态为 `skipped`。
    - `ignore`：Job 直接为 `skipped`。
    - `force`：Job 正常执行。
 

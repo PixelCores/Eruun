@@ -65,13 +65,8 @@ func applyTraitOverrides(traits *apisv1.Traits, override apisv1.Traits) {
 			}
 		}
 	}
-	if len(override.TargetWorkEnv) > 0 {
-		if traits.TargetWorkEnv == nil {
-			traits.TargetWorkEnv = make(map[string]string, len(override.TargetWorkEnv))
-		}
-		for key, value := range override.TargetWorkEnv {
-			traits.TargetWorkEnv[key] = value
-		}
+	if override.NodePool != "" {
+		traits.NodePool = override.NodePool
 	}
 }
 
