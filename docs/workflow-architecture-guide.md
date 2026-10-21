@@ -225,7 +225,7 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 // config/consts.go
 const (
     JobPriorityMaxHigh = 0   // 最高优先级：Secret, ConfigMap
-    JobPriorityHigh    = 1   // 高优先级：PVC, ServiceAccount, Role
+    JobPriorityHigh    = 1   // 高优先级：Service, PVC
     JobPriorityNormal  = 10  // 普通优先级：Deployment, StatefulSet, Service
     JobPriorityLow     = 20  // 低优先级：清理任务、通知任务
 )
@@ -1002,7 +1002,7 @@ Workflow Steps 定义:
 | 优先级 | 值 | 资源类型 | 原因 |
 |--------|-----|----------|------|
 | MaxHigh | 0 | ConfigMap, Secret | 被其他资源引用，必须先创建 |
-| High | 1 | PVC, ServiceAccount, Role | Deployment/StatefulSet 可能依赖 |
+| High | 1 | Service, PVC | Deployment/StatefulSet 可能依赖 |
 | Normal | 10 | Deployment, StatefulSet, Service | 主要工作负载 |
 | Low | 20 | 清理任务、通知任务 | 最后执行 |
 
@@ -1729,7 +1729,7 @@ Workflow steps JSON 支持 workflow 级 `failurePolicy` 字段。旧数组写法
 
 Instant Job 和一次性 Scheduled Job 的失败清理显式使用 Foreground 级联删除，并等待目标 Job UID 消失；`runPolicy: Recreate` 也在此等待完成后才允许创建新 Job，避免上一轮 Pod 与新执行重叠。删除绑定读取到的 UID 和 resourceVersion，冲突或删除等待失败时保留错误，不继续创建替代执行。已完成 Job 仍先收集日志，再按原有 Background 策略清理及回收残留 Pod；StatefulSet 清理流程中保留的 Orphan 特例不受影响。
 
-`cleanup_all` 不删除 App、Workflow、Component DB 实体，也不扩展人工取消、审批拒绝、callback 失败或 `cleanup_resources` 自身失败的语义。普通共享资源保护仍由现有 `cleanup_resources` 规则负责；组件专属 ServiceAccount、Role、RoleBinding 按固定名字清理，显式共享资源继续受 live share 标签保护。
+`cleanup_all` 不删除 App、Workflow、Component DB 实体，也不扩展人工取消、审批拒绝、callback 失败或 `cleanup_resources` 自身失败的语义。普通共享资源保护仍由现有 `cleanup_resources` 规则负责，显式共享资源继续受 live share 标签保护。
 
 需要为整条 workflow 保留旧的只清失败 job 行为时，在 workflow 上显式设置 `failurePolicy: cleanup_failed`。只需要让单个 `type=job` 的主 Instant Job 退出 workflow 默认 `cleanup_all` 时，可在该组件的 `properties` 中设置 `failurePolicy: cleanup_failed`；该 Job override 优先于 workflow 策略，附属 PVC 等任务仍继承 workflow 策略，组件级 cleanup 按名称和显式 share 规则处理。并行失败中只要任一任务的有效策略仍为 `cleanup_all`，Controller 就执行全量清理，并在实际触发任务不同于首个失败任务时把触发任务追加到终态原因和 callback `reason`。
 
