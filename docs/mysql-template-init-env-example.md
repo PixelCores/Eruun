@@ -15,6 +15,7 @@
 - 主容器 `properties.env` 不会自动共享给 init 容器。`init-mysql` 脚本需要的变量必须写在 `traits.init[].properties.env`，或通过该 init 容器自己的 `traits.envs` / `envFrom` 注入。
 - Redis 的 Secret 和 ConfigMap 引用会在模板实例化时按目标组件名重写；Redis 是否启用密码取决于镜像是否读取 `REDIS_PASSWORD`。
 
+
 ## 创建 MySQL 模板应用
 
 保存为 `mysql-template.json` 后执行：
@@ -337,30 +338,6 @@ curl -sS -X POST "${ERUUN_API_URL:-http://127.0.0.1:8000}/api/v1/applications" \
                   "mountPath": "/etc/mysql/conf.d"
                 }
               ]
-            }
-          }
-        ],
-        "rbac": [
-          {
-            "serviceAccount": "pod-labeler-sa",
-            "roleName": "pod-labeler-role",
-            "bindingName": "pod-labeler-binding",
-            "rules": [
-              {
-                "apiGroups": [
-                  ""
-                ],
-                "resources": [
-                  "pods"
-                ],
-                "verbs": [
-                  "get",
-                  "patch"
-                ]
-              }
-            ],
-            "roleLabels": {
-              "app": "labeler"
             }
           }
         ]

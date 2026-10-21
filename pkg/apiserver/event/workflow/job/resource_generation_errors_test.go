@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
@@ -26,18 +27,20 @@ func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
 		name     string
 		generate func(*model.ApplicationComponent, *model.Properties) (*jobexec.GenerateServiceResult, error)
 	}{
-		{"deployment", jobdeploy.GenerateWebService},
+		{"deployment", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
+			return jobdeploy.GenerateWebService(c, p, workflowtraits.Profiles{})
+		}},
 		{"statefulset", func(c *model.ApplicationComponent, _ *model.Properties) (*jobexec.GenerateServiceResult, error) {
-			return jobdeploy.GenerateStoreService(c)
+			return jobdeploy.GenerateStoreService(c, workflowtraits.Profiles{})
 		}},
 		{"instant", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
-			return jobdeploy.GenerateInstantJob(c, p, "")
+			return jobdeploy.GenerateInstantJob(c, p, "", workflowtraits.Profiles{})
 		}},
 		{"one time", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
-			return jobinstant.GenerateOneTimeJob(c, p, "", 123)
+			return jobinstant.GenerateOneTimeJob(c, p, "", 123, workflowtraits.Profiles{})
 		}},
 		{"cron", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
-			return jobdeploy.GenerateScheduledCronJob(c, p, "0 * * * *")
+			return jobdeploy.GenerateScheduledCronJob(c, p, "0 * * * *", workflowtraits.Profiles{})
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

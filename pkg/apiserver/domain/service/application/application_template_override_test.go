@@ -796,7 +796,7 @@ func TestCreateApplicationsFromTemplateOverridesResources(t *testing.T) {
 	}
 }
 
-func TestCreateApplicationsFromTemplateMergesTargetWorkEnv(t *testing.T) {
+func TestCreateApplicationsFromTemplateReplacesProfiles(t *testing.T) {
 	store := newInMemoryAppStore()
 	templateApp := &model.Applications{ID: "tmpl-target-work-env", Name: "mysql", TemplateEnabled: true}
 	store.apps[templateApp.ID] = templateApp
@@ -809,10 +809,7 @@ func TestCreateApplicationsFromTemplateMergesTargetWorkEnv(t *testing.T) {
 		ComponentType: config.StoreJob,
 		Properties:    mustJSONStruct(apisv1.Properties{}),
 		Traits: mustJSONStruct(apisv1.Traits{
-			TargetWorkEnv: map[string]string{
-				"disk": "ssd",
-				"zone": "east",
-			},
+			NodePool: "original",
 		}),
 	}
 
@@ -823,10 +820,7 @@ func TestCreateApplicationsFromTemplateMergesTargetWorkEnv(t *testing.T) {
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Traits: apisv1.Traits{
-				TargetWorkEnv: map[string]string{
-					"zone": "west",
-					"gpu":  "true",
-				},
+				NodePool: "override",
 			},
 			Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
@@ -840,9 +834,5 @@ func TestCreateApplicationsFromTemplateMergesTargetWorkEnv(t *testing.T) {
 
 	var clonedTraits apisv1.Traits
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, createdStore.Traits)), &clonedTraits))
-	require.Equal(t, map[string]string{
-		"disk": "ssd",
-		"zone": "west",
-		"gpu":  "true",
-	}, clonedTraits.TargetWorkEnv)
+	require.Equal(t, "override", clonedTraits.NodePool)
 }

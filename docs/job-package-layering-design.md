@@ -112,7 +112,7 @@ L0  jobinfo             JobInfo 记录、载荷、检查点、状态转换
 |---|---:|---|---|
 | `jobinfo` | ~1480 | JobInfo 的持久化与所有权写入、各类 Job 载荷与检查点编解码、Job 状态转换、`StatusError`、延迟队列载荷 | `job_info`、`job_payload`、`job_status_transition`、`delay_queue`、`configmap_input`，以及从 databasereset/retry/callback/result 下沉的检查点与载荷声明 |
 | `jobexec` | ~2180 | `Runtime`、控制器基类、K8s Job 构建/等待/所有权校验、资源 reconcile 与共享资源保护、清理跟踪与执行器、Pod 日志收集、取消恢复、组件状态与元数据、`PrepareTask` | `job_batch`、`job_controller_base`、`resource_reconcile`、`shared_resource_*`、`cleanup_tracker`、`cleanup_resource_executor`、`job_delete`、`shared_cleanup_policy`、`job_pod_logs`、`cancel_recovery`、`job_component_*`、`workspace_task` |
-| `jobdeploy` | ~3560 | 各类 K8s 资源控制器（Deployment、StatefulSet、Service、Ingress、ConfigMap、Secret、PVC、RBAC、版本重启）和全部 `Generate*` 生成器 | `job_deploy`、`job_statefulset`、`job_service`、`job_ingress`、`job_configmap`、`job_secret`、`job_pvc`、`job_rbac`、`job_version_restart`、`workload_*`、`podspec_compare`、`metadata_preserve`、`resource_generation`、`resource_wait` |
+| `jobdeploy` | ~3560 | 各类 K8s 资源控制器（Deployment、StatefulSet、Service、Ingress、ConfigMap、Secret、PVC、版本重启）和全部 `Generate*` 生成器 | `job_deploy`、`job_statefulset`、`job_service`、`job_ingress`、`job_configmap`、`job_secret`、`job_pvc`、`job_version_restart`、`workload_*`、`podspec_compare`、`metadata_preserve`、`resource_generation`、`resource_wait` |
 | `jobcleanup` | ~3640 | `CleanupResourcesJobCtl` 及 StatefulSet Pod/PVC 清理、检查点与保留策略 | `job_cleanup_resources*` |
 | `jobresult` | ~1250 | 结果派发与 outbox | `job_result`、`job_result_outbox` |
 | `jobinstant` | ~1120 | `InstantJobCtl`：一次性 K8s Job、重试、准入预算 | `job_instant`、`job_retry`、`job_retry_resources`、`job_scheduling`、`job_scheduling_resources` |

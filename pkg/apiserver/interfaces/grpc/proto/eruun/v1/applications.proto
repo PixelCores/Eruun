@@ -1055,27 +1055,6 @@ message AppSpecProperties {
   optional int32 failed_jobs_history_limit = 14 [json_name = "failedJobsHistoryLimit"];
 }
 
-message AppSpecRBACPolicySpec {
-  string service_account = 1 [json_name = "serviceAccount"];
-  string namespace = 2 [json_name = "namespace"];
-  bool cluster_scope = 3 [json_name = "clusterScope"];
-  string role_name = 4 [json_name = "roleName"];
-  string binding_name = 5 [json_name = "bindingName"];
-  map<string, string> service_account_labels = 6 [json_name = "serviceAccountLabels"];
-  map<string, string> service_account_annotations = 7 [json_name = "serviceAccountAnnotations"];
-  map<string, string> role_labels = 8 [json_name = "roleLabels"];
-  map<string, string> binding_labels = 9 [json_name = "bindingLabels"];
-  repeated AppSpecRBACRuleSpec rules = 10 [json_name = "rules"];
-  optional bool service_account_automount_sat = 11 [json_name = "automountServiceAccountToken"];
-}
-
-message AppSpecRBACRuleSpec {
-  repeated string api_groups = 1 [json_name = "apiGroups"];
-  repeated string resources = 2 [json_name = "resources"];
-  repeated string resource_names = 3 [json_name = "resourceNames"];
-  repeated string non_resource_ur_ls = 4 [json_name = "nonResourceURLs"];
-  repeated string verbs = 5 [json_name = "verbs"];
-}
 
 message AppSpecResourceTraitsSpec {
   string cpu = 1 [json_name = "cpu"];
@@ -1167,16 +1146,18 @@ message AppSpecTraits {
   repeated AppSpecSidecarTraitsSpec sidecar = 3 [json_name = "sidecar"];
   repeated AppSpecIngressTraitsSpec ingress = 4 [json_name = "ingress"];
   repeated AppSpecServiceTraitSpec service = 5 [json_name = "service"];
-  repeated AppSpecRBACPolicySpec rbac = 6 [json_name = "rbac"];
+  reserved 6, 10;
+  reserved "rbac", "target_work_env";
   repeated AppSpecEnvFromSourceSpec env_from = 7 [json_name = "envFrom"];
   repeated AppSpecSimplifiedEnvSpec envs = 8 [json_name = "envs"];
   repeated AppSpecProbeTraitsSpec probes = 9 [json_name = "probes"];
-  map<string, string> target_work_env = 10 [json_name = "targetWorkEnv"];
+
   AppSpecResourceTraitsSpec resources = 11 [json_name = "resources"];
   AppKubeCoreSecurityContext security_policy = 12 [json_name = "securityPolicy"];
   AppSpecShareTraitSpec share = 13 [json_name = "share"];
   AppSpecRolloutTraitSpec rollout = 14 [json_name = "rollout"];
   EvaluationTrait eval = 15 [json_name = "eval"];
+  string node_pool = 16 [json_name = "nodePool"];
 }
 
 // Shared by standalone Job and Application component declarations.

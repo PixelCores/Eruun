@@ -14,6 +14,7 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func preflightVersionUpdateStatefulSets(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec, fullRecreate bool) ([]domainspec.ComponentUpdateSpec, error) {
@@ -179,7 +180,7 @@ func versionUpdateComponentSnapshot(current *model.ApplicationComponent, desired
 
 func renderVersionUpdateStatefulSet(component *model.ApplicationComponent) (*appsv1.StatefulSet, error) {
 	snapshot := *component
-	result, err := jobdeploy.GenerateStoreService(&snapshot)
+	result, err := jobdeploy.GenerateStoreService(&snapshot, workflowtraits.IdentityProfiles(&snapshot))
 	if err != nil {
 		return nil, fmt.Errorf("%w: render StatefulSet for component %s: %w", bcode.ErrApplicationConfig, component.Name, err)
 	}

@@ -111,7 +111,7 @@ pkg/apiserver/event/workflow/job/
 ├── job.go                 # Job 执行器核心（RunJobs、initJobCtl 工厂）
 ├── jobinfo/               # JobInfo 记录、载荷、检查点、状态转换
 ├── jobexec/               # Runtime、控制器基类、K8s Job 原语、清理跟踪器
-├── jobdeploy/             # Deployment、StatefulSet、Service、PVC、ConfigMap、Secret、Ingress、RBAC 控制器
+├── jobdeploy/             # Deployment、StatefulSet、Service、PVC、ConfigMap、Secret、Ingress 控制器
 ├── jobcleanup/            # 资源清理控制器
 ├── jobresult/             # 结果派发与 outbox
 ├── jobinstant/            # 一次性 Job、重试与准入
@@ -1722,16 +1722,16 @@ Workflow steps JSON 支持 workflow 级 `failurePolicy` 字段。旧数组写法
 
 | 策略 | 触发条件 | 清理范围 |
 |------|----------|----------|
-| `cleanup_all` | 部署类 Job `failed` 或 `timeout` | Controller 复用 `cleanup_resources` job，为当前 App 下全部 DB 已知组件逐个清理普通 Kubernetes 运行资源；standalone PVC 和五类 RBAC 保留 |
-| `cleanup_failed` | 单个 Job 执行失败或超时 | 显式 opt-out 策略。沿用 `runJob -> jobCtl.Clean`，只清理失败 job 自己负责且已创建的普通运行资源；standalone PVC 和五类 RBAC 保留 |
+| `cleanup_all` | 部署类 Job `failed` 或 `timeout` | Controller 复用 `cleanup_resources` job，为当前 App 下全部 DB 已知组件逐个清理普通 Kubernetes 运行资源；standalone PVC 保留，显式共享资源受 share 规则保护 |
+| `cleanup_failed` | 单个 Job 执行失败或超时 | 显式 opt-out 策略。沿用 `runJob -> jobCtl.Clean`，只清理失败 job 自己负责且已创建的普通运行资源；standalone PVC  保留 |
 
 执行 `cleanup_all` 时，Controller 会保持串行顺序尝试全部 cleanup jobs；单个 cleanup job 失败不会阻止后续组件清理，多个 cleanup 失败会聚合到 workflow 终态原因中。
 
 Instant Job 和一次性 Scheduled Job 的失败清理显式使用 Foreground 级联删除，并等待目标 Job UID 消失；`runPolicy: Recreate` 也在此等待完成后才允许创建新 Job，避免上一轮 Pod 与新执行重叠。删除绑定读取到的 UID 和 resourceVersion，冲突或删除等待失败时保留错误，不继续创建替代执行。已完成 Job 仍先收集日志，再按原有 Background 策略清理及回收残留 Pod；StatefulSet 清理流程中保留的 Orphan 特例不受影响。
 
-`cleanup_all` 不删除 App、Workflow、Component DB 实体，也不扩展人工取消、审批拒绝、callback 失败或 `cleanup_resources` 自身失败的语义。普通共享资源保护仍由现有 `cleanup_resources` 规则负责；ServiceAccount、Role、RoleBinding、ClusterRole、ClusterRoleBinding 不依赖 share 标签，任何 cleanup 路径都不会删除。
+`cleanup_all` 不删除 App、Workflow、Component DB 实体，也不扩展人工取消、审批拒绝、callback 失败或 `cleanup_resources` 自身失败的语义。普通共享资源保护仍由现有 `cleanup_resources` 规则负责；组件专属 ServiceAccount、Role、RoleBinding 按固定名字清理，显式共享资源继续受 live share 标签保护。
 
-需要为整条 workflow 保留旧的只清失败 job 行为时，在 workflow 上显式设置 `failurePolicy: cleanup_failed`。只需要让单个 `type=job` 的主 Instant Job 退出 workflow 默认 `cleanup_all` 时，可在该组件的 `properties` 中设置 `failurePolicy: cleanup_failed`；该 Job override 优先于 workflow 策略，附属 PVC、RBAC 等任务仍继承 workflow 策略，但其永久保留边界不受策略影响。并行失败中只要任一任务的有效策略仍为 `cleanup_all`，Controller 就执行全量清理，并在实际触发任务不同于首个失败任务时把触发任务追加到终态原因和 callback `reason`。
+需要为整条 workflow 保留旧的只清失败 job 行为时，在 workflow 上显式设置 `failurePolicy: cleanup_failed`。只需要让单个 `type=job` 的主 Instant Job 退出 workflow 默认 `cleanup_all` 时，可在该组件的 `properties` 中设置 `failurePolicy: cleanup_failed`；该 Job override 优先于 workflow 策略，附属 PVC 等任务仍继承 workflow 策略，组件级 cleanup 按名称和显式 share 规则处理。并行失败中只要任一任务的有效策略仍为 `cleanup_all`，Controller 就执行全量清理，并在实际触发任务不同于首个失败任务时把触发任务追加到终态原因和 callback `reason`。
 
 ---
 

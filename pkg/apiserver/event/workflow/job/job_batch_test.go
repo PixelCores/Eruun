@@ -20,6 +20,7 @@ import (
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func cachedValue(t *testing.T, c cacheutil.ICache, ctx context.Context, key string) string {
@@ -38,7 +39,7 @@ func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result, err := jobdeploy.GenerateInstantJob(component, props, "")
+	result, err := jobdeploy.GenerateInstantJob(component, props, "", workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result, err := jobdeploy.GenerateScheduledCronJob(component, props, "0 * * * *")
+	result, err := jobdeploy.GenerateScheduledCronJob(component, props, "0 * * * *", workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
 		FailedJobsHistoryLimit:     &failedLimit,
 	}
 
-	result, err := jobdeploy.GenerateScheduledCronJob(component, props, "0 * * * *")
+	result, err := jobdeploy.GenerateScheduledCronJob(component, props, "0 * * * *", workflowtraits.Profiles{})
 	if err != nil {
 		t.Fatal(err)
 	}

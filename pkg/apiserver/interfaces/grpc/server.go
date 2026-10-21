@@ -59,12 +59,6 @@ var authAccountMethods = map[string]bool{
 }
 
 var administrationMethodPolicies = map[string]string{
-	eruunv1.RBACProfilesService_ListRBACProfileOptions_FullMethodName:            "viewer",
-	eruunv1.RBACProfilesService_ListRBACProfiles_FullMethodName:                  "system",
-	eruunv1.RBACProfilesService_GetRBACProfile_FullMethodName:                    "system",
-	eruunv1.RBACProfilesService_CreateRBACProfile_FullMethodName:                 "system",
-	eruunv1.RBACProfilesService_UpdateRBACProfile_FullMethodName:                 "system",
-	eruunv1.RBACProfilesService_DeleteRBACProfile_FullMethodName:                 "system",
 	eruunv1.NodePoolsService_ListNodePoolOptions_FullMethodName:                  "viewer",
 	eruunv1.NodePoolsService_ListNodePools_FullMethodName:                        "system",
 	eruunv1.NodePoolsService_GetNodePool_FullMethodName:                          "system",
@@ -164,7 +158,6 @@ func NewServer(accounts *account.Service, namespaces *workspace.Manager, adminis
 	s := grpc.NewServer(options...)
 	eruunv1.RegisterAccountServiceServer(s, &AccountServer{Accounts: accounts, Namespaces: namespaces})
 	eruunv1.RegisterSettingsServiceServer(s, administration)
-	eruunv1.RegisterRBACProfilesServiceServer(s, administration)
 	eruunv1.RegisterNodePoolsServiceServer(s, administration)
 	eruunv1.RegisterProgrammingLanguagesServiceServer(s, administration)
 	eruunv1.RegisterJobsServiceServer(s, jobsAdapter)

@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type requiredStatefulSetPVCDeletionTarget struct {
@@ -49,7 +50,7 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 	if component == nil {
 		return cleanupResourceRef{}, fmt.Errorf("required StatefulSet deletion component is nil")
 	}
-	result, err := jobdeploy.GenerateStoreService(component)
+	result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
 	if err != nil {
 		return cleanupResourceRef{}, err
 	}

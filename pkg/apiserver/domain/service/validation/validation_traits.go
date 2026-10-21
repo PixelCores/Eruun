@@ -39,11 +39,6 @@ func (v *validationServiceImpl) validateTraits(traits apisv1.Traits, fieldPrefix
 		errors = append(errors, v.validateSidecarTrait(sidecar, fmt.Sprintf("%s.sidecar[%d]", fieldPrefix, i), isNested)...)
 	}
 
-	// Validate RBAC traits
-	for i, rbac := range traits.RBAC {
-		errors = append(errors, v.validateRBACTrait(rbac, fmt.Sprintf("%s.rbac[%d]", fieldPrefix, i))...)
-	}
-
 	// Validate Ingress traits
 	for i, ingress := range traits.Ingress {
 		errors = append(errors, v.validateIngressTrait(ingress, fmt.Sprintf("%s.ingress[%d]", fieldPrefix, i))...)
@@ -70,8 +65,8 @@ func (v *validationServiceImpl) validateTraits(traits apisv1.Traits, fieldPrefix
 		errors = append(errors, v.validateResourcesTrait(*traits.Resources, fmt.Sprintf("%s.resources", fieldPrefix))...)
 	}
 
-	if len(traits.TargetWorkEnv) > 0 || isNested {
-		errors = append(errors, v.validateTargetWorkEnvTrait(traits.TargetWorkEnv, fmt.Sprintf("%s.targetWorkEnv", fieldPrefix), isNested)...)
+	if !isNested {
+		errors = append(errors, traitvalidation.ValidateNestedProfiles(traits, fieldPrefix)...)
 	}
 	if traits.Rollout != nil || isNested {
 		errors = append(errors, traitvalidation.ValidateRolloutTrait(componentType, traits.Rollout, fmt.Sprintf("%s.rollout", fieldPrefix), isNested)...)
@@ -80,36 +75,6 @@ func (v *validationServiceImpl) validateTraits(traits apisv1.Traits, fieldPrefix
 	return errors
 }
 
-func (v *validationServiceImpl) validateTargetWorkEnvTrait(targetWorkEnv map[string]string, field string, isNested bool) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-
-	if isNested && len(targetWorkEnv) > 0 {
-		errors = append(errors, apisv1.ValidationError{
-			Field:   field,
-			Code:    apisv1.ErrCodeInvalidTraitConfig,
-			Message: "targetWorkEnv is a pod-level trait and only supports component-level traits",
-		})
-		return errors
-	}
-
-	if len(targetWorkEnv) == 0 {
-		return errors
-	}
-
-	for key, value := range targetWorkEnv {
-		itemField := fmt.Sprintf("%s[%q]", field, key)
-		keyErr, valueErr := spec.ValidateNodeSelectorEntry(key, value)
-		for _, message := range []string{keyErr, valueErr} {
-			if message != "" {
-				errors = append(errors, apisv1.ValidationError{Field: itemField, Code: apisv1.ErrCodeInvalidTraitConfig, Message: "targetWorkEnv " + message})
-			}
-		}
-	}
-
-	return errors
-}
-
-// validateStorageTrait validates a storage trait
 func (v *validationServiceImpl) validateStorageTrait(storage spec.StorageTraitSpec, field string) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 
@@ -340,34 +305,6 @@ func (v *validationServiceImpl) validateSidecarTrait(sidecar spec.SidecarTraitsS
 
 	// Validate nested traits (without init/sidecar)
 	errors = append(errors, v.validateTraits(sidecar.Traits, fmt.Sprintf("%s.traits", field), true, "")...)
-
-	return errors
-}
-
-// validateRBACTrait validates an RBAC trait
-func (v *validationServiceImpl) validateRBACTrait(rbac spec.RBACPolicySpec, field string) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-
-	// Validate rules
-	if len(rbac.Rules) == 0 {
-		errors = append(errors, apisv1.ValidationError{
-			Field:   fmt.Sprintf("%s.rules", field),
-			Code:    apisv1.ErrCodeMissingRBACRules,
-			Message: "rbac rules are required",
-		})
-		return errors
-	}
-
-	// Validate each rule has verbs
-	for i, rule := range rbac.Rules {
-		if len(rule.Verbs) == 0 {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rules[%d].verbs", field, i),
-				Code:    apisv1.ErrCodeMissingRBACVerbs,
-				Message: "rbac rule verbs are required",
-			})
-		}
-	}
 
 	return errors
 }

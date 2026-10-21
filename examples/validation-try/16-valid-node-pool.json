@@ -1,5 +1,5 @@
 {
-  "name": "demo-target-work-env",
+  "name": "demo-node-pool",
   "namespace": "default",
   "workflow": [
     {
@@ -23,9 +23,7 @@
         ]
       },
       "traits": {
-        "targetWorkEnv": {
-          "app": "lab"
-        }
+        "nodePool": "gpu-a100"
       }
     }
   ]

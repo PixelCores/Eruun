@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type VersionRestartJobInfo struct {
@@ -117,7 +118,7 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	if err != nil {
 		return nil, err
 	}
-	result, err := GenerateWebService(component, &properties)
+	result, err := GenerateWebService(component, &properties, workflowtraits.IdentityProfiles(component))
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	restartedAt string,
 	patch []byte,
 ) (*versionRestartWaitTarget, error) {
-	result, err := GenerateStoreService(component)
+	result, err := GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
 	if err != nil {
 		return nil, err
 	}

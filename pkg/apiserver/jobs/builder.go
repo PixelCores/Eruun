@@ -25,6 +25,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	traitprocessors "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 var errEvaluationPolicyUnavailable = errors.New("evaluation timeout policy unavailable")
@@ -81,7 +82,7 @@ func SetEvaluationTraits(job *model.JobTask, traits spec.JobTraits) error {
 	return nil
 }
 
-func BuildTask(task *model.WorkflowQueue, namespace string) ([][]*model.JobTask, error) {
+func BuildTask(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue, namespace string) ([][]*model.JobTask, error) {
 	if task == nil || task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || task.WorkspaceID == "" || task.TaskID == "" {
 		return nil, fmt.Errorf("invalid standalone Job identity")
 	}
@@ -132,7 +133,17 @@ func BuildTask(task *model.WorkflowQueue, namespace string) ([][]*model.JobTask,
 			if err := spec.DecodeJobJSON(step.Spec, &command); err != nil {
 				return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
 			}
-			workload, err := buildCommandJob(job.Name, namespace, command, step.Traits)
+			profiles := traitprocessors.Profiles{}
+			if step.Traits.NodePool != "" {
+				profiles.NodePool = &model.NodePool{Name: step.Traits.NodePool}
+				if store == nil {
+					return nil, fmt.Errorf("resolve nodePool %q: datastore is unavailable", step.Traits.NodePool)
+				}
+				if err := store.Get(ctx, profiles.NodePool); err != nil {
+					return nil, fmt.Errorf("stage %q step %q: resolve nodePool %q: %w", stage.Name, step.Name, step.Traits.NodePool, err)
+				}
+			}
+			workload, err := buildCommandJob(job.Name, namespace, command, step.Traits, profiles)
 			if err != nil {
 				return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
 			}
@@ -226,7 +237,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	workload, err := buildCommandJob(job.Name, job.Namespace, spec.CommandJobSpec{Image: cfg.Jobs.RunnerImage, Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: evaluation.TimeoutSeconds}, spec.Traits{
 		Resources: info.Traits.Resources, Envs: info.Traits.Envs, EnvFrom: info.Traits.EnvFrom,
 		Storage: info.Traits.Storage, SecurityPolicy: info.Traits.SecurityPolicy,
-	})
+	}, traitprocessors.Profiles{})
 	if err != nil {
 		return err
 	}

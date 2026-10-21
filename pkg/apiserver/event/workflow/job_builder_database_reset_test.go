@@ -42,7 +42,7 @@ func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
 		AppID:      "app-1",
 	}
 
-	executions, err := buildWorkflowStepExecutions(context.Background(), 0, &model.WorkflowStep{
+	executions, err := buildWorkflowStepExecutions(context.Background(), nil, 0, &model.WorkflowStep{
 		Name:         "database-reset",
 		WorkflowType: config.JobDatabaseReset,
 		Mode:         config.WorkflowModeStepByStep,
@@ -81,7 +81,7 @@ func TestBuildDatabaseResetStepsAssignDistinctExecutionKeys(t *testing.T) {
 		ProjectID:  "project-1",
 		AppID:      "app-1",
 	}
-	groups, err := buildWorkflowStepExecutionGroups(context.Background(), &model.WorkflowSteps{Steps: []*model.WorkflowStep{
+	groups, err := buildWorkflowStepExecutionGroups(context.Background(), nil, &model.WorkflowSteps{Steps: []*model.WorkflowStep{
 		{
 			Name:         "reset-mysql",
 			WorkflowType: config.JobDatabaseReset,
@@ -119,7 +119,7 @@ func TestBuildDatabaseResetSubStepsAssignDistinctExecutionKeys(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			executions, err := buildWorkflowStepExecutions(context.Background(), 2, &model.WorkflowStep{
+			executions, err := buildWorkflowStepExecutions(context.Background(), nil, 2, &model.WorkflowStep{
 				Name: "reset-stores",
 				Mode: test.mode,
 				SubSteps: []*model.WorkflowSubStep{

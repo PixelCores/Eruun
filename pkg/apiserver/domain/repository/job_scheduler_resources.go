@@ -51,9 +51,7 @@ func newJobResourceBudget(quotas []corev1.ResourceList) (*jobResourceBudget, err
 func resourceFreeJob(kind string) bool {
 	switch config.JobType(kind) {
 	case config.JobDeployService, config.JobDeployPVC, config.JobDeployConfigMap, config.JobDeploySecret,
-		config.JobDeployIngress, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding,
-		config.JobDeployClusterRole, config.JobDeployClusterRoleBinding,
-		config.JobDeployCallback, config.JobCleanupResources,
+		config.JobDeployIngress, config.JobDeployCallback, config.JobCleanupResources,
 		config.JobLogArchiveUpload, config.JobDatabaseReset, config.JobVersionRestart:
 		return true
 	default:

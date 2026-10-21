@@ -190,3 +190,37 @@ func TestJobStagesVolumeAndRetryRoundTrip(t *testing.T) {
 	require.Equal(t, "1", output.Stages[1].Steps[1].Traits.Resources.Cpu)
 	require.Nil(t, output.Stages[1].Steps[1].Traits.SecurityPolicy)
 }
+
+func TestNamedProfilesHTTPGRPCParity(t *testing.T) {
+	input := &eruunv1.AppSpecTraits{NodePool: "gpu"}
+	rpc, err := decodeTypedRequest[spec.Traits](input)
+	require.NoError(t, err)
+	var http spec.Traits
+	require.NoError(t, json.Unmarshal([]byte(`{"nodePool":"gpu"}`), &http))
+	require.Equal(t, http, rpc)
+	output, err := encodeTypedResponse(http, &eruunv1.AppSpecTraits{})
+	require.NoError(t, err)
+	require.True(t, proto.Equal(input, output))
+	descriptor := input.ProtoReflect().Descriptor()
+	require.EqualValues(t, 16, descriptor.Fields().ByName("node_pool").Number())
+	require.True(t, descriptor.ReservedRanges().Has(6))
+	require.True(t, descriptor.ReservedRanges().Has(10))
+	require.True(t, descriptor.ReservedNames().Has("rbac"))
+	require.True(t, descriptor.ReservedNames().Has("target_work_env"))
+}
+
+func TestTraitsRejectRemovedComponentPermissions(t *testing.T) {
+	for _, field := range []string{"rbac", "rbac" + "Profile"} {
+		require.Error(t, protojson.Unmarshal([]byte(`{"`+field+`":null}`), &eruunv1.AppSpecTraits{}))
+	}
+	for _, number := range []protowire.Number{6, 17} {
+		wire := protowire.AppendTag(nil, number, protowire.BytesType)
+		wire = protowire.AppendBytes(wire, []byte("removed"))
+		input := &eruunv1.AppSpecTraits{}
+		require.NoError(t, proto.Unmarshal(wire, input))
+		_, err := decodeTypedRequest[spec.Traits](input)
+		require.Error(t, err, "removed field %d must fail closed", number)
+		_, err = jobSubmitInput(&eruunv1.SubmitJobRequest{Stages: []*eruunv1.JobStage{{Steps: []*eruunv1.JobStep{{Traits: input}}}}})
+		require.Error(t, err, "nested removed field %d must fail closed", number)
+	}
+}

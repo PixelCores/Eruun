@@ -83,7 +83,7 @@ func TestStepBuildersDiscardPartialGeneration(t *testing.T) {
 					step.Properties = nil
 					step.SubSteps = []*model.WorkflowSubStep{{Name: "healthy", WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"healthy"}}}}, {Name: "broken", WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"broken"}}}}}
 				}
-				groups, err := buildWorkflowStepExecutionGroups(context.Background(), &model.WorkflowSteps{Steps: []*model.WorkflowStep{step}}, components, &model.WorkflowQueue{}, 60)
+				groups, err := buildWorkflowStepExecutionGroups(context.Background(), nil, &model.WorkflowSteps{Steps: []*model.WorkflowStep{step}}, components, &model.WorkflowQueue{}, 60)
 				require.ErrorContains(t, err, "decode component properties")
 				require.Nil(t, groups)
 			})

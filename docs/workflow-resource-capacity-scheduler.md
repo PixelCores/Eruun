@@ -6,7 +6,7 @@
 
 Eruun 当前由 Scheduler 派发 waiting Workflow，由 Worker 执行 Workflow/Job。Pod 的最终放置仍由 Kubernetes Scheduler 决定；当资源或调度约束无法满足时，工作负载会进入 Pending。
 
-当前 `resources` Trait 只稳定表达 CPU、内存和 `nvidia.com/gpu`，`targetWorkEnv` 映射为 `nodeSelector`。Eruun 尚未在 Workflow 派发前聚合集群容量，也没有自动创建计算节点或扩容节点池的内置动作。
+当前 `resources` Trait 只稳定表达 CPU、内存和 `nvidia.com/gpu`，`nodePool` 引用的节点池映射为 `nodeSelector` 和 `tolerations`。Eruun 尚未在 Workflow 派发前聚合集群容量，也没有自动创建计算节点或扩容节点池的内置动作。
 
 ## 2. 目标与非目标
 

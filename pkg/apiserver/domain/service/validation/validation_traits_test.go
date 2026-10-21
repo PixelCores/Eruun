@@ -244,43 +244,6 @@ func TestValidationService_TryApplication_InvalidStorageType(t *testing.T) {
 	assert.True(t, found, "Expected invalid storage type error")
 }
 
-func TestValidationService_TryApplication_MissingRBACRules(t *testing.T) {
-	svc := &validationServiceImpl{}
-	ctx := context.Background()
-
-	req := apisv1.CreateApplicationsRequest{
-		Name:      "my-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{
-			{
-				Name:          "backend",
-				ComponentType: config.ServerJob,
-				Image:         "nginx:latest",
-				Traits: apisv1.Traits{
-					RBAC: []spec.RBACPolicySpec{
-						{
-							ServiceAccount: "my-sa",
-							Rules:          []spec.RBACRuleSpec{}, // Empty rules
-						},
-					},
-				},
-			},
-		},
-	}
-
-	resp := svc.TryApplication(ctx, req)
-
-	assert.False(t, resp.Valid, "Expected invalid due to missing RBAC rules")
-	found := false
-	for _, err := range resp.Errors {
-		if err.Code == apisv1.ErrCodeMissingRBACRules {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "Expected missing RBAC rules error")
-}
-
 func TestValidationService_TryApplication_MissingIngressRoutes(t *testing.T) {
 	svc := &validationServiceImpl{}
 	ctx := context.Background()
@@ -473,88 +436,6 @@ func TestValidationService_TryApplication_InvalidStorageSize(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Expected invalid storage size error")
-}
-
-func TestValidationService_TryApplication_MissingRBACVerbs(t *testing.T) {
-	svc := &validationServiceImpl{}
-	ctx := context.Background()
-
-	req := apisv1.CreateApplicationsRequest{
-		Name:      "my-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{
-			{
-				Name:          "backend",
-				ComponentType: config.ServerJob,
-				Image:         "nginx:latest",
-				Traits: apisv1.Traits{
-					RBAC: []spec.RBACPolicySpec{
-						{
-							ServiceAccount: "my-sa",
-							Rules: []spec.RBACRuleSpec{
-								{
-									APIGroups: []string{""},
-									Resources: []string{"pods"},
-									Verbs:     []string{}, // Empty verbs
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	resp := svc.TryApplication(ctx, req)
-
-	assert.False(t, resp.Valid, "Expected invalid due to missing RBAC verbs")
-	found := false
-	for _, err := range resp.Errors {
-		if err.Code == apisv1.ErrCodeMissingRBACVerbs {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "Expected missing RBAC verbs error")
-}
-
-func TestValidationService_TryApplication_ValidRBACConfig(t *testing.T) {
-	svc := &validationServiceImpl{}
-	ctx := context.Background()
-
-	req := apisv1.CreateApplicationsRequest{
-		Name:      "my-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{
-			{
-				Name:          "backend",
-				ComponentType: config.ServerJob,
-				Image:         "nginx:latest",
-				Traits: apisv1.Traits{
-					RBAC: []spec.RBACPolicySpec{
-						{
-							ServiceAccount: "pod-reader",
-							Rules: []spec.RBACRuleSpec{
-								{
-									APIGroups: []string{""},
-									Resources: []string{"pods"},
-									Verbs:     []string{"get", "list", "watch"},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	resp := svc.TryApplication(ctx, req)
-
-	// Should not have RBAC-related errors
-	for _, err := range resp.Errors {
-		assert.NotEqual(t, apisv1.ErrCodeMissingRBACRules, err.Code, "Should not have missing RBAC rules error")
-		assert.NotEqual(t, apisv1.ErrCodeMissingRBACVerbs, err.Code, "Should not have missing RBAC verbs error")
-	}
 }
 
 func TestValidationService_TryApplication_AllowsMissingIngressServiceName(t *testing.T) {

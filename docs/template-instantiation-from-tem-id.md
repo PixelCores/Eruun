@@ -4,6 +4,7 @@
 
 > 术语边界：`components[].tmp.id` 是应用模板引用；`templateEnabled` / `tmp_enable` 是应用是否可被引用为模板的标记；storage trait 的 `tmpCreate` 只控制 PVC 创建模式，不是模板发现或模板启用标记。
 
+
 ## 背景与目标
 - 支持用户在请求体中提供 `tmp:{id:{{app_id}}}`，以数据库 `eruun_applications` 中已有应用作为模板，快速创建多个相同形态的新应用（如多套 MySQL）。
 - 在实例化过程中，用用户传入的组件 `name`（例：`fnlz2z1lxe85k3me66og`）覆盖模板中的组件名称及相关子字段（如存储名），并生成新的应用 `name`/`alias` 等元数据。
@@ -92,7 +93,7 @@
   - Secret/密码类字段，必须使用占位符或从密钥管理加载。
   - 与运行时绑定的标识（如主机名、PVC 绑定 UID）。
 - 默认不重写：
-  - RBAC 类特征（ServiceAccount/Role/Binding 名）保持模板定义；命名空间对齐组件命名空间（为空则使用默认命名空间）。
+  - `nodePool` 是全局配置名，克隆时保留原名；覆盖时整体替换，写入时校验引用存在。
 
 ## 标签与审计
 - 创建时为应用与组件添加标签/注解：
@@ -137,7 +138,7 @@
 - 标签追踪：新实例包含来源模板标签/注解。
 
 ## 测试示例与验证步骤
-- 创建模板应用：调用 `/api/v1/applications` 创建基础模板，设置 `templateEnabled=true`，组件 traits 含存储/Ingress/RBAC 等资源命名，确保模板组件具备镜像与必需字段。
+- 创建模板应用：调用 `/api/v1/applications` 创建基础模板，设置 `templateEnabled=true`，组件 traits 含存储/Ingress 等资源命名及 `nodePool` 引用，确保模板组件具备镜像与必需字段。
   ```json
   {
     "name": "tmpl-mysql",
@@ -154,8 +155,7 @@
         "replicas": 1,
         "properties": { "ports": [ { "port": 3306, "expose": true } ], "env": { "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__" } },
         "traits": {
-          "storage": [ { "name": "mysql", "type": "persistent", "create": true, "size": "5Gi" } ],
-          "rbac": [ { "serviceAccount": "mysql", "roleName": "mysql", "bindingName": "mysql" } ]
+          "storage": [ { "name": "mysql", "type": "persistent", "create": true, "size": "5Gi" } ]
         }
       }
     ],
@@ -194,7 +194,7 @@
   }
   ```
   如果模板已显式声明 `"storageClass": "fast-ssd"`，展开后仍保留 `fast-ssd`，不会被 `defaultStorageClass` 覆盖。
-- 克隆创建新应用（成功）：请求体中仅提供组件名和 `tmp.id`。期望组件名及存储/Ingress/RBAC/EnvFrom/init/sidecar 中的资源名统一替换为新组件名。
+- 克隆创建新应用（成功）：请求体中仅提供组件名和 `tmp.id`。期望组件名及存储/Ingress/EnvFrom/init/sidecar 中的资源名按原有规则重写，节点池引用保持原名。
   ```json
   {
     "name": "tenant-a-mysql-app",
@@ -206,7 +206,7 @@
     ]
   }
   ```
-  验证：调用 `/api/v1/applications/{appID}/components`，检查组件名、traits.storage 的 `name`（以及已声明的 `claimName`/`sourceName`）被重写，Ingress backend 的 `serviceName`、RBAC 的 `serviceAccount/roleName/bindingName` 等按规则替换为新组件名。
+  验证：调用 `/api/v1/applications/{appID}/components`，检查组件名、traits.storage 的 `name`（以及已声明的 `claimName`/`sourceName`）被重写，Ingress backend 的 `serviceName`、`nodePool` 引用保持原名。
 - 覆盖规则：如果同一个 `tmp.id` 在请求中出现多次，系统会按 `tmp.target` 或组件类型为每个请求条目生成对应 clone；同一模板组件被重复克隆时，后续目标名会自动追加 `-1`、`-2` 等后缀，支持：
   - 组件重命名：同模板多个条目可为不同组件指定新名称。
   - 环境变量覆盖：`properties.env` 覆盖模板 env。

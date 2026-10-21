@@ -11,7 +11,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -23,10 +22,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/logarchive"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func NewJobTask(name, namespace, workflowID, projectID, appID, taskID string, timeoutSeconds int64, resourceAppName ...string) *model.JobTask {
@@ -62,7 +63,6 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 		return jobs, nil
 	}
 
-	rbacShare := rbacShareConfigForComponent(component, share)
 	resourceAppName := component.ResourceNameKey()
 
 	for _, obj := range additionalObjects {
@@ -129,127 +129,13 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			jobs = append(jobs, ingressJob)
 			klog.Infof("Created Ingress job for component %s: %s", component.Name, ingress.Name)
 		}
-		if sa, ok := obj.(*corev1.ServiceAccount); ok {
-			ns := sa.Namespace
-			if ns == "" {
-				ns = component.Namespace
-				sa.Namespace = ns
-			}
-			applyShareLabelsToObject(sa, rbacShare)
-			jobTask := NewJobTask(
-				sa.Name,
-				ns,
-				task.WorkflowID,
-				task.ProjectID,
-				task.AppID,
-				task.TaskID,
-				defaultJobTimeoutSeconds,
-				resourceAppName,
-			)
-			jobTask.JobType = string(config.JobDeployServiceAccount)
-			jobTask.JobInfo = sa.DeepCopy()
-			jobTask.Info = buildResourceInfo(domainspec.ResourceServiceAccount, ns, sa.Name)
-			setDeployTimeout(jobTask)
-			markJobSkippedIfIgnored(rbacShare, jobTask)
-			jobs = append(jobs, jobTask)
-			klog.Infof("Created ServiceAccount job for component %s: %s/%s", component.Name, ns, sa.Name)
-		}
-		if role, ok := obj.(*rbacv1.Role); ok {
-			ns := role.Namespace
-			if ns == "" {
-				ns = component.Namespace
-				role.Namespace = ns
-			}
-			applyShareLabelsToObject(role, rbacShare)
-			jobTask := NewJobTask(
-				role.Name,
-				ns,
-				task.WorkflowID,
-				task.ProjectID,
-				task.AppID,
-				task.TaskID,
-				defaultJobTimeoutSeconds,
-				resourceAppName,
-			)
-			jobTask.JobType = string(config.JobDeployRole)
-			jobTask.JobInfo = role.DeepCopy()
-			jobTask.Info = buildResourceInfo(domainspec.ResourceRole, ns, role.Name)
-			setDeployTimeout(jobTask)
-			markJobSkippedIfIgnored(rbacShare, jobTask)
-			jobs = append(jobs, jobTask)
-			klog.Infof("Created Role job for component %s: %s/%s", component.Name, ns, role.Name)
-		}
-		if binding, ok := obj.(*rbacv1.RoleBinding); ok {
-			ns := binding.Namespace
-			if ns == "" {
-				ns = component.Namespace
-				binding.Namespace = ns
-			}
-			applyShareLabelsToObject(binding, rbacShare)
-			jobTask := NewJobTask(
-				binding.Name,
-				ns,
-				task.WorkflowID,
-				task.ProjectID,
-				task.AppID,
-				task.TaskID,
-				defaultJobTimeoutSeconds,
-				resourceAppName,
-			)
-			jobTask.JobType = string(config.JobDeployRoleBinding)
-			jobTask.JobInfo = binding.DeepCopy()
-			jobTask.Info = buildResourceInfo(domainspec.ResourceRoleBinding, ns, binding.Name)
-			setDeployTimeout(jobTask)
-			markJobSkippedIfIgnored(rbacShare, jobTask)
-			jobs = append(jobs, jobTask)
-			klog.Infof("Created RoleBinding job for component %s: %s/%s", component.Name, ns, binding.Name)
-		}
-		if clusterRole, ok := obj.(*rbacv1.ClusterRole); ok {
-			applyShareLabelsToObject(clusterRole, rbacShare)
-			jobTask := NewJobTask(
-				clusterRole.Name,
-				component.Namespace,
-				task.WorkflowID,
-				task.ProjectID,
-				task.AppID,
-				task.TaskID,
-				defaultJobTimeoutSeconds,
-				resourceAppName,
-			)
-			jobTask.JobType = string(config.JobDeployClusterRole)
-			jobTask.JobInfo = clusterRole.DeepCopy()
-			jobTask.Info = buildResourceInfo(domainspec.ResourceClusterRole, "", clusterRole.Name)
-			setDeployTimeout(jobTask)
-			markJobSkippedIfIgnored(rbacShare, jobTask)
-			jobs = append(jobs, jobTask)
-			klog.Infof("Created ClusterRole job for component %s: %s", component.Name, clusterRole.Name)
-		}
-		if clusterBinding, ok := obj.(*rbacv1.ClusterRoleBinding); ok {
-			applyShareLabelsToObject(clusterBinding, rbacShare)
-			jobTask := NewJobTask(
-				clusterBinding.Name,
-				component.Namespace,
-				task.WorkflowID,
-				task.ProjectID,
-				task.AppID,
-				task.TaskID,
-				defaultJobTimeoutSeconds,
-				resourceAppName,
-			)
-			jobTask.JobType = string(config.JobDeployClusterRoleBinding)
-			jobTask.JobInfo = clusterBinding.DeepCopy()
-			jobTask.Info = buildResourceInfo(domainspec.ResourceClusterRoleBinding, "", clusterBinding.Name)
-			setDeployTimeout(jobTask)
-			markJobSkippedIfIgnored(rbacShare, jobTask)
-			jobs = append(jobs, jobTask)
-			klog.Infof("Created ClusterRoleBinding job for component %s: %s", component.Name, clusterBinding.Name)
-		}
 	}
 	return jobs, nil
 }
 
 func appendComponentGroup(
 	ctx context.Context,
+	ds datastore.DataStore,
 	buckets map[int][]*model.JobTask,
 	componentNames []string,
 	workflowType config.JobType,
@@ -286,7 +172,7 @@ func appendComponentGroup(
 			mergeJobBuckets(buckets, buildCleanupJobsForComponent(component, task, defaultJobTimeoutSeconds))
 			continue
 		}
-		componentBuckets, err := buildJobsForComponent(ctx, component, task, defaultJobTimeoutSeconds, executionKey)
+		componentBuckets, err := buildJobsForComponent(ctx, ds, component, task, defaultJobTimeoutSeconds, executionKey)
 		if err != nil {
 			return fmt.Errorf("build component %s: %w", component.Name, err)
 		}
@@ -489,6 +375,7 @@ func databaseResetWorkflowName() string {
 
 func buildJobsForComponent(
 	ctx context.Context,
+	ds datastore.DataStore,
 	component *model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
@@ -509,13 +396,33 @@ func buildJobsForComponent(
 	if err != nil {
 		return nil, err
 	}
-	componentTraits := decodeComponentTraits(component)
+	componentTraits := &domainspec.Traits{}
+	if component.Traits != nil {
+		raw, err := component.Traits.Bytes()
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, componentTraits); err != nil {
+			return nil, fmt.Errorf("decode component traits: %w", err)
+		}
+	}
+	profiles := workflowtraits.Profiles{}
+	if componentTraits.NodePool != "" {
+		profiles.NodePool = &model.NodePool{Name: componentTraits.NodePool}
+		if ds == nil {
+			return nil, fmt.Errorf("resolve nodePool %q: datastore is unavailable", componentTraits.NodePool)
+		}
+		if err := ds.Get(ctx, profiles.NodePool); err != nil {
+			return nil, fmt.Errorf("resolve nodePool %q: %w", componentTraits.NodePool, err)
+		}
+	}
+
 	share := shareConfigForComponent(component, componentTraits)
 	resourceAppName := component.ResourceNameKey()
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		serviceJobs, err := jobdeploy.GenerateWebService(component, &properties)
+		serviceJobs, err := jobdeploy.GenerateWebService(component, &properties, profiles)
 		if err != nil {
 			return nil, err
 		}
@@ -523,7 +430,7 @@ func buildJobsForComponent(
 			return nil, err
 		}
 	case config.StoreJob:
-		storeJobs, err := jobdeploy.GenerateStoreService(component)
+		storeJobs, err := jobdeploy.GenerateStoreService(component, profiles)
 		if err != nil {
 			return nil, err
 		}
@@ -551,16 +458,7 @@ func buildJobsForComponent(
 		markJobSkippedIfIgnored(share, jobTask)
 		buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
 	case config.InstantJob:
-		var traits domainspec.Traits
-		if component.Traits != nil {
-			raw, err := json.Marshal(component.Traits)
-			if err == nil {
-				err = json.Unmarshal(raw, &traits)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("decode job traits: %w", err)
-			}
-		}
+		traits := *componentTraits
 		if traits.Evaluation != nil {
 			identity := sha256.Sum256([]byte(task.TaskID + "|" + componentExecutionKey + "|" + component.Name))
 			name := fmt.Sprintf("eruun-eval-%x", identity[:16])
@@ -586,7 +484,7 @@ func buildJobsForComponent(
 			break
 		}
 		if properties.StartTime > 0 {
-			result, err := jobinstant.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime)
+			result, err := jobinstant.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime, profiles)
 			if err != nil {
 				return nil, err
 			}
@@ -598,7 +496,7 @@ func buildJobsForComponent(
 			applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
 			break
 		}
-		result, err := jobdeploy.GenerateInstantJob(component, &properties, properties.RunPolicy)
+		result, err := jobdeploy.GenerateInstantJob(component, &properties, properties.RunPolicy, profiles)
 		if err != nil {
 			return nil, err
 		}
@@ -614,7 +512,7 @@ func buildJobsForComponent(
 			if err != nil {
 				return nil, fmt.Errorf("normalize cron schedule: %w", err)
 			}
-			result, err := jobdeploy.GenerateScheduledCronJob(component, &properties, normalized)
+			result, err := jobdeploy.GenerateScheduledCronJob(component, &properties, normalized, profiles)
 			if err != nil {
 				return nil, err
 			}

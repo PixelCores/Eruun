@@ -68,14 +68,14 @@ Eruun 采用 OAM 启发的「组件 + Traits + 工作流」模型，提供应用
 | `eval` | 独立或应用顶层 `job` 的 Harbor 评测配置；共用校验和 Runner 构建路径 |
 | `probes` | liveness、readiness、startup 探针 |
 | `securityPolicy` | 容器 `securityContext`，仍受空间 Restricted 策略约束 |
-| `targetWorkEnv` | Pod `nodeSelector` |
+| `nodePool` | 引用节点池，渲染 Pod `nodeSelector` + `tolerations` |
 | `rollout` | Deployment/StatefulSet 更新策略 |
 | `init` / `sidecar` | Init 容器和 Sidecar，可使用受限制的嵌套 Traits |
 | `service` / `ingress` | Service 暴露与 Ingress 路由，受空间端口和域名规则约束 |
 | `share` | namespace 内共享资源的复用与生命周期策略 |
-| `rbac` | 引擎可生成 ServiceAccount/Role/Binding；当前空间策略拒绝额外 RBAC 和任意 ServiceAccount |
 
 `service` 和 `share` 由资源生成、调和与清理路径处理；`eval` 由共享评测构建路径处理。其他 Trait 的处理顺序、嵌套规则和权限边界见 [架构与 Trait 文档](docs/架构文档.md)。独立 Job 只接受自己的 Trait 子集，不能直接套用完整组件配置。
+
 
 ## 运行架构
 
@@ -114,7 +114,7 @@ flowchart TB
 
 - **产品交付**：仓库提供服务端运行时、Helm/Manifest 和 API 示例。客户端使用 `curl` 或 gRPC 接入；Eruun 不提供客户端命令行应用，平台界面与业务审批系统由接入方建设。
 - **Kubernetes 边界**：需要已有集群。当前不是集群安装器、多集群控制平台或通用云资源管理平台。
-- **权限边界**：平台登录权限、工作负载 Kubernetes 身份与容器权限分别校验。当前空间策略拒绝特权/宿主机能力、跨 namespace、额外 RBAC、NodePort/LoadBalancer 等请求；网络隔离依赖支持 NetworkPolicy 的 CNI。详见 [空间安全契约](docs/account-auth-workspaces.md)。
+- **权限边界**：平台登录权限、工作负载 Kubernetes 身份与容器权限分别校验。当前空间策略拒绝特权/宿主机能力、跨 namespace、任意内联 RBAC、NodePort/LoadBalancer 等请求；网络隔离依赖支持 NetworkPolicy 的 CNI。详见 [空间安全契约](docs/account-auth-workspaces.md)。
 - **工作流边界**：当前没有通用步骤输出数据流、`dependsOn` 或条件分支契约。独立 `command` 不支持 cron、延迟执行或失败自动重跑；应用 `scheduledjob` 和 Workflow 调度有各自契约。
 - **评测边界**：`traits.eval` 使用固定 Harbor 适配，模型是评测对象，`agent` 指定执行任务的 harness。平台拉取预构建镜像，不在线构建任务包中的 Dockerfile，也不接受任意评测框架或 Python adapter。该 Trait 仅适用于独立或应用顶层 `job`。评测奖励与任务执行成功是不同结果。
 - **AI 能力边界**：已有资源声明和容器执行基础，不等于已有 Agent 会话/记忆、MCP 授权审计、vLLM 专用部署或 GPU 感知调度能力。

@@ -86,6 +86,7 @@ func (o ListApplicationsOptions) NormalizedPage() int {
 }
 
 type applicationsServiceImpl struct {
+	NodePoolRepo              repository.NodePoolRepository    `inject:""`
 	KubeClient                kubernetes.Interface             `inject:"kubeClient"`
 	KubeConfig                *rest.Config                     `inject:"kubeConfig"`
 	Store                     datastore.DataStore              `inject:"datastore"`
@@ -228,6 +229,9 @@ func (c *applicationsServiceImpl) createApplications(
 	//分解所有的组件
 	resolvedComponents, _, err := resolveComponentsWithSourceIndexes(ctx, c.AppRepo, c.ComponentRepo, application.Namespace, application.Name, req.Components, c.Cfg)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.validateComponentProfiles(ctx, resolvedComponents); err != nil {
 		return nil, err
 	}
 	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, application, resolvedComponents); err != nil {
@@ -830,6 +834,9 @@ func validateExplicitServiceTraitNames(traits apisv1.Traits, fieldPrefix string)
 }
 
 func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1.Traits, fieldPrefix string) error {
+	if errors := traitvalidation.ValidateNestedProfiles(traits, fieldPrefix); len(errors) > 0 {
+		return fmt.Errorf("%w: %s: %s", bcode.ErrApplicationConfig, errors[0].Field, errors[0].Message)
+	}
 	if err := spec.NormalizeComponentEvaluation(string(componentType), "", spec.Properties{}, &traits); err != nil {
 		return fmt.Errorf("%w: %s: %v", bcode.ErrApplicationConfig, fieldPrefix, err)
 	}
@@ -1071,4 +1078,14 @@ func (c *applicationsServiceImpl) resolveWorkflowUpdateTarget(ctx context.Contex
 	}
 
 	return target, targetName, nil
+}
+
+func (c *applicationsServiceImpl) validateComponentProfiles(ctx context.Context, components []apisv1.CreateComponentRequest) error {
+	for i, component := range components {
+		errors := traitvalidation.ValidateProfiles(ctx, c.NodePoolRepo, component.Traits, fmt.Sprintf("component[%d].traits", i))
+		if len(errors) > 0 {
+			return fmt.Errorf("%w: %s: %s", bcode.ErrApplicationConfig, errors[0].Field, errors[0].Message)
+		}
+	}
+	return nil
 }

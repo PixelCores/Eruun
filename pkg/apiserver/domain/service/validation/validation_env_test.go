@@ -2,7 +2,6 @@ package validation
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -180,35 +179,7 @@ func TestValidationService_TryApplication_InvalidEnvValueSource(t *testing.T) {
 	assert.True(t, found, "Expected invalid env value source error")
 }
 
-func TestValidationService_TryApplication_TargetWorkEnvValid(t *testing.T) {
-	svc := &validationServiceImpl{}
-	ctx := context.Background()
-
-	req := apisv1.CreateApplicationsRequest{
-		Name:      "demo-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{
-			{
-				Name:          "backend",
-				ComponentType: config.ServerJob,
-				Image:         "nginx:latest",
-				Namespace:     "default",
-				Traits: apisv1.Traits{
-					TargetWorkEnv: map[string]string{"app": "lab"},
-				},
-			},
-		},
-		Workflow: []apisv1.CreateWorkflowStepRequest{
-			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
-		},
-	}
-
-	resp := svc.TryApplication(ctx, req)
-	assert.True(t, resp.Valid)
-	assert.Empty(t, resp.Errors)
-}
-
-func TestValidationService_TryApplication_TargetWorkEnvNestedRejected(t *testing.T) {
+func TestValidationService_TryApplication_NodePoolNestedRejected(t *testing.T) {
 	svc := &validationServiceImpl{}
 	ctx := context.Background()
 
@@ -227,7 +198,7 @@ func TestValidationService_TryApplication_TargetWorkEnvNestedRejected(t *testing
 							Name:  "agent",
 							Image: "busybox:1.36",
 							Traits: spec.Traits{
-								TargetWorkEnv: map[string]string{"app": "lab"},
+								NodePool: "batch",
 							},
 						},
 					},
@@ -243,78 +214,10 @@ func TestValidationService_TryApplication_TargetWorkEnvNestedRejected(t *testing
 	assert.False(t, resp.Valid)
 	found := false
 	for _, err := range resp.Errors {
-		if err.Code == apisv1.ErrCodeInvalidTraitConfig && err.Field == "component[0].traits.sidecar[0].traits.targetWorkEnv" {
+		if err.Code == apisv1.ErrCodeInvalidTraitConfig && err.Field == "component[0].traits.sidecar[0].traits.nodePool" {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "Expected nested targetWorkEnv invalid trait config error")
-}
-
-func TestValidationService_TryApplication_TargetWorkEnvInvalidSelector(t *testing.T) {
-	svc := &validationServiceImpl{}
-	ctx := context.Background()
-
-	req := apisv1.CreateApplicationsRequest{
-		Name:      "demo-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{
-			{
-				Name:          "backend",
-				ComponentType: config.ServerJob,
-				Image:         "nginx:latest",
-				Namespace:     "default",
-				Traits: apisv1.Traits{
-					TargetWorkEnv: map[string]string{
-						"bad key": "lab",
-						"app":     "",
-					},
-				},
-			},
-		},
-		Workflow: []apisv1.CreateWorkflowStepRequest{
-			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
-		},
-	}
-
-	resp := svc.TryApplication(ctx, req)
-	assert.False(t, resp.Valid)
-
-	foundInvalidKey := false
-	foundEmptyValue := false
-	for _, err := range resp.Errors {
-		switch err.Field {
-		case `component[0].traits.targetWorkEnv["bad key"]`:
-			foundInvalidKey = true
-		case `component[0].traits.targetWorkEnv["app"]`:
-			foundEmptyValue = true
-		}
-	}
-	assert.True(t, foundInvalidKey, "Expected invalid targetWorkEnv key error")
-	assert.True(t, foundEmptyValue, "Expected empty targetWorkEnv value error")
-}
-
-func TestValidationService_TryApplication_TargetWorkEnvStringRejected(t *testing.T) {
-	var req apisv1.CreateApplicationsRequest
-
-	err := json.Unmarshal([]byte(`{
-		"name": "demo-app",
-		"namespace": "default",
-		"components": [
-			{
-				"name": "backend",
-				"type": "server",
-				"image": "nginx:latest",
-				"namespace": "default",
-				"traits": {
-					"targetWorkEnv": "lab"
-				}
-			}
-		],
-		"workflow": [
-			{"name": "deploy", "components": ["backend"]}
-		]
-	}`), &req)
-
-	assert.Error(t, err)
+	assert.True(t, found, "Expected nested nodePool invalid trait config error")
 }

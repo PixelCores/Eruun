@@ -9,7 +9,7 @@
 | type | value 契约 |
 | --- | --- |
 | `nodeSelector` | 调度 nodeSelector、affinity、tolerations 对象或 profile 数组 |
-| `rbacPolicies` | RBAC policy 数组，面向系统管理；普通空间拒绝 RBAC trait |
+| `rbacPolicies` | 历史系统设置，继续保留接口但运行时不读取；组件不提供 Kubernetes RBAC 能力 |
 | `urlSecurityPolicy` | 服务端出站 URL 私网白名单，见 [URL 安全策略](url-security-policy.md) |
 | `podRestartMonitor` | `{enabled,windowSeconds,threshold}`，默认 true、1800、3 |
 | `workflow_scheduler` | 全局 Job 准入、评测时长和创建速率策略，见下文；不可删除 |

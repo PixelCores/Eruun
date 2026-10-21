@@ -18,13 +18,11 @@ type Traits struct {
 	Sidecar    []SidecarTraitsSpec  `json:"sidecar,omitempty"`
 	Ingress    []IngressTraitsSpec  `json:"ingress,omitempty"`
 	Service    []ServiceTraitSpec   `json:"service,omitempty"`
-	RBAC       []RBACPolicySpec     `json:"rbac,omitempty"`
 	EnvFrom    []EnvFromSourceSpec  `json:"envFrom,omitempty"`
 	Envs       []SimplifiedEnvSpec  `json:"envs,omitempty"`
 	Probes     []ProbeTraitsSpec    `json:"probes,omitempty"`
-	// TargetWorkEnv is rendered as Kubernetes nodeSelector labels on the pod template.
-	TargetWorkEnv map[string]string   `json:"targetWorkEnv,omitempty"`
-	Resources     *ResourceTraitsSpec `json:"resources,omitempty"`
+	NodePool   string               `json:"nodePool,omitempty"`
+	Resources  *ResourceTraitsSpec  `json:"resources,omitempty"`
 	// SecurityPolicy defines container-level security settings (securityContext).
 	SecurityPolicy *SecurityPolicySpec `json:"securityPolicy,omitempty"`
 	Share          *ShareTraitSpec     `json:"share,omitempty"`
@@ -237,30 +235,6 @@ type ServicePortTraitSpec struct {
 	Port       int32  `json:"port"`
 	TargetPort int32  `json:"targetPort,omitempty"`
 	Protocol   string `json:"protocol,omitempty"`
-}
-
-// RBACPolicySpec describes an RBAC policy to be created for the component.
-type RBACPolicySpec struct {
-	ServiceAccount             string            `json:"serviceAccount,omitempty"`
-	Namespace                  string            `json:"namespace,omitempty"`
-	ClusterScope               bool              `json:"clusterScope,omitempty"`
-	RoleName                   string            `json:"roleName,omitempty"`
-	BindingName                string            `json:"bindingName,omitempty"`
-	ServiceAccountLabels       map[string]string `json:"serviceAccountLabels,omitempty"`
-	ServiceAccountAnnotations  map[string]string `json:"serviceAccountAnnotations,omitempty"`
-	RoleLabels                 map[string]string `json:"roleLabels,omitempty"`
-	BindingLabels              map[string]string `json:"bindingLabels,omitempty"`
-	Rules                      []RBACRuleSpec    `json:"rules"`
-	ServiceAccountAutomountSAT *bool             `json:"automountServiceAccountToken,omitempty"`
-}
-
-// RBACRuleSpec mirrors rbacv1.PolicyRule with common fields exposed.
-type RBACRuleSpec struct {
-	APIGroups       []string `json:"apiGroups,omitempty"`
-	Resources       []string `json:"resources,omitempty"`
-	ResourceNames   []string `json:"resourceNames,omitempty"`
-	NonResourceURLs []string `json:"nonResourceURLs,omitempty"`
-	Verbs           []string `json:"verbs"`
 }
 
 // ShareTraitSpec controls how shared resources are handled in a namespace.

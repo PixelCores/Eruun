@@ -51,7 +51,7 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		if !ok || task.AppID != "" || scope.WorkspaceID != task.WorkspaceID || scope.Namespace == "" {
 			return nil, fmt.Errorf("workspace Job requires its persisted workspace execution scope")
 		}
-		stages, err := jobs.BuildTask(task, scope.Namespace)
+		stages, err := jobs.BuildTask(ctx, ds, task, scope.Namespace)
 		if err != nil {
 			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 		}
@@ -127,7 +127,7 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		}
 	}
 
-	stepGroups, err := buildWorkflowStepExecutionGroups(ctx, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
+	stepGroups, err := buildWorkflowStepExecutionGroups(ctx, ds, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
 	if err != nil {
 		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 	}

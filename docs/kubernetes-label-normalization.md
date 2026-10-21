@@ -12,7 +12,6 @@ Eruun 会在生成 Kubernetes 资源前，统一规范化写入 `metadata.labels
 - `traits.service[].labels` 的 label value。
 - `traits.service[].selector` 的 selector value 会使用 selector 专用规则：已知匹配 Eruun 生成 Pod label 的 key 会规范化到生成值；其他 key 会保留已经合法的 Kubernetes label value，只修复非法值。
 - `traits.ingress[].label` 的 label value。
-- RBAC trait 生成的 ServiceAccount、Role、RoleBinding、ClusterRole、ClusterRoleBinding label value。
 
 Eruun 管理标签仍走既有管理标签路径，例如 `app.kubernetes.io/managed-by`、`eruun.io/app-id`、`eruun.io/component-id`、`eruun.io/component-name`。
 

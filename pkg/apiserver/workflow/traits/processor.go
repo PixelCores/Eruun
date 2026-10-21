@@ -28,6 +28,7 @@ type TraitContext struct {
 	Workload  runtime.Object
 
 	// Ingress defaults, including nested ingress, use the outer component services.
+	profiles        Profiles
 	componentTraits *spec.Traits
 }
 
@@ -39,11 +40,8 @@ type TraitResult struct {
 	Containers        []corev1.Container
 	Volumes           []corev1.Volume
 	NodeSelector      map[string]string
+	Tolerations       []corev1.Toleration
 	AdditionalObjects []client.Object
-
-	// Service account binding
-	ServiceAccountName           string
-	AutomountServiceAccountToken *bool
 
 	// Container-level modifications target the current recursion's container.
 	VolumeMounts         []corev1.VolumeMount
@@ -62,7 +60,7 @@ type TraitResult struct {
 
 // ApplyTraits is the public entrypoint. It dispatches traits to processors,
 // aggregates their outputs, and applies changes onto the workload.
-func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object) ([]client.Object, error) {
+func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object, profiles Profiles) ([]client.Object, error) {
 	if component.Traits == nil {
 		klog.V(4).Infof("Component %s has no traits to apply.", component.Name)
 		return nil, nil
@@ -83,7 +81,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object)
 	}
 
 	// Start the recursive application of traits, with no exclusions at the top level.
-	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, componentTraits: &traits}, &traits, false)
+	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, componentTraits: &traits, profiles: profiles}, &traits, false)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +99,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object)
 
 // applyTraitsRecursive keeps the built-in order explicit and passes typed specs.
 // Evaluation, Service, and Share are owned by the workflow/job builders.
-// Nested containers exclude init, sidecar, targetWorkEnv, and rollout.
+// Nested containers exclude init, sidecar, nodePool and rollout.
 func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (*TraitResult, error) {
 	var results []*TraitResult
 	collect := func(result *TraitResult, err error) error {
@@ -128,9 +126,16 @@ func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (
 			return nil, fmt.Errorf("failed to process trait 'envs': %w", err)
 		}
 	}
-	if !nested && len(traits.TargetWorkEnv) > 0 {
-		if err := collect(processTargetWorkEnv(traits.TargetWorkEnv)); err != nil {
-			return nil, fmt.Errorf("failed to process trait 'targetWorkEnv': %w", err)
+	if traits.NodePool != "" {
+		if nested {
+			return nil, fmt.Errorf("nodePool only supports component-level traits")
+		}
+		if ctx.profiles.NodePool == nil || ctx.profiles.NodePool.Name != traits.NodePool {
+			return nil, fmt.Errorf("nodePool %q was not resolved for deployment", traits.NodePool)
+		}
+		pool := ctx.profiles.NodePool
+		if err := collect(&TraitResult{NodeSelector: utils.CopyStringMap(pool.NodeSelector), Tolerations: append([]corev1.Toleration(nil), pool.Tolerations...)}, nil); err != nil {
+			return nil, err
 		}
 	}
 	if traits.Resources != nil {
@@ -146,11 +151,6 @@ func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (
 	if len(traits.Probes) > 0 {
 		if err := collect(processProbe(ctx, traits.Probes)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'probes': %w", err)
-		}
-	}
-	if len(traits.RBAC) > 0 {
-		if err := collect(processRBAC(ctx, traits.RBAC)); err != nil {
-			return nil, fmt.Errorf("failed to process trait 'rbac': %w", err)
 		}
 	}
 	if !nested && traits.Rollout != nil {
@@ -238,6 +238,8 @@ func aggregateTraitResults(results []*TraitResult) (*TraitResult, error) {
 			}
 		}
 
+		finalResult.Tolerations = append(finalResult.Tolerations, traitResult.Tolerations...)
+
 		// Merge Probes (last one wins)
 		if traitResult.LivenessProbe != nil {
 			finalResult.LivenessProbe = traitResult.LivenessProbe
@@ -263,12 +265,6 @@ func aggregateTraitResults(results []*TraitResult) (*TraitResult, error) {
 			finalResult.StatefulSetUpdateStrategy = traitResult.StatefulSetUpdateStrategy
 		}
 
-		if traitResult.ServiceAccountName != "" {
-			finalResult.ServiceAccountName = traitResult.ServiceAccountName
-		}
-		if traitResult.AutomountServiceAccountToken != nil {
-			finalResult.AutomountServiceAccountToken = traitResult.AutomountServiceAccountToken
-		}
 	}
 	return finalResult, nil
 }
@@ -311,20 +307,7 @@ func applyTraitResultToWorkload(result *TraitResult, workload runtime.Object, ma
 		}
 	}
 
-	if result.ServiceAccountName != "" {
-		if podTemplate.Spec.ServiceAccountName == "" {
-			podTemplate.Spec.ServiceAccountName = result.ServiceAccountName
-		} else if podTemplate.Spec.ServiceAccountName != result.ServiceAccountName {
-			klog.Warningf("Trait attempted to set serviceAccountName=%s but workload already specifies %s; keeping existing value", result.ServiceAccountName, podTemplate.Spec.ServiceAccountName)
-		}
-	}
-	if result.AutomountServiceAccountToken != nil {
-		if podTemplate.Spec.AutomountServiceAccountToken == nil {
-			podTemplate.Spec.AutomountServiceAccountToken = result.AutomountServiceAccountToken
-		} else if *podTemplate.Spec.AutomountServiceAccountToken != *result.AutomountServiceAccountToken {
-			klog.Warningf("Trait attempted to set automountServiceAccountToken=%t but workload already specifies %t; keeping existing value", *result.AutomountServiceAccountToken, *podTemplate.Spec.AutomountServiceAccountToken)
-		}
-	}
+	podTemplate.Spec.Tolerations = append(podTemplate.Spec.Tolerations, result.Tolerations...)
 
 	var mainContainer *corev1.Container
 	for _, containers := range [][]corev1.Container{podTemplate.Spec.Containers, podTemplate.Spec.InitContainers} {

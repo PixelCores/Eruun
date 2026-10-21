@@ -11,7 +11,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/nodepool"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/rbacprofile"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
@@ -36,26 +35,21 @@ func TestSchedulingProfileHTTPAndGRPCParity(t *testing.T) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.NodePool{}, &model.RBACProfile{}))
+	require.NoError(t, db.AutoMigrate(&model.NodePool{}))
 	store := &sqlstore.Driver{Client: *db}
 	nodeRepo, err := repository.NewNodePoolRepositoryWithStore(store)
 	require.NoError(t, err)
-	rbacRepo, err := repository.NewRBACProfileRepositoryWithStore(store)
-	require.NoError(t, err)
 	nodes, err := nodepool.NewNodePoolServiceWithRepository(nodeRepo)
 	require.NoError(t, err)
-	profiles, err := rbacprofile.NewRBACProfileServiceWithRepository(rbacRepo)
-	require.NoError(t, err)
-	nodeHandler, rbacHandler := api.NewNodePools(), api.NewRBACProfiles()
+	nodeHandler := api.NewNodePools()
 	beans := containerutil.NewContainer()
-	require.NoError(t, beans.Provides(nodes, profiles, nodeHandler, rbacHandler))
+	require.NoError(t, beans.Provides(nodes, nodeHandler))
 	require.NoError(t, beans.Populate())
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	group := router.Group("/api/v1")
 	nodeHandler.RegisterRoutes(group)
-	rbacHandler.RegisterRoutes(group)
-	server := &AdministrationServer{NodePools: nodes, RBACProfiles: profiles}
+	server := &AdministrationServer{NodePools: nodes}
 	ctx := context.Background()
 	request := func(t *testing.T, method, path, body string, want int) json.RawMessage {
 		t.Helper()
@@ -110,29 +104,6 @@ func TestSchedulingProfileHTTPAndGRPCParity(t *testing.T) {
 			optionsRPC: func() (proto.Message, error) { return server.ListNodePoolOptions(ctx, nil) },
 			deleteRPC: func(name string) error {
 				_, err := server.DeleteNodePool(ctx, &eruunv1.NodePoolNameRequest{Name: name})
-				return err
-			},
-		},
-		{path: "rbac-profiles", collection: "rbacProfiles",
-			create: `{"name":"sample","description":"description","rules":[{"apiGroups":[""],"resources":["pods","pods/log"],"verbs":["get"]}]}`,
-			update: `{"rules":[{"resources":["configmaps"],"verbs":["list"]}]}`, invalid: `{"name":"invalid","rules":[{"resources":["pods"],"verbs":["bind"]}]}`, invalidCode: "35010", existsCode: "35011", notFoundCode: "35012",
-			createRPC: func(body string) (proto.Message, error) {
-				req := &eruunv1.CreateRBACProfileRequest{}
-				require.NoError(t, protojson.Unmarshal([]byte(body), req))
-				return server.CreateRBACProfile(ctx, req)
-			},
-			updateRPC: func(body string) (proto.Message, error) {
-				req := &eruunv1.UpdateRBACProfileRequest{}
-				require.NoError(t, protojson.Unmarshal([]byte(body), req))
-				return server.UpdateRBACProfile(ctx, req)
-			},
-			getRPC: func(name string) (proto.Message, error) {
-				return server.GetRBACProfile(ctx, &eruunv1.RBACProfileNameRequest{Name: name})
-			},
-			listRPC:    func() (proto.Message, error) { return server.ListRBACProfiles(ctx, nil) },
-			optionsRPC: func() (proto.Message, error) { return server.ListRBACProfileOptions(ctx, nil) },
-			deleteRPC: func(name string) error {
-				_, err := server.DeleteRBACProfile(ctx, &eruunv1.RBACProfileNameRequest{Name: name})
 				return err
 			},
 		},
@@ -222,17 +193,12 @@ func TestSchedulingProfileRPCRegistrationAndNilRequests(t *testing.T) {
 	defer server.Stop()
 	services := server.GetServiceInfo()
 	require.Len(t, services["eruun.v1.NodePoolsService"].Methods, 6)
-	require.Len(t, services["eruun.v1.RBACProfilesService"].Methods, 6)
 	adapter := &AdministrationServer{}
 	for _, call := range []func() error{
 		func() error { _, err := adapter.GetNodePool(context.Background(), nil); return err },
 		func() error { _, err := adapter.CreateNodePool(context.Background(), nil); return err },
 		func() error { _, err := adapter.UpdateNodePool(context.Background(), nil); return err },
 		func() error { _, err := adapter.DeleteNodePool(context.Background(), nil); return err },
-		func() error { _, err := adapter.GetRBACProfile(context.Background(), nil); return err },
-		func() error { _, err := adapter.CreateRBACProfile(context.Background(), nil); return err },
-		func() error { _, err := adapter.UpdateRBACProfile(context.Background(), nil); return err },
-		func() error { _, err := adapter.DeleteRBACProfile(context.Background(), nil); return err },
 	} {
 		require.Equal(t, codes.InvalidArgument, status.Code(call()))
 	}

@@ -68,14 +68,14 @@ The component model includes the following trait fields. **A field’s presence 
 | `eval` | Harbor evaluation configuration for standalone or top-level application `job` declarations; shares validation and Runner construction |
 | `probes` | Liveness, readiness, and startup probes |
 | `securityPolicy` | Container `securityContext`, subject to the workspace Restricted policy |
-| `targetWorkEnv` | Pod `nodeSelector` |
+| `nodePool` | Pod `nodeSelector` + `tolerations` from a named node pool |
 | `rollout` | Deployment/StatefulSet update strategies |
 | `init` / `sidecar` | Init and sidecar containers, with a restricted subset of nested traits |
 | `service` / `ingress` | Service exposure and Ingress routing, subject to workspace port and domain rules |
 | `share` | Reuse and lifecycle policies for shared resources within a namespace |
-| `rbac` | The engine can generate ServiceAccounts/Roles/Bindings; current workspace policy rejects additional RBAC and arbitrary ServiceAccounts |
 
 Resource generation, reconciliation, and cleanup paths handle `service` and `share`; the shared evaluation builder handles `eval`. See the [architecture and trait documentation](docs/架构文档.md) for the other traits’ processing order, nesting rules, and permission boundaries. Standalone Jobs accept their own subset of traits; they cannot use a complete component configuration unchanged.
+
 
 ## Runtime architecture
 
@@ -114,7 +114,7 @@ The queue delivers messages at least once. Database leases and generation/token 
 
 - **Product delivery:** The repository ships the server runtime, Helm/manifests, and API examples. Clients integrate using `curl` or gRPC. Eruun does not ship a client command-line application; the integrating platform provides its UI and business approval system.
 - **Kubernetes:** An existing cluster is required. Eruun is not currently a cluster installer, multi-cluster control platform, or general-purpose cloud resource manager.
-- **Permissions:** Platform login permissions, workload Kubernetes identities, and container permissions are checked separately. Current workspace policy rejects privileged/host capabilities, cross-namespace requests, additional RBAC, and NodePort/LoadBalancer, among other restrictions. Network isolation requires a CNI that enforces NetworkPolicy. See the [workspace security contract](docs/account-auth-workspaces.md).
+- **Permissions:** Platform login permissions, workload Kubernetes identities, and container permissions are checked separately. Current workspace policy rejects privileged/host capabilities, cross-namespace requests, arbitrary inline RBAC, and NodePort/LoadBalancer, among other restrictions. Network isolation requires a CNI that enforces NetworkPolicy. See the [workspace security contract](docs/account-auth-workspaces.md).
 - **Workflows:** There is no general-purpose step output dataflow, `dependsOn`, or conditional branching contract today. Standalone `command` Jobs do not support cron, delayed execution, or automatic reruns on failure; application `scheduledjob` components and Workflow schedules have their own contracts.
 - **Evaluation:** `traits.eval` uses a fixed Harbor adapter. The model is the object of evaluation; `agent` selects the harness that executes the task. The platform pulls prebuilt images; it does not build the Dockerfiles in task packages online or accept arbitrary evaluation frameworks or Python adapters. The trait is restricted to standalone or top-level application `job` declarations. Evaluation rewards and successful task execution are distinct outcomes.
 - **AI capabilities:** Resource declarations and container execution do not imply support for agent sessions/memory, MCP authorization and auditing, dedicated vLLM deployment, or GPU-aware scheduling.

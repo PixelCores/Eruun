@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
@@ -24,7 +25,7 @@ func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
 		generate func() []corev1.EnvVar
 	}{
 		{name: "deployment", generate: func() []corev1.EnvVar {
-			result, err := GenerateWebService(component, properties)
+			result, err := GenerateWebService(component, properties, workflowtraits.Profiles{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -32,7 +33,7 @@ func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
 			return result.Service.(*appsv1.Deployment).Spec.Template.Spec.Containers[0].Env
 		}},
 		{name: "statefulset", generate: func() []corev1.EnvVar {
-			result, err := GenerateStoreService(component)
+			result, err := GenerateStoreService(component, workflowtraits.Profiles{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +64,7 @@ func TestGeneratedNestedContainerEnvironmentIsStable(t *testing.T) {
 	component := &model.ApplicationComponent{Name: "api", AppID: "app-1", Namespace: "default", Image: "nginx:1.25", Traits: traitsJSON}
 	want := []corev1.EnvVar{{Name: "A_FIRST", Value: "first"}, {Name: "M_MIDDLE", Value: "middle"}, {Name: "Z_LAST", Value: "last"}, {Name: "A_FIRST", Value: "override"}}
 	for range 32 {
-		result, err := GenerateWebService(component, &model.Properties{})
+		result, err := GenerateWebService(component, &model.Properties{}, workflowtraits.Profiles{})
 		if err != nil {
 			t.Fatal(err)
 		}

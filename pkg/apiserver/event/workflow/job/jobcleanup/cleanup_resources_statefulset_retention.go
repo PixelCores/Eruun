@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type statefulSetRetentionTarget struct {
@@ -122,7 +123,7 @@ func (c *CleanupResourcesJobCtl) prepareRequiredStatefulSetDeletion(ctx context.
 		return err
 	}
 	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)
-	generated, err := jobdeploy.GenerateStoreService(component)
+	generated, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
 	if err != nil {
 		return err
 	}

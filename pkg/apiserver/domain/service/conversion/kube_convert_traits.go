@@ -104,34 +104,3 @@ func buildIngressTrait(ingress *networkingv1.Ingress) (*spec.IngressTraitsSpec, 
 	}
 	return trait, warnings
 }
-
-func applyRBACPolicies(policies map[string][]spec.RBACPolicySpec, refs []componentRef, components []apis.CreateComponentRequest) []string {
-	if len(policies) == 0 || len(refs) == 0 {
-		return nil
-	}
-	used := make(map[string]bool, len(policies))
-	for _, ref := range refs {
-		if strings.TrimSpace(ref.serviceAccount) == "" {
-			continue
-		}
-		key := buildNamespacedKey(ref.namespace, ref.serviceAccount)
-		policySet := policies[key]
-		if len(policySet) == 0 {
-			continue
-		}
-		components[ref.index].Traits.RBAC = append(components[ref.index].Traits.RBAC, policySet...)
-		used[key] = true
-	}
-	var warnings []string
-	for key := range policies {
-		if !used[key] {
-			parts := strings.SplitN(key, "/", 2)
-			name := key
-			if len(parts) == 2 {
-				name = fmt.Sprintf("%s/%s", parts[0], parts[1])
-			}
-			warnings = append(warnings, fmt.Sprintf("rbac serviceaccount %s has no matching workload; skipped", name))
-		}
-	}
-	return warnings
-}

@@ -25,7 +25,7 @@ func NormalizeComponentEvaluation(componentType, image string, properties Proper
 		properties.JobRetryPolicy != nil || properties.SuccessfulJobsHistoryLimit != nil || properties.FailedJobsHistoryLimit != nil {
 		return fmt.Errorf("evaluation only supports immediate execution without scheduling, runPolicy or retry overrides")
 	}
-	if len(traits.Init)+len(traits.Sidecar)+len(traits.Ingress)+len(traits.Service)+len(traits.RBAC)+len(traits.Probes)+len(traits.TargetWorkEnv) > 0 ||
+	if len(traits.Init)+len(traits.Sidecar)+len(traits.Ingress)+len(traits.Service)+len(traits.Probes) > 0 || traits.NodePool != "" ||
 		traits.Share != nil || traits.Rollout != nil {
 		return fmt.Errorf("evaluation supports resources and credential envs only")
 	}

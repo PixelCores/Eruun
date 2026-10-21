@@ -18,6 +18,9 @@ func decodeTypedRequest[D any](request proto.Message) (D, error) {
 	if request == nil {
 		return result, fmt.Errorf("request is required")
 	}
+	if err := validateProtoRequest(request.ProtoReflect()); err != nil {
+		return result, err
+	}
 	data, err := protojson.Marshal(request)
 	if err != nil {
 		return result, fmt.Errorf("marshal protobuf request: %w", err)
@@ -42,6 +45,39 @@ func decodeTypedRequest[D any](request proto.Message) (D, error) {
 		return result, fmt.Errorf("decode domain request: %w", err)
 	}
 	return result, nil
+}
+
+// validateProtoRequest checks wire fields before ProtoJSON can discard unknown
+// fields, including deleted traits inside nested component and Job messages.
+func validateProtoRequest(message protoreflect.Message) error {
+	if len(message.GetUnknown()) != 0 {
+		return fmt.Errorf("%s contains unknown fields", message.Descriptor().FullName())
+	}
+	var err error
+	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+		switch {
+		case field.IsMap():
+			if field.MapValue().Message() != nil {
+				value.Map().Range(func(_ protoreflect.MapKey, item protoreflect.Value) bool {
+					err = validateProtoRequest(item.Message())
+					return err == nil
+				})
+			}
+		case field.IsList():
+			if field.Message() != nil {
+				list := value.List()
+				for i := 0; i < list.Len(); i++ {
+					if err = validateProtoRequest(list.Get(i).Message()); err != nil {
+						break
+					}
+				}
+			}
+		case field.Message() != nil:
+			err = validateProtoRequest(value.Message())
+		}
+		return err == nil
+	})
+	return err
 }
 
 func normalizeProtoJSONNumbers(document map[string]any, descriptor protoreflect.MessageDescriptor) error {

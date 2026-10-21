@@ -193,8 +193,13 @@ var _ repository.ComponentRepository = (*mockCleanupComponentRepo)(nil)
 
 // newMockServiceWithStore creates an applicationsServiceImpl with mock repos from the store
 func newMockServiceWithStore(store *inMemoryAppStore) *applicationsServiceImpl {
+	nodes, err := repository.NewNodePoolRepositoryWithStore(store)
+	if err != nil {
+		panic(err)
+	}
 	return &applicationsServiceImpl{
 		Store:                     store,
+		NodePoolRepo:              nodes,
 		AppRepo:                   &mockAppRepo{store: store},
 		WorkflowRepo:              &mockWorkflowRepo{store: store},
 		ComponentRepo:             &mockComponentRepo{store: store},

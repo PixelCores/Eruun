@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -17,12 +16,13 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
 	switch component.ComponentType {
 	case config.ServerJob:
-		result, err := jobdeploy.GenerateWebService(component, props)
+		result, err := jobdeploy.GenerateWebService(component, props, workflowtraits.IdentityProfiles(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -37,7 +37,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return c.deleteDeployment(deleteCtx, ns, name)
 		})
 	case config.StoreJob:
-		result, err := jobdeploy.GenerateStoreService(component)
+		result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -61,7 +61,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			// through the component labels, not the ordinary Job naming rule.
 			break
 		}
-		result, err := jobdeploy.GenerateInstantJob(component, props, props.RunPolicy)
+		result, err := jobdeploy.GenerateInstantJob(component, props, props.RunPolicy, workflowtraits.IdentityProfiles(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -79,7 +79,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		if strings.TrimSpace(props.Schedule) == "" {
 			break
 		}
-		result, err := jobdeploy.GenerateScheduledCronJob(component, props, props.Schedule)
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, props.Schedule, workflowtraits.IdentityProfiles(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -174,19 +174,6 @@ func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fa
 			c.deleteTrackedResource(ctx, deleted, spec.ResourceIngress, ns, resource.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteIngress(deleteCtx, ns, resource.Name)
 			})
-		case *corev1.ServiceAccount:
-			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
-			klog.V(4).Infof("cleanup resources: preserving serviceaccount %s/%s", ns, resource.Name)
-		case *rbacv1.Role:
-			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
-			klog.V(4).Infof("cleanup resources: preserving role %s/%s", ns, resource.Name)
-		case *rbacv1.RoleBinding:
-			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
-			klog.V(4).Infof("cleanup resources: preserving rolebinding %s/%s", ns, resource.Name)
-		case *rbacv1.ClusterRole:
-			klog.V(4).Infof("cleanup resources: preserving clusterrole %s", resource.Name)
-		case *rbacv1.ClusterRoleBinding:
-			klog.V(4).Infof("cleanup resources: preserving clusterrolebinding %s", resource.Name)
 		default:
 			klog.V(4).Infof("cleanup resources: unsupported additional object type %T", obj)
 		}

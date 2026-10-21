@@ -194,38 +194,6 @@
               }
             ]
           }
-        ],
-        "rbac": [
-          {
-            "serviceAccount": "backend-sa",
-            "rules": [
-              {
-                "apiGroups": [
-                  ""
-                ],
-                "resources": [
-                  "pods",
-                  "services"
-                ],
-                "verbs": [
-                  "get",
-                  "list",
-                  "watch"
-                ]
-              },
-              {
-                "apiGroups": [
-                  ""
-                ],
-                "resources": [
-                  "configmaps"
-                ],
-                "verbs": [
-                  "get"
-                ]
-              }
-            ]
-          }
         ]
       }
     }

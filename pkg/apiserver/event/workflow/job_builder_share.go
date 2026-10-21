@@ -45,18 +45,6 @@ func shareConfigForComponent(component *model.ApplicationComponent, traits *spec
 	}
 }
 
-// rbacShareConfigForComponent gives RBAC resources a shared lifetime by default
-// while preserving an explicitly configured component share strategy.
-func rbacShareConfigForComponent(component *model.ApplicationComponent, share shareConfig) shareConfig {
-	if share.enabled() {
-		return share
-	}
-	return shareConfig{
-		Strategy: spec.ShareStrategyDefault,
-		Name:     shareNameForComponent(component),
-	}
-}
-
 func serviceTraitsForComponent(component *model.ApplicationComponent, properties *model.Properties, traits *spec.Traits) []spec.ServiceTraitSpec {
 	if traits == nil || len(traits.Service) == 0 {
 		return defaultServiceTraitsFromProperties(component, properties)

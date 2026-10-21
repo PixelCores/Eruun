@@ -113,16 +113,6 @@ func (c *CleanupResourcesJobCtl) resourceLabels(ctx context.Context, ref cleanup
 		obj, err = c.Client.CoreV1().PersistentVolumeClaims(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceIngress:
 		obj, err = c.Client.NetworkingV1().Ingresses(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceServiceAccount:
-		obj, err = c.Client.CoreV1().ServiceAccounts(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceRole:
-		obj, err = c.Client.RbacV1().Roles(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceRoleBinding:
-		obj, err = c.Client.RbacV1().RoleBindings(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceClusterRole:
-		obj, err = c.Client.RbacV1().ClusterRoles().Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceClusterRoleBinding:
-		obj, err = c.Client.RbacV1().ClusterRoleBindings().Get(ctx, ref.name, metav1.GetOptions{})
 	default:
 		return nil, false, fmt.Errorf("unsupported cleanup resource kind %q", ref.kind)
 	}

@@ -24,7 +24,7 @@ func TestApplyTraitsDeterministicContainerNames(t *testing.T) {
 		Containers: []corev1.Container{{Name: component.Name, Image: "app:1.0"}},
 	}}}}
 	want := base.DeepCopy()
-	_, err := ApplyTraits(component, want)
+	_, err := ApplyTraits(component, want, Profiles{})
 	require.NoError(t, err)
 	require.Equal(t, "api-init-1", want.Spec.Template.Spec.InitContainers[0].Name)
 	require.Equal(t, "prepare", want.Spec.Template.Spec.InitContainers[1].Name)
@@ -36,7 +36,7 @@ func TestApplyTraitsDeterministicContainerNames(t *testing.T) {
 		t.Run("render", func(t *testing.T) {
 			t.Parallel()
 			got := base.DeepCopy()
-			_, err := ApplyTraits(component, got)
+			_, err := ApplyTraits(component, got, Profiles{})
 			require.NoError(t, err)
 			require.Equal(t, want, got, "replaying the same component must not change its Pod template")
 		})
@@ -51,7 +51,7 @@ func TestApplyTraitsBoundsGeneratedContainerNames(t *testing.T) {
 	workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 		Containers: []corev1.Container{{Name: component.Name}},
 	}}}}
-	_, err := ApplyTraits(component, workload)
+	_, err := ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 	names := map[string]bool{}
 	for _, containers := range [][]corev1.Container{workload.Spec.Template.Spec.Containers, workload.Spec.Template.Spec.InitContainers} {
@@ -76,7 +76,7 @@ func TestApplyTraitsRejectsContainerNameCollisionsBeforeMutation(t *testing.T) {
 			component := &model.ApplicationComponent{Name: "api", Traits: toJSONStruct(tc.traits)}
 			workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "api"}}}}}}
 			before := workload.DeepCopy()
-			_, err := ApplyTraits(component, workload)
+			_, err := ApplyTraits(component, workload, Profiles{})
 			require.ErrorContains(t, err, "duplicate container name")
 			require.Equal(t, before, workload)
 		})
@@ -85,19 +85,17 @@ func TestApplyTraitsRejectsContainerNameCollisionsBeforeMutation(t *testing.T) {
 
 func TestApplyTraitsPreservesNestedExclusions(t *testing.T) {
 	component := &model.ApplicationComponent{Name: "api", Traits: toJSONStruct(spec.Traits{
-		TargetWorkEnv: map[string]string{"pool": "main"},
+		NodePool: "batch",
 		Init: []spec.InitTraitSpec{{Image: "busybox:1.37", Traits: spec.Traits{
-			TargetWorkEnv: map[string]string{"pool": "nested"},
-			Init:          []spec.InitTraitSpec{{Image: "ignored:1.0"}},
-			Sidecar:       []spec.SidecarTraitsSpec{{Image: "ignored:1.0"}},
+			Init:    []spec.InitTraitSpec{{Image: "ignored:1.0"}},
+			Sidecar: []spec.SidecarTraitsSpec{{Image: "ignored:1.0"}},
 		}}},
 		Sidecar: []spec.SidecarTraitsSpec{{Image: "busybox:1.37", Traits: spec.Traits{
-			TargetWorkEnv: map[string]string{"pool": "nested"},
-			Init:          []spec.InitTraitSpec{{Image: "ignored:1.0"}},
+			Init: []spec.InitTraitSpec{{Image: "ignored:1.0"}},
 		}}},
 	})}
 	workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "api"}}}}}}
-	_, err := ApplyTraits(component, workload)
+	_, err := ApplyTraits(component, workload, Profiles{NodePool: &model.NodePool{Name: "batch", NodeSelector: map[string]string{"pool": "main"}}})
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"pool": "main"}, workload.Spec.Template.Spec.NodeSelector)
 	require.Len(t, workload.Spec.Template.Spec.InitContainers, 1)
@@ -146,7 +144,7 @@ func TestApplyTraitsKeepsContainerConfigurationLocal(t *testing.T) {
 		Volumes:        []corev1.Volume{{Name: "base", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
 	}}}}
 
-	objects, err := ApplyTraits(component, workload)
+	objects, err := ApplyTraits(component, workload, Profiles{})
 	require.NoError(t, err)
 	pod := workload.Spec.Template.Spec
 	require.Len(t, pod.Containers, 3)
@@ -219,8 +217,8 @@ func TestApplyTraitsPreservesProcessingOrder(t *testing.T) {
 // an explicit rendering owner instead of silently disappearing from dispatch.
 func TestTraitFieldsHaveExplicitRenderingOwners(t *testing.T) {
 	owners := map[string]string{
-		"Storage": "processor", "EnvFrom": "processor", "Envs": "processor", "TargetWorkEnv": "processor",
-		"Resources": "processor", "SecurityPolicy": "processor", "Probes": "processor", "RBAC": "processor",
+		"Storage": "processor", "EnvFrom": "processor", "Envs": "processor", "NodePool": "processor",
+		"Resources": "processor", "SecurityPolicy": "processor", "Probes": "processor",
 		"Rollout": "processor", "Init": "processor", "Sidecar": "processor", "Ingress": "processor",
 		"Evaluation": "evaluation job builder", "Service": "service builder", "Share": "resource reconciliation",
 	}
@@ -259,7 +257,7 @@ func TestApplyTraitsIngressDefaultsUseOuterComponentForNestedTraits(t *testing.T
 			before, err := json.Marshal(component)
 			require.NoError(t, err)
 			workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "api"}}}}}}
-			objects, err := ApplyTraits(component, workload)
+			objects, err := ApplyTraits(component, workload, Profiles{})
 			require.NoError(t, err)
 			require.Len(t, objects, 4)
 			names := []string{"init-ingress", "sidecar-ingress", "api-ingress", "api-ingress-2"}

@@ -20,7 +20,6 @@ import (
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -33,11 +32,10 @@ const (
 )
 
 type componentRef struct {
-	index          int
-	name           string
-	namespace      string
-	labels         map[string]string
-	serviceAccount string
+	index     int
+	name      string
+	namespace string
+	labels    map[string]string
 }
 
 type claimTemplateInfo struct {
@@ -62,18 +60,16 @@ func appendConvertedComponent(
 	refs []componentRef,
 	comp *apis.CreateComponentRequest,
 	labels map[string]string,
-	serviceAccount string,
 ) ([]apis.CreateComponentRequest, []componentRef) {
 	if comp == nil {
 		return components, refs
 	}
 	components = append(components, *comp)
 	refs = append(refs, componentRef{
-		index:          len(components) - 1,
-		name:           comp.Name,
-		namespace:      comp.Namespace,
-		labels:         labels,
-		serviceAccount: serviceAccount,
+		index:     len(components) - 1,
+		name:      comp.Name,
+		namespace: comp.Namespace,
+		labels:    labels,
 	})
 	return components, refs
 }
@@ -127,19 +123,19 @@ func expandListItems(obj *unstructured.Unstructured) []*unstructured.Unstructure
 	return items
 }
 
-func convertWorkloadObject(obj *unstructured.Unstructured, pvcLookup map[string]claimTemplateInfo) (*apis.CreateComponentRequest, map[string]string, string, []string, error) {
+func convertWorkloadObject(obj *unstructured.Unstructured, pvcLookup map[string]claimTemplateInfo) (*apis.CreateComponentRequest, map[string]string, []string, error) {
 	input, err := buildWorkloadConversionInput(obj)
 	if err != nil {
-		return nil, nil, "", nil, err
+		return nil, nil, nil, err
 	}
-	comp, labels, saName, warns, err := convertWorkload(input.meta, input.podSpec, input.podLabels, input.replicas, input.claims, input.rollout, input.componentType, input.kind, pvcLookup)
+	comp, labels, warns, err := convertWorkload(input.meta, input.podSpec, input.podLabels, input.replicas, input.claims, input.rollout, input.componentType, input.kind, pvcLookup)
 	if err != nil || comp == nil {
-		return comp, labels, saName, warns, err
+		return comp, labels, warns, err
 	}
 	if input.applyMetadata != nil {
 		input.applyMetadata(comp)
 	}
-	return comp, labels, saName, warns, nil
+	return comp, labels, warns, nil
 }
 
 func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConversionInput, error) {
@@ -336,18 +332,21 @@ func convertSecret(obj *unstructured.Unstructured) (*apis.CreateComponentRequest
 	return &component, shareWarnings, nil
 }
 
-func convertWorkload(meta metav1.ObjectMeta, podSpec corev1.PodSpec, podLabels map[string]string, replicas *int32, claims []corev1.PersistentVolumeClaim, rollout *spec.RolloutTraitSpec, componentType config.JobType, kind string, pvcLookup map[string]claimTemplateInfo) (*apis.CreateComponentRequest, map[string]string, string, []string, error) {
+func convertWorkload(meta metav1.ObjectMeta, podSpec corev1.PodSpec, podLabels map[string]string, replicas *int32, claims []corev1.PersistentVolumeClaim, rollout *spec.RolloutTraitSpec, componentType config.JobType, kind string, pvcLookup map[string]claimTemplateInfo) (*apis.CreateComponentRequest, map[string]string, []string, error) {
 	name := strings.TrimSpace(meta.Name)
 	if name == "" {
-		return nil, nil, "", []string{fmt.Sprintf("%s missing metadata.name; skipped", strings.ToLower(kind))}, nil
+		return nil, nil, []string{fmt.Sprintf("%s missing metadata.name; skipped", strings.ToLower(kind))}, nil
 	}
 	if len(podSpec.Containers) == 0 {
-		return nil, nil, "", []string{fmt.Sprintf("%s %s has no containers; skipped", strings.ToLower(kind), name)}, nil
+		return nil, nil, []string{fmt.Sprintf("%s %s has no containers; skipped", strings.ToLower(kind), name)}, nil
 	}
 
 	labels := resolveWorkloadLabels(podLabels, meta.Labels)
 	shareTrait, shareWarnings := buildShareTrait(labels, meta.Labels)
 	warnings := append([]string(nil), shareWarnings...)
+	if len(podSpec.NodeSelector) > 0 || len(podSpec.Tolerations) > 0 {
+		warnings = append(warnings, fmt.Sprintf("%s/%s: nodeSelector/tolerations 未转换，请在组件上选择 nodePool", kind, meta.Name))
+	}
 	mainContainer := podSpec.Containers[0]
 	component := apis.CreateComponentRequest{
 		Name:          name,
@@ -366,7 +365,7 @@ func convertWorkload(meta metav1.ObjectMeta, podSpec corev1.PodSpec, podLabels m
 	component.Traits = traits
 	warnings = append(warnings, warns...)
 
-	return &component, labels, strings.TrimSpace(podSpec.ServiceAccountName), warnings, nil
+	return &component, labels, warnings, nil
 }
 
 func resolveWorkloadLabels(podLabels, metaLabels map[string]string) map[string]string {
@@ -413,7 +412,6 @@ func buildComponentTraits(container corev1.Container, podSpec corev1.PodSpec, cl
 		Labels:  filterReservedConvertedLabels(labels),
 	}
 
-	traits.TargetWorkEnv = applicationservice.CopyStringMap(podSpec.NodeSelector)
 	if shareTrait != nil {
 		traits.Share = shareTrait
 	}
@@ -464,9 +462,6 @@ func sanitizeTraits(traits apis.Traits) apis.Traits {
 	}
 	if len(traits.Probes) == 0 {
 		traits.Probes = nil
-	}
-	if len(traits.TargetWorkEnv) == 0 {
-		traits.TargetWorkEnv = nil
 	}
 	if len(traits.Init) == 0 {
 		traits.Init = nil

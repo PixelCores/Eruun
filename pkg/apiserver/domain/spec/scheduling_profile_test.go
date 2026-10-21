@@ -51,49 +51,5 @@ func TestSchedulingProfileNames(t *testing.T) {
 	}
 	for _, name := range []string{"", "Upper", "has.dot", "-bad", "bad-", strings.Repeat("a", 64), " padded "} {
 		require.ErrorContains(t, ValidateNodePool(name, map[string]string{"pool": "cpu"}, nil), "name")
-		require.ErrorContains(t, ValidateRBACProfile(name, []RBACRuleSpec{{Resources: []string{"pods"}, Verbs: []string{"get"}}}), "name")
-	}
-}
-
-func TestRBACProfileValidation(t *testing.T) {
-	valid := RBACRuleSpec{APIGroups: []string{""}, Resources: []string{"pods", "pods/log"}, ResourceNames: []string{"web"}, Verbs: []string{"get", "list", "watch"}}
-	require.NoError(t, ValidateRBACProfile("reader", []RBACRuleSpec{valid}))
-	require.ErrorContains(t, ValidateRBACProfile("reader", nil), "rules")
-	cases := []struct {
-		name, field string
-		rule        RBACRuleSpec
-	}{
-		{"no verbs", "verbs", RBACRuleSpec{Resources: valid.Resources}},
-		{"no resources", "resources", RBACRuleSpec{Verbs: valid.Verbs}},
-		{"non resource URL", "nonResourceURLs", RBACRuleSpec{Resources: valid.Resources, Verbs: valid.Verbs, NonResourceURLs: []string{"/healthz"}}},
-	}
-	for _, group := range []string{"rbac.authorization.k8s.io", "*"} {
-		rule := valid
-		rule.APIGroups = []string{group}
-		cases = append(cases, struct {
-			name, field string
-			rule        RBACRuleSpec
-		}{"group " + group, "apiGroups", rule})
-	}
-	for _, verb := range []string{"bind", "escalate", "impersonate", "*"} {
-		rule := valid
-		rule.Verbs = []string{verb}
-		cases = append(cases, struct {
-			name, field string
-			rule        RBACRuleSpec
-		}{"verb " + verb, "verbs", rule})
-	}
-	for _, resource := range []string{"*", "serviceaccounts/token"} {
-		rule := valid
-		rule.Resources = []string{resource}
-		cases = append(cases, struct {
-			name, field string
-			rule        RBACRuleSpec
-		}{"resource " + resource, "resources", rule})
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.ErrorContains(t, ValidateRBACProfile("reader", []RBACRuleSpec{valid, tc.rule}), "rules[1]."+tc.field)
-		})
 	}
 }

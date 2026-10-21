@@ -554,11 +554,6 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3307, TargetPort: 3306, Protocol: "TCP"}},
 			},
 		},
-		RBAC: []spec.RBACPolicySpec{{
-			ServiceAccount: "mysql",
-			RoleName:       "mysql",
-			BindingName:    "mysql",
-		}},
 		Envs: []spec.SimplifiedEnvSpec{{
 			Name: "MYSQL_ROOT_PASSWORD",
 			ValueFrom: spec.ValueSource{
@@ -703,12 +698,6 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 	require.Equal(t, "new-mysql", clonedTraits.Service[0].Selector[spec.LabelComponentName])
 	require.Equal(t, "cloned-app-primary", clonedTraits.Service[1].Name)
 	require.Equal(t, "cloned-app-primary", clonedTraits.Service[1].Selector["mysql-pod-role"])
-
-	require.Len(t, clonedTraits.RBAC, 1)
-	require.Equal(t, "mysql", clonedTraits.RBAC[0].ServiceAccount)
-	require.Equal(t, "mysql", clonedTraits.RBAC[0].RoleName)
-	require.Equal(t, "mysql", clonedTraits.RBAC[0].BindingName)
-	require.Equal(t, config.DefaultNamespace, clonedTraits.RBAC[0].Namespace)
 
 	var clonedProps apisv1.Properties
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, createdStore.Properties)), &clonedProps))
@@ -859,7 +848,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 			Containers: []corev1.Container{{Name: createdStore.Name, Image: createdStore.Image}},
 		}}},
 	}
-	additional, err := workflowtraits.ApplyTraits(createdStore, workload)
+	additional, err := workflowtraits.ApplyTraits(createdStore, workload, workflowtraits.Profiles{})
 	require.NoError(t, err)
 	require.Empty(t, additional)
 	require.Len(t, workload.Spec.VolumeClaimTemplates, 1)

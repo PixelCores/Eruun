@@ -46,7 +46,7 @@ Job 模块负责定义、触发决策和编译；运行记录仍是 `WorkflowQue
 | 定义与运行 | 两层：触发时把 Spec 与 Revision 快照写入运行 | 修改或删除定义不能改变已入队或运行中的工作 |
 | 多步骤 | `stages`：stage 之间串行，stage 内并行 | 直接对应现有 `StepExecution`（StepByStep / DAG 模式），不改执行器；任意 `dependsOn` DAG 需要拓扑调度和对应的恢复逻辑，暂不需要 |
 | 步骤间数据 | 每次运行一个共享 PVC，挂载到 command step 的 `/workspace` | 比对象存储产物传递简单得多；PVC 由 Leader 以存活的带标签 PVC 为待办清单清理，开销只与存活卷数量相关，不随历史增长 |
-| 负载定义 | 复用 Application traits，拒绝会产生附属对象的 trait | traits 处理器只读组件的 Name 和 Namespace，可直接复用；附属对象（新建 PVC、RBAC 等）没有 Job 侧的生命周期，共享存储改由 `volume` 承担 |
+| 负载定义 | 复用 Application traits，拒绝会产生附属对象的 trait | traits 处理器只读组件的 Name 和 Namespace，可直接复用；附属对象（新建 PVC、Ingress 等）没有 Job 侧的生命周期，共享存储改由 `volume` 承担 |
 | 失败重试 | 只提供 K8s `backoffLimit`；评测 step 拒绝 `retry` | 平台级重跑需要新的 attempt 协议；评测 Runner 的 Pod 重启会绕过 `recovery.replaySafe` 门禁重放 trial |
 | cron 存放位置 | `schedule` 内嵌在定义上，不单独建资源 | 一个定义只需要一个调度；`schedule` 只出现在定义请求中，一次性 `/jobs` 与 `/runs` 拒绝它 |
 | 并发策略 | Forbid（默认）/ Allow / Replace，只判断 `lastRunTaskId` | 与 K8s CronJob 的语义一致；手动触发的运行不参与判断 |

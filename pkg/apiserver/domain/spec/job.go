@@ -429,9 +429,6 @@ func validateJobTraits(t Traits, hasVolume bool) error {
 	if t.Share != nil {
 		return fmt.Errorf("traits.share is not supported by command steps")
 	}
-	if len(t.RBAC) > 0 {
-		return fmt.Errorf("traits.rbac creates additional ServiceAccount, Role and Binding objects and is not supported by command steps")
-	}
 	for index, storage := range t.Storage {
 		if hasVolume && (utils.NormalizeLowerStrip(storage.Name) == "workspace" || path.Clean(storage.MountPath) == "/workspace") {
 			return fmt.Errorf("traits.storage[%d]: volume reserves the workspace volume name and /workspace mount path", index)
@@ -450,11 +447,17 @@ func validateJobTraits(t Traits, hasVolume bool) error {
 		}
 	}
 	for index, init := range t.Init {
+		if init.Traits.NodePool != "" {
+			return fmt.Errorf("traits.init[%d].traits.nodePool is a pod-level trait and only supports component-level traits", index)
+		}
 		if err := validateJobTraits(init.Traits, hasVolume); err != nil {
 			return fmt.Errorf("traits.init[%d]: %w", index, err)
 		}
 	}
 	for index, sidecar := range t.Sidecar {
+		if sidecar.Traits.NodePool != "" {
+			return fmt.Errorf("traits.sidecar[%d].traits.nodePool is a pod-level trait and only supports component-level traits", index)
+		}
 		if err := validateJobTraits(sidecar.Traits, hasVolume); err != nil {
 			return fmt.Errorf("traits.sidecar[%d]: %w", index, err)
 		}

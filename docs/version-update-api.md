@@ -40,7 +40,7 @@ POST /api/v1/applications/:appID/version/cancel
 - `add` 的目标组件必须不存在；已存在时返回 `10015`。
 - `remove` 的目标组件必须已存在；不存在时返回 `10013`。
 - `restart` 的目标组件必须已存在，且仅支持 `webservice` / `store`，分别触发 Deployment / StatefulSet rollout restart；patch 成功后 workflow 还会等待本次 restart 产生的新 Pod Ready。
-- `{"action":"remove","name":"cleanup_all"}` 是保留资源动作，表示通过 workflow task 清理当前应用全部 DB 已知组件的普通 Kubernetes 运行资源，不删除组件 DB 记录；standalone PVC 和五类 RBAC 保留。
+- `{"action":"remove","name":"cleanup_all"}` 是保留资源动作，表示通过 workflow task 清理当前应用全部 DB 已知组件的普通 Kubernetes 运行资源，不删除组件 DB 记录；standalone PVC 保留，显式共享资源受 share 规则保护。
 - `{"action":"add","name":"all"}` 是保留资源动作，表示通过选定 workflow 部署当前应用全部 DB 已知组件，不新增名为 `all` 的组件。
 - `cleanup_all` 和 `all` 是 `/version` 中的保留组件名，不能作为普通 `add` / `remove` / `update` 目标。
 - 保留资源动作不得携带 `image`、`replicas`、`env`、`type`、`properties`、`traits` 等普通组件字段，否则返回应用配置错误。
@@ -106,7 +106,7 @@ POST /api/v1/applications/:appID/version/cancel
 - 默认执行选定 workflow 的完整步骤；只有显式传入 `executionScope=changed_components` 时，才按本次实际变更组件裁剪 workflow deploy/默认 component jobs。
 - 创建真实 workflow task 时，版本更新与手工执行、到期 schedule、数据库重置共用 per-App 分布式锁；锁内事务原子完成 active task 检查、版本/组件写入和 task 创建。锁竞争返回 `409 / 10031`，且不会提交本次版本、组件或 task 变更；锁只覆盖任务创建事务，不覆盖异步 workflow 的实际执行。
 - 当即时请求创建真实 workflow task 后，`GET /api/v1/applications/:appID/status` 与 `POST /api/v1/applications/components/status` 会在该 task 处于 `waiting`、`queued`、`running`、`pending`、`prepare`、`wait_for_approval` 等活跃状态时返回 `updating`，避免旧 Ready 副本让应用聚合状态误报为 `running`。
-- `remove cleanup_all` 要求 `autoExec=true` 且 workflow 可执行；请求提交后由 workflow worker 根据 task-scoped `CleanupInfo` 和预创建的 `cleanup_resources` 记录清理普通运行资源，`/version` 接口本身不直接删除 Kubernetes 资源。普通清理保留 standalone PVC 和五类 RBAC，StatefulSet VCT PVC 仍按其现有 retention policy 处理；只有与 `add all` 组合且显式修改非共享 `store` 的不可变 StatefulSet 字段时，才会进入下述受控重建流程。
+- `remove cleanup_all` 要求 `autoExec=true` 且 workflow 可执行；请求提交后由 workflow worker 根据 task-scoped `CleanupInfo` 和预创建的 `cleanup_resources` 记录清理普通运行资源，`/version` 接口本身不直接删除 Kubernetes 资源。普通清理保留 standalone PVC，并遵守显式 share 标签保护，StatefulSet VCT PVC 仍按其现有 retention policy 处理；只有与 `add all` 组合且显式修改非共享 `store` 的不可变 StatefulSet 字段时，才会进入下述受控重建流程。
 - `add all` 要求 `autoExec=true` 且 workflow 可执行；选定 workflow 必须覆盖当前全部 DB 已知组件，否则请求失败且不会提交版本或任务。
 - `restart` 要求 `autoExec=true` 且 workflow 可执行；restart-only 请求仍会更新应用版本/描述并创建 workflow task，但只保留前置审批步骤，审批后执行重启 job，不执行完整部署 workflow。
 - `restart` job 写入 `kubectl.kubernetes.io/restartedAt` 后，会在 `imageReadyTimeoutSeconds` 窗口内等待带有本次注解值的目标 Pod Ready；旧 Ready Pod 不会让重启提前成功。如果新 Pod 在窗口结束时仍持续 CrashLoopBackOff、ImagePullBackOff 或未 Ready，workflow 会失败或超时，并沿用现有终态 callback 发送 failure / timeout。
@@ -140,7 +140,7 @@ POST /api/v1/applications/:appID/version/cancel
 | `user` | string | 否 | 取消人；不传使用系统默认值 |
 | `reason` | string | 否 | 取消原因 |
 
-删除清理行为：`autoExec=true` 的版本更新会在删除组件 DB 记录前，先把被删除组件解析为脱敏的资源清理计划并写入工作流 Task 记录；随后预创建最小资源清理记录用于状态跟踪。`autoExec=false` 不创建工作流或 Task 清理计划，但普通 `remove` 仍会在接口调用内同步清理该组件的普通 Kubernetes 运行资源，再删除组件 DB 记录。`remove cleanup_all` 不删除组件 DB 记录，也不会由 `/version` 接口直接删除 Kubernetes 资源；它要求创建 workflow task，并为当前应用全部 DB 已知组件生成 task-scoped `CleanupInfo` 与预创建的 `cleanup_resources` 记录，后续由 workflow worker 执行。同步 cleanup 和普通 workflow cleanup 都会保留 standalone PVC、显式 `claimName` PVC、标签命中的 PVC、命名空间共享日志 PVC，以及 ServiceAccount、Role、RoleBinding、ClusterRole、ClusterRoleBinding；普通 StatefulSet 删除时 VCT PVC 生命周期仍由原 retention policy 决定。显式不可变 StatefulSet 重建是唯一例外：cleanup v2/v3 会先强制收敛到 `Retain/Retain` 再删除 StatefulSet，v2 保留全部 VCT PVC，v3 仅按持久化模板名删除受影响的 VCT PVC 并等待其消失。清理计划仅记录资源命名、受影响的 VCT 模板名和清理所需字段（包含 `traits.storage`、`traits.init[].traits.storage`、`traits.sidecar[].traits.storage`），不会持久化环境变量、配置、Secret、Cloud 参数或命令等敏感 payload。
+删除清理行为：`autoExec=true` 的版本更新会在删除组件 DB 记录前，先把被删除组件解析为脱敏的资源清理计划并写入工作流 Task 记录；随后预创建最小资源清理记录用于状态跟踪。`autoExec=false` 不创建工作流或 Task 清理计划，但普通 `remove` 仍会在接口调用内同步清理该组件的普通 Kubernetes 运行资源，再删除组件 DB 记录。`remove cleanup_all` 不删除组件 DB 记录，也不会由 `/version` 接口直接删除 Kubernetes 资源；它要求创建 workflow task，并为当前应用全部 DB 已知组件生成 task-scoped `CleanupInfo` 与预创建的 `cleanup_resources` 记录，后续由 workflow worker 执行。同步 cleanup 和普通 workflow cleanup 都会保留 standalone PVC、显式 `claimName` PVC、标签命中的 PVC、命名空间共享日志 PVC；组件专属 ServiceAccount、Role、RoleBinding 按固定名字删除，遵守显式 share 标签保护；普通 StatefulSet 删除时 VCT PVC 生命周期仍由原 retention policy 决定。显式不可变 StatefulSet 重建是唯一例外：cleanup v2/v3 会先强制收敛到 `Retain/Retain` 再删除 StatefulSet，v2 保留全部 VCT PVC，v3 仅按持久化模板名删除受影响的 VCT PVC 并等待其消失。清理计划仅记录资源命名、受影响的 VCT 模板名和清理所需字段（包含 `traits.storage`、`traits.init[].traits.storage`、`traits.sidecar[].traits.storage`），不会持久化环境变量、配置、Secret、Cloud 参数或命令等敏感 payload。
 
 终态行为：当延迟版本更新或审批挂起的版本更新被取消，或工作流在执行到删除组件清理步骤前进入失败、超时等终态时，系统会将该任务下由版本更新删除组件预创建、且尚未开始执行的资源清理记录同步置为对应终态，避免已结束任务继续保留活跃清理记录。如果父 WorkflowQueue 终态已经落库，但该同步步骤因进程退出或临时存储错误未完成，历史扫描会把仍为空、`created`、`queued`、`waiting` 或 `pending` 的预创建 JobInfo 视为尚未执行的 pending 契约，而不会永久误报为活跃清理；`prepare`、`running` 等已开始状态仍会阻止恢复。
 
@@ -707,7 +707,7 @@ curl -X POST "http://localhost:8000/api/v1/applications/app-123/version/cancel" 
 - 直接更新、无变更更新的组件、应用版本、workflow steps 同步和终态操作记录在同一数据库事务内提交；事务内任一步写入失败都会回滚这些数据库记录；若 COMMIT 阶段连接异常，提交结果可能未知，应先查询数据库记录再决定重试。`autoExec: false` 只记录已完成的 update operation task，不创建执行 workflow。
 - 数据库事务不会撤销 Kubernetes 操作：普通同步 `remove` 若已开始清理，后续失败仍可能保留已发生的资源删除；应先检查集群资源状态再决定重试。
 - `autoExec: true` 删除组件会随工作流执行资源清理；`autoExec: false` 不创建工作流或 Task 清理计划，但普通 `remove` 仍会同步清理被删除组件的 Kubernetes 资源
-- `remove cleanup_all` 必须创建 workflow task，不提供同步清理兜底，且 workflow cleanup 保留 standalone PVC 和五类 RBAC
+- `remove cleanup_all` 必须创建 workflow task，不提供同步清理兜底，且 workflow cleanup 保留 standalone PVC，遵守显式 share 保护
 - 全量清理/全量部署使用 `components[]` 保留动作表达
 - `remove cleanup_all + add all` 表示全量重建，清理会在部署前执行；非共享 `store` 可在 StatefulSet `namespace/name` 不变时修改不可变 spec。必删重建会先把 VCT retention 收敛为 `Retain/Retain`，主动清除并复验匹配 PVC 的 StatefulSet/ordinal Pod owner reference，再以 `Orphan` 删除 StatefulSet 并逐 Pod 重检 share 标签：cleanup v2 保留全部 VCT PVC，cleanup v3 只删除受影响模板的 PVC 数据并等待其消失；受 `share.strategy=default` / `ignore` 保护的组件仍拒绝此类修改。如果 workflow 有前置审批步骤，则审批仍位于最前，审批通过后再清理；滚动发布须先升级全部 worker 再开放可能生成 v2/v3 的请求
 - `restart` 只支持已有 `webservice` / `store` 组件，写入 `kubectl.kubernetes.io/restartedAt` 注解并等待本次注解对应的新 Pod Ready；stopped、`share=default`、`share=ignore`、未知 share 策略或集群资源不存在时会在 workflow job 中记录 skipped，`share=force` 仍按普通组件执行

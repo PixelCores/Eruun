@@ -167,7 +167,6 @@ func TestJobCommandTraitValidation(t *testing.T) {
 		{"service", Traits{Service: []ServiceTraitSpec{{}}}, "traits.service"},
 		{"rollout", Traits{Rollout: &RolloutTraitSpec{}}, "traits.rollout"},
 		{"share", Traits{Share: &ShareTraitSpec{}}, "traits.share"},
-		{"rbac", Traits{RBAC: []RBACPolicySpec{{}}}, "traits.rbac"},
 		{"evaluation", Traits{Evaluation: testEvaluationTrait()}, "traits.eval"},
 		{"PVC tmpCreate", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", TmpCreate: true}}}, "traits.storage[0]"},
 		{"PVC size", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", Size: "1Gi"}}}, "traits.storage[0]"},
@@ -232,8 +231,8 @@ func TestJobEvaluationRetainsRestrictedTraits(t *testing.T) {
 	for _, traits := range []Traits{
 		{Init: []InitTraitSpec{{}}}, {Sidecar: []SidecarTraitsSpec{{}}},
 		{Ingress: []IngressTraitsSpec{{}}}, {Service: []ServiceTraitSpec{{}}},
-		{RBAC: []RBACPolicySpec{{}}}, {Probes: []ProbeTraitsSpec{{}}},
-		{TargetWorkEnv: map[string]string{"zone": "a"}}, {Share: &ShareTraitSpec{}},
+		{Probes: []ProbeTraitsSpec{{}}},
+		{NodePool: "batch"}, {Share: &ShareTraitSpec{}},
 		{Rollout: &RolloutTraitSpec{}}, {SecurityPolicy: &SecurityPolicySpec{}},
 		{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent"}}},
 		{EnvFrom: []EnvFromSourceSpec{{Type: "secret", SourceName: "credential"}}},

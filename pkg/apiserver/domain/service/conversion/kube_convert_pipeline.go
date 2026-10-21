@@ -11,19 +11,14 @@ import (
 )
 
 type kubeObjectBuckets struct {
-	workloads           []*unstructured.Unstructured
-	jobs                []*unstructured.Unstructured
-	cronJobs            []*unstructured.Unstructured
-	services            []*unstructured.Unstructured
-	configMaps          []*unstructured.Unstructured
-	secrets             []*unstructured.Unstructured
-	ingresses           []*unstructured.Unstructured
-	serviceAccounts     []*unstructured.Unstructured
-	roles               []*unstructured.Unstructured
-	roleBindings        []*unstructured.Unstructured
-	clusterRoles        []*unstructured.Unstructured
-	clusterRoleBindings []*unstructured.Unstructured
-	pvcs                []*unstructured.Unstructured
+	workloads  []*unstructured.Unstructured
+	jobs       []*unstructured.Unstructured
+	cronJobs   []*unstructured.Unstructured
+	services   []*unstructured.Unstructured
+	configMaps []*unstructured.Unstructured
+	secrets    []*unstructured.Unstructured
+	ingresses  []*unstructured.Unstructured
+	pvcs       []*unstructured.Unstructured
 }
 
 type kubeConvertState struct {
@@ -94,18 +89,6 @@ func ConvertKubeObjectsWithSources(objects []*unstructured.Unstructured) ([]apis
 		return nil, nil, warnings, err
 	}
 
-	stageWarnings, err = state.applyRBACTraits(
-		buckets.serviceAccounts,
-		buckets.roles,
-		buckets.roleBindings,
-		buckets.clusterRoles,
-		buckets.clusterRoleBindings,
-	)
-	warnings = append(warnings, stageWarnings...)
-	if err != nil {
-		return nil, nil, warnings, err
-	}
-
 	return state.components, state.sources, warnings, nil
 }
 
@@ -139,16 +122,8 @@ func classifyKubeObjects(objects []*unstructured.Unstructured) (kubeObjectBucket
 			buckets.secrets = append(buckets.secrets, obj)
 		case string(domainspec.KubeKindIngress):
 			buckets.ingresses = append(buckets.ingresses, obj)
-		case string(domainspec.KubeKindServiceAccount):
-			buckets.serviceAccounts = append(buckets.serviceAccounts, obj)
-		case string(domainspec.KubeKindRole):
-			buckets.roles = append(buckets.roles, obj)
-		case string(domainspec.KubeKindRoleBinding):
-			buckets.roleBindings = append(buckets.roleBindings, obj)
-		case string(domainspec.KubeKindClusterRole):
-			buckets.clusterRoles = append(buckets.clusterRoles, obj)
-		case string(domainspec.KubeKindClusterRoleBinding):
-			buckets.clusterRoleBindings = append(buckets.clusterRoleBindings, obj)
+		case string(domainspec.KubeKindServiceAccount), string(domainspec.KubeKindRole), string(domainspec.KubeKindRoleBinding), string(domainspec.KubeKindClusterRole), string(domainspec.KubeKindClusterRoleBinding):
+			warnings = append(warnings, fmt.Sprintf("%s/%s: RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据", kind, obj.GetName()))
 		case string(domainspec.KubeKindPersistentVolumeClaim):
 			buckets.pvcs = append(buckets.pvcs, obj)
 		default:
@@ -193,12 +168,12 @@ func (s *kubeConvertState) appendSecrets(objects []*unstructured.Unstructured) (
 func (s *kubeConvertState) appendWorkloads(objects []*unstructured.Unstructured) ([]string, error) {
 	var warnings []string
 	for _, obj := range objects {
-		comp, labels, saName, warns, err := convertWorkloadObject(obj, s.pvcLookup)
+		comp, labels, warns, err := convertWorkloadObject(obj, s.pvcLookup)
 		warnings = append(warnings, warns...)
 		if err != nil {
 			return warnings, err
 		}
-		s.components, s.refs = appendConvertedComponent(s.components, s.refs, comp, labels, saName)
+		s.components, s.refs = appendConvertedComponent(s.components, s.refs, comp, labels)
 		if comp != nil {
 			s.sources = append(s.sources, obj)
 		}
@@ -224,23 +199,6 @@ func (s *kubeConvertState) applyIngressTraits(objects []*unstructured.Unstructur
 	}
 	if len(ingresses) > 0 {
 		warnings = append(warnings, applyIngressTraits(ingresses, s.components)...)
-	}
-	return warnings, nil
-}
-
-func (s *kubeConvertState) applyRBACTraits(
-	serviceAccounts []*unstructured.Unstructured,
-	roles []*unstructured.Unstructured,
-	roleBindings []*unstructured.Unstructured,
-	clusterRoles []*unstructured.Unstructured,
-	clusterRoleBindings []*unstructured.Unstructured,
-) ([]string, error) {
-	policies, warnings, err := convertRBACPolicies(serviceAccounts, roles, roleBindings, clusterRoles, clusterRoleBindings)
-	if err != nil {
-		return warnings, err
-	}
-	if len(policies) > 0 {
-		warnings = append(warnings, applyRBACPolicies(policies, s.refs, s.components)...)
 	}
 	return warnings, nil
 }

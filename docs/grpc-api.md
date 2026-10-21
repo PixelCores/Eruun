@@ -16,7 +16,7 @@ Helm 和静态清单让当前 Leader 提供 `0.0.0.0:9000`，固定 Leader Clust
 
 失败使用标准 gRPC status；`google.rpc.ErrorInfo` 的 metadata 中包含 `business_code`，文案只使用审核过的安全消息。HTTP 某些 `200 + 业务错误码` 响应在 gRPC 中是失败 status；业务部分成功仍返回强类型成功响应。客户端应以 status code 做分支，以业务 code 做更细的业务处理，而非解析 message 文本。
 
-节点池和 RBAC 配置分别使用 `NodePoolsService`、`RBACProfilesService`：管理方法要求 `system`，`ListNodePoolOptions` 和 `ListRBACProfileOptions` 要求 `viewer`，只返回名字和描述。更新请求的 `name` 是对象标识，其余字段整体替换；删除成功返回 `google.protobuf.Empty`。配置字段、校验和 `35xxx` 业务码见 [设置页接口](settings-page-api.md#节点池与-rbac-配置)。400 映射为 `InvalidArgument`，404 为 `NotFound`，409 沿用公共映射为 `FailedPrecondition`。
+节点池使用 `NodePoolsService`：管理方法要求 `system`，`ListNodePoolOptions` 要求 `viewer`，只返回名字和描述。更新的 `name` 是对象标识，其余字段整体替换；删除成功返回 `google.protobuf.Empty`。配置校验和错误码见 [设置页接口](settings-page-api.md#节点池)。400 映射为 `InvalidArgument`，404 为 `NotFound`，409 为 `FailedPrecondition`。
 
 ## 分块与取消
 
@@ -88,7 +88,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 127 条；以下 112 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 121 条；以下 106 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
@@ -98,12 +98,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `PUT /api/v1/admin/node-pools/:name` | `/eruun.v1.NodePoolsService/UpdateNodePool` |
 | `DELETE /api/v1/admin/node-pools/:name` | `/eruun.v1.NodePoolsService/DeleteNodePool` |
 | `GET /api/v1/node-pools` | `/eruun.v1.NodePoolsService/ListNodePoolOptions` |
-| `GET /api/v1/admin/rbac-profiles` | `/eruun.v1.RBACProfilesService/ListRBACProfiles` |
-| `GET /api/v1/admin/rbac-profiles/:name` | `/eruun.v1.RBACProfilesService/GetRBACProfile` |
-| `POST /api/v1/admin/rbac-profiles` | `/eruun.v1.RBACProfilesService/CreateRBACProfile` |
-| `PUT /api/v1/admin/rbac-profiles/:name` | `/eruun.v1.RBACProfilesService/UpdateRBACProfile` |
-| `DELETE /api/v1/admin/rbac-profiles/:name` | `/eruun.v1.RBACProfilesService/DeleteRBACProfile` |
-| `GET /api/v1/rbac-profiles` | `/eruun.v1.RBACProfilesService/ListRBACProfileOptions` |
 | `DELETE /api/v1/applications/:appID` | `/eruun.v1.ApplicationService/DeleteApplication` |
 | `DELETE /api/v1/applications/:appID/resources` | `/eruun.v1.ApplicationService/CleanupApplicationResources` |
 | `DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID` | `/eruun.v1.ApplicationService/DeleteWorkflowSchedule` |
@@ -208,6 +202,8 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 不映射的 15 条路由是四条 HTTP 健康路由（`/health`、`/healthz`、`/ready`、`/readyz`）、九条内部 Job Runner 接口（dataset/results/events、Sandbox 申请/查询/释放，以及 Checkpoint 上传/查询/材料下载）以及两条浏览器 OAuth start/callback。该入口不涉及角色间通信、Runner 协议或 Agent/模型工作负载调用；现有 HTTP JSON 与 Cookie 契约不变。
 
 
-`JobsService/GetJob` 的 `JobDetail.sandboxes` 为所选 execution 的安全 Sandbox 生命周期投影，最多 100 条，优先仍占资源的记录；`sandboxes_truncated=true` 表示历史未全部返回。HTTP 对应 `sandboxesTruncated`，两者不提供完整事件审计或实际 trial 运行证明。
+`JobsService/GetJob` 的 `JobDetail.sandboxes` 为所选 execution 的安全 Sandbox 生命周期投影，最多 94 条，优先仍占资源的记录；`sandboxes_truncated=true` 表示历史未全部返回。HTTP 对应 `sandboxesTruncated`，两者不提供完整事件审计或实际 trial 运行证明。
 
 `EvaluationTrait.recovery` 同时用于 Workspace Job 和 Application 组件，字段为 `agent_version`、`replay_safe`、`checkpoint_interval_seconds`。版本和验证规则与 [HTTP 恢复契约](harbor-runtime-recovery.md) 一致；三个 Checkpoint Runner 内部 HTTP 路由不提供用户 RPC。
+
+组件 `AppSpecTraits` 使用 `node_pool = 16`（JSON `nodePool`）；删除的字段号 6、10 和对应名字已 reserved。HTTP 与 gRPC 共享同一 traits 规格。

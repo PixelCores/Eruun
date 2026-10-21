@@ -240,7 +240,7 @@ func (s *Service) prepareTask(ctx context.Context, scope account.Scope, declarat
 		return nil, err
 	}
 	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: declaration.Name, WorkflowDisplayName: declaration.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(snapshot)}
-	stages, err := BuildTask(task, scope.Namespace)
+	stages, err := BuildTask(ctx, s.Store, task, scope.Namespace)
 	if err != nil {
 		return nil, invalid(err)
 	}

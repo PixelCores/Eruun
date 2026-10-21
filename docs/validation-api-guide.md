@@ -404,26 +404,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
             "sourceName": "app-config"
           }
         ],
-        "rbac": [
-          {
-            "serviceAccount": "backend-sa",
-            "rules": [
-              {
-                "apiGroups": [
-                  ""
-                ],
-                "resources": [
-                  "pods"
-                ],
-                "verbs": [
-                  "get",
-                  "list",
-                  "watch"
-                ]
-              }
-            ]
-          }
-        ],
+
         "ingress": [
           {
             "name": "backend-ingress",
@@ -779,8 +760,6 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 | `INVALID_PROBE_TYPE` | 无效的探针类型 |
 | `INVALID_PROBE_CONFIG` | 探针配置无效 |
 | `NESTED_TRAIT_FORBIDDEN` | 禁止嵌套 Trait |
-| `MISSING_RBAC_RULES` | RBAC 缺少规则 |
-| `MISSING_RBAC_VERBS` | RBAC 规则缺少 verbs |
 | `MISSING_INGRESS_ROUTES` | Ingress 缺少路由 |
 | `INVALID_ENVFROM_TYPE` | envFrom 类型无效 |
 | `INVALID_ENV_VALUE_SOURCE` | 环境变量值来源无效 |
@@ -830,38 +809,22 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ### Traits 嵌套规则
 
 - `init` 和 `sidecar` Trait 支持嵌套以下 Traits:
-  - `storage`, `envs`, `envFrom`, `probes`, `resources`, `securityPolicy`, `rbac`, `ingress`
+  - `storage`, `envs`, `envFrom`, `probes`, `resources`, `securityPolicy`, `ingress`
 - **禁止**在 `init` 或 `sidecar` 中再嵌套 `init` 或 `sidecar`
 - `service` Trait 为组件级能力，建议仅在组件顶层 `traits.service` 使用
-- `targetWorkEnv` Trait 为组件级能力，建议仅在组件顶层 `traits.targetWorkEnv` 使用；当前会按对象内容映射到 Pod `nodeSelector`
+- `nodePool` 只支持组件顶层，init/sidecar 嵌套中返回 `INVALID_TRAIT_CONFIG`。
+- 按名字查询 MySQL，引用不存在时返回 `INVALID_TRAIT_CONFIG`，字段为 `component[i].traits.nodePool`。
+- command Job 步骤支持 `nodePool`。
 
-### `targetWorkEnv` 示例
+### 命名配置示例
 
-请求示例见：
-
-- `examples/validation-try/16-valid-target-work-env.json`
-
-示例片段：
+管理员须先通过 `/api/v1/admin/node-pools` 创建配置。成员使用只读选项接口选择名字。有效示例见 `examples/validation-try/16-valid-node-pool.json`（需先创建 `gpu-a100`）；不存在的配置示例见 `09-invalid-unknown-node-pool.json`。
 
 ```json
-{
-  "traits": {
-    "targetWorkEnv": {
-      "app": "lab"
-    }
-  }
-}
+{"traits": {"nodePool": "gpu-a100"}}
 ```
 
-服务端会将其映射为：
-
-```yaml
-spec:
-  template:
-    spec:
-      nodeSelector:
-        app: lab
-```
+部署构建时重新读取配置：节点池内容渲染为 Pod 的 `nodeSelector` 与 `tolerations`。配置变更在下一次部署时使用，不自动重新部署。YAML 转换不会从原始调度字段或 RBAC 对象生成引用，分别提示选择 nodePool、空间工作负载不使用 Kubernetes API 凭据。
 
 ### 探针规则
 
@@ -877,10 +840,8 @@ spec:
 - `persistent` 类型配合 `tmpCreate: true` 时，`size` 需要符合 Kubernetes 资源量格式 (如 `1Gi`, `500Mi`)
 - `config` 和 `secret` 类型需要指定 `sourceName` 或 `name`
 
-### RBAC 规则
 
-- `rules` 数组必填且不能为空
-- 每个 rule 的 `verbs` 数组必填且不能为空
+- 模板覆盖整体替换节点池引用，克隆不重写配置名。
 
 ### Ingress 规则
 
