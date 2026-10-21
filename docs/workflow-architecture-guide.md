@@ -2000,7 +2000,7 @@ type WorkflowRuntimeConfig struct {
 
 Worker 的读取和认领错误不会因为累计次数而退出；取消运行 context 才结束消费循环。读取重试保留 200ms 至 5min 的有界退避，这两个边界是代码常量，没有 flag/env 配置入口。
 
-`--workflow-default-job-timeout` 接受正的 Duration。转换为 JobTask 和 Kubernetes 使用的整数秒时，小数部分向上取整（例如 `500ms` 为 1 秒、`1500ms` 为 2 秒）；接近 Go Duration 极限时使用不溢出的最大整秒值。工作流控制器必须拿到服务配置，没有内部默认值；JobTask 超时缺失（≤0）时，等待 Kubernetes Job、准备重试检查点和派发 Job 结果都会直接报错，不会改用其他默认超时。回调的内部超时上限仅保存纳秒表示，仍按实际 Duration 截断，`500ms` 的回调上限不会扩大为 1 秒。
+`--workflow-default-job-timeout` 接受正的 Duration。转换为 JobTask 和 Kubernetes 使用的整数秒时，小数部分向上取整（例如 `500ms` 为 1 秒、`1500ms` 为 2 秒）；接近 Go Duration 极限时使用不溢出的最大整秒值。工作流控制器必须拿到服务配置，没有内部默认值；JobTask 超时缺失（≤0）时，等待 Kubernetes Job 和准备重试检查点会直接报错；派发 Job 结果时会把出箱记录标为失败且不再重试。都不会改用其他默认超时。回调的内部超时上限仅保存纳秒表示，仍按实际 Duration 截断，`500ms` 的回调上限不会扩大为 1 秒。
 
 ### 11.2 MessagingConfig
 
