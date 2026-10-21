@@ -44,7 +44,6 @@ type WorkflowQueue struct {
 	RunGeneration         uint64      `json:"runGeneration,omitempty" gorm:"column:run_generation;not null;default:0;index:idx_workflow_queue_run_lease,priority:2"`
 	RunToken              string      `json:"-" gorm:"type:varchar(64);column:run_token;index:idx_workflow_queue_run_lease,priority:3"`
 	WorkerID              string      `json:"workerId,omitempty" gorm:"type:varchar(255);column:worker_id;index"`
-	HeartbeatAt           *time.Time  `json:"heartbeatAt,omitempty" gorm:"column:heartbeat_at"`
 	LeaseExpiresAt        *time.Time  `json:"leaseExpiresAt,omitempty" gorm:"column:lease_expires_at;index:idx_workflow_queue_run_lease,priority:1;index:idx_workflow_queue_reaper,priority:2"`
 	DispatchAttempts      uint        `json:"dispatchAttempts,omitempty" gorm:"column:dispatch_attempts;not null;default:0"`
 	SchedulingReason      string      `json:"schedulingReason,omitempty" gorm:"type:varchar(255);column:scheduling_reason"`

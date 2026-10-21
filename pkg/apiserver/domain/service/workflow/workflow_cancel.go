@@ -193,7 +193,6 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		"cancel_source":         config.CancelSourceUser,
 		"run_token":             "",
 		"worker_id":             "",
-		"heartbeat_at":          nil,
 		"lease_expires_at":      nil,
 		"scheduling_reason":     wf.TerminalCallbackPendingReason(cancelReason),
 	}
@@ -219,7 +218,6 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 	task.CancelSource = config.CancelSourceUser
 	task.RunToken = ""
 	task.WorkerID = ""
-	task.HeartbeatAt = nil
 	task.LeaseExpiresAt = nil
 	task.SchedulingReason = wf.TerminalCallbackPendingReason(cancelReason)
 	w.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, config.StatusCancelled, cancelReason)
@@ -325,7 +323,6 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 	if callbackWithoutWorker {
 		task.RunToken = ""
 		task.WorkerID = ""
-		task.HeartbeatAt = nil
 		task.LeaseExpiresAt = nil
 	}
 	if redisClient == nil {
@@ -447,7 +444,6 @@ func (w *workflowServiceImpl) cancelWorkflowTaskState(
 func clearWorkflowExecutionOwner(updates map[string]interface{}) {
 	updates["run_token"] = ""
 	updates["worker_id"] = ""
-	updates["heartbeat_at"] = nil
 	updates["lease_expires_at"] = nil
 }
 

@@ -46,7 +46,7 @@
 
 | 条件（全部匹配） | 更新 |
 |---|---|
-| `status=wait_for_approval`、`approval_pending=true`、`current_step`、`pending_approval_step`、`run_generation`、`approval_deadline`（等于扫描时读到的值） | `status=timeout`、`approval_pending=false`、`pending_approval_step=""`、清空 `run_token/worker_id/heartbeat_at/lease_expires_at`、`scheduling_reason="approval deadline exceeded"` |
+| `status=wait_for_approval`、`approval_pending=true`、`current_step`、`pending_approval_step`、`run_generation`、`approval_deadline`（等于扫描时读到的值） | `status=timeout`、`approval_pending=false`、`pending_approval_step=""`、清空 `run_token/worker_id/lease_expires_at`、`scheduling_reason="approval deadline exceeded"` |
 
 CAS 成功后，Leader 把版本更新预创建且未开始的清理记录置为 `timeout`，再异步发送终态 `timeout` callback（reason 为 `approval step "<name>" timed out`）。因此：
 

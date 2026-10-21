@@ -1,6 +1,6 @@
 package grpcapi
 
-// routeRPC is the versioned route-to-RPC contract for the 112 user-facing
+// routeRPC is the versioned route-to-RPC contract for the 106 user-facing
 // HTTP routes. Browser OAuth, Runner callbacks and probes are deliberately
 // omitted; every new route needs an explicit decision.
 var routeRPC = map[string]string{

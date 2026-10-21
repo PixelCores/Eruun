@@ -572,12 +572,6 @@ func applyWorkflowQueueUpdate(task *model.WorkflowQueue, key string, value inter
 		if v, ok := value.(string); ok {
 			task.WorkerID = v
 		}
-	case "heartbeat_at":
-		if v, ok := value.(time.Time); ok {
-			task.HeartbeatAt = &v
-		} else if value == nil {
-			task.HeartbeatAt = nil
-		}
 	case "lease_expires_at":
 		if v, ok := value.(time.Time); ok {
 			task.LeaseExpiresAt = &v

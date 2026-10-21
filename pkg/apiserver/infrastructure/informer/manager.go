@@ -23,44 +23,23 @@ type Manager struct {
 	mu               sync.RWMutex
 	started          bool
 	waiterGeneration uint64
-	resyncPeriod     time.Duration
 	syncTimeout      time.Duration
 	labelSelector    string
 }
 
-const defaultManagerSyncTimeout = 30 * time.Second
+const (
+	managerResyncPeriod       = 30 * time.Second
+	defaultManagerSyncTimeout = 30 * time.Second
+)
 
-// ManagerOption 配置选项
-type ManagerOption func(*Manager)
-
-// WithResyncPeriod 设置重新同步周期
-func WithResyncPeriod(d time.Duration) ManagerOption {
-	return func(m *Manager) {
-		m.resyncPeriod = d
+// NewManager 创建 Informer 管理器；labelSelector 限定监听的对象以减少内存消耗
+func NewManager(client kubernetes.Interface, labelSelector string) *Manager {
+	return &Manager{
+		client:        client,
+		waiter:        NewResourceReadyWaiter(),
+		syncTimeout:   defaultManagerSyncTimeout,
+		labelSelector: labelSelector,
 	}
-}
-
-// WithLabelSelector 设置标签过滤器（减少内存消耗）
-func WithLabelSelector(selector string) ManagerOption {
-	return func(m *Manager) {
-		m.labelSelector = selector
-	}
-}
-
-// NewManager 创建 Informer 管理器
-func NewManager(client kubernetes.Interface, opts ...ManagerOption) *Manager {
-	m := &Manager{
-		client:       client,
-		waiter:       NewResourceReadyWaiter(),
-		resyncPeriod: 30 * time.Second,
-		syncTimeout:  defaultManagerSyncTimeout,
-	}
-
-	for _, opt := range opts {
-		opt(m)
-	}
-
-	return m
 }
 
 func (m *Manager) resetRuntime() {
@@ -69,18 +48,14 @@ func (m *Manager) resetRuntime() {
 }
 
 func (m *Manager) newFactory() informers.SharedInformerFactory {
-	if m.labelSelector != "" {
-		klog.V(2).Infof("Informer manager created with label selector: %s", m.labelSelector)
-		return informers.NewSharedInformerFactoryWithOptions(
-			m.client,
-			m.resyncPeriod,
-			informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-				opts.LabelSelector = m.labelSelector
-			}),
-		)
-	}
-	klog.V(2).Info("Informer manager created without label selector")
-	return informers.NewSharedInformerFactory(m.client, m.resyncPeriod)
+	klog.V(2).Infof("Informer manager created with label selector: %q", m.labelSelector)
+	return informers.NewSharedInformerFactoryWithOptions(
+		m.client,
+		managerResyncPeriod,
+		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+			opts.LabelSelector = m.labelSelector
+		}),
+	)
 }
 
 // GetWaiter 获取资源等待器

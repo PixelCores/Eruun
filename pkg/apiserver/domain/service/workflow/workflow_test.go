@@ -483,8 +483,6 @@ func (s *statusDataStore) applyTaskUpdatesTo(task *model.WorkflowQueue, updates 
 			task.RunToken, _ = v.(string)
 		case "worker_id":
 			task.WorkerID, _ = v.(string)
-		case "heartbeat_at":
-			task.HeartbeatAt, _ = v.(*time.Time)
 		case "lease_expires_at":
 			task.LeaseExpiresAt, _ = v.(*time.Time)
 		case "scheduling_reason":
