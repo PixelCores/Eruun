@@ -20,7 +20,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
@@ -101,14 +100,14 @@ func (c *DatabaseResetJobCtl) run(ctx context.Context) error {
 
 	for _, plan := range plans {
 		component := plan.component
-		if err := c.markComponentRuntime(ctx, component, config.ComponentStatusPending, 0, ""); err != nil {
+		if err := c.MarkComponentRuntime(ctx, component, config.ComponentStatusPending, 0, "", "database reset status sync"); err != nil {
 			return err
 		}
 		if err := c.resetDatabaseComponent(ctx, plan, initSQLURL); err != nil {
-			markErr := c.markComponentRuntime(ctx, component, config.ComponentStatusFailed, 0, err.Error())
+			markErr := c.MarkComponentRuntime(ctx, component, config.ComponentStatusFailed, 0, err.Error(), "database reset status sync")
 			return errors.Join(err, markErr)
 		}
-		if err := c.markComponentRuntime(ctx, component, config.ComponentStatusRunning, desiredDatabaseReplicas(component), ""); err != nil {
+		if err := c.MarkComponentRuntime(ctx, component, config.ComponentStatusRunning, desiredDatabaseReplicas(component), "", "database reset status sync"); err != nil {
 			return err
 		}
 	}
@@ -578,25 +577,6 @@ func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, na
 		return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait database component %s ready timeout", component.Name))
 	}
 	return err
-}
-
-func (c *DatabaseResetJobCtl) markComponentRuntime(ctx context.Context, component *model.ApplicationComponent, status config.ComponentStatus, readyReplicas int32, lastAbnormal string) error {
-	if component == nil {
-		return nil
-	}
-	if err := repository.UpdateComponentRuntimeFields(ctx, c.Store, component, map[string]interface{}{
-		"status":         string(status),
-		"ready_replicas": readyReplicas,
-		"last_abnormal":  lastAbnormal,
-	}); err != nil {
-		klog.ErrorS(err, "update component runtime status failed", "appID", component.AppID, "component", component.Name, "status", status)
-		return err
-	}
-	component.Status = string(status)
-	component.ReadyReplicas = readyReplicas
-	component.LastAbnormal = lastAbnormal
-	jobexec.InvalidateComponentsCache(ctx, c.Runtime, component.AppID, "database reset status sync")
-	return nil
 }
 
 func (c *DatabaseResetJobCtl) databaseResetTimeout() time.Duration {

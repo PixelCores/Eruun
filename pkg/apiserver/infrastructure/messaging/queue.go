@@ -2,7 +2,11 @@ package messaging
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 // Message represents a queue message with its ID and raw payload.
@@ -27,4 +31,20 @@ type Queue interface {
 	Close(ctx context.Context) error
 	// Stats returns stream backlog size and pending count for a group.
 	Stats(ctx context.Context, group string) (backlog int64, pending int64, err error)
+}
+
+// Ack acknowledges msgID for consumer group and counts failed acknowledgements.
+func Ack(ctx context.Context, queue Queue, group, msgID, reason, consumer string, failures *atomic.Int64) error {
+	if queue == nil {
+		return fmt.Errorf("%s queue is not configured", consumer)
+	}
+	if msgID == "" {
+		return nil
+	}
+	if err := queue.Ack(ctx, group, msgID); err != nil {
+		klog.ErrorS(err, consumer+" ack failed", "group", group, "msgID", msgID, "reason", reason, "failureCount", failures.Add(1))
+		return err
+	}
+	klog.V(4).InfoS(consumer+" ack succeeded", "group", group, "msgID", msgID, "reason", reason)
+	return nil
 }

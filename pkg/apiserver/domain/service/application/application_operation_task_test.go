@@ -15,43 +15,15 @@ import (
 func TestLifecycleOperationRecordsPreserveResourceErrors(t *testing.T) {
 	for _, operation := range []string{"restart", "stop", "start", "cleanup"} {
 		t.Run(operation, func(t *testing.T) {
-			var record func(string, bool, error)
-			var records func() []operationJobRecord
-			var resultError func() error
-			var failures func() []string
-			info := ""
-			switch operation {
-			case "restart":
-				reporter := newRestartReporter()
-				record = func(name string, skipped bool, err error) {
-					reporter.record("Deployment", "default", name, skipped, err)
-				}
-				records = func() []operationJobRecord { return buildRestartJobRecords(reporter) }
-				resultError = reporter.err
-				failures = func() []string { return formatFailedResources(reporter.failedResources) }
-				info = "restarted"
-			case "stop", "start":
-				reporter := newDeploymentScaleReporter()
-				record = func(name string, skipped bool, err error) {
-					reporter.record("Deployment", "default", name, skipped, err)
-				}
-				resultError = reporter.err
-				failures = func() []string { return formatFailedResources(reporter.failedResources) }
-				if operation == "stop" {
-					records = func() []operationJobRecord { return buildStopJobRecords(reporter) }
-					info = "stopped"
-				} else {
-					records = func() []operationJobRecord { return buildStartJobRecords(reporter) }
-					info = "started"
-				}
-			case "cleanup":
-				reporter := newCleanupReporter()
-				record = func(name string, _ bool, err error) { reporter.record("Deployment", "default", name, err) }
-				records = func() []operationJobRecord { return buildCleanupJobRecords(reporter) }
-				resultError = reporter.err
-				failures = func() []string { return formatFailedResources(reporter.failedResources) }
-				info = "deleted"
+			label := map[string]string{"restart": "restart", "stop": "deployment scale", "start": "deployment scale", "cleanup": "cleanup"}[operation]
+			info := map[string]string{"restart": "restarted", "stop": "stopped", "start": "started", "cleanup": "deleted"}[operation]
+			reporter := newOperationReporter(label)
+			record := func(name string, skipped bool, err error) {
+				reporter.record("Deployment", "default", name, skipped, err)
 			}
+			records := func() []operationJobRecord { return reporter.jobRecords(info) }
+			resultError := reporter.err
+			failures := func() []string { return formatFailedResources(reporter.failed) }
 
 			nestedErr := errors.New("request failed (retry exhausted)")
 			record("api", false, nestedErr)

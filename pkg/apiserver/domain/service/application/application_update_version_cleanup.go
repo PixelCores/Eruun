@@ -647,7 +647,7 @@ func (c *applicationsServiceImpl) cleanupVersionUpdateRemovedComponent(ctx conte
 	} else if reason != "" {
 		klog.Infof("version update remove: continue shared component cleanup %s/%s (%s)", comp.Namespace, comp.Name, reason)
 	}
-	reporter := newCleanupReporter()
+	reporter := newOperationReporter("cleanup")
 	if err := c.deleteComponentResources(ctx, comp, reporter); err != nil {
 		return err
 	}

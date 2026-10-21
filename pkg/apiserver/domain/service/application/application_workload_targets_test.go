@@ -36,7 +36,7 @@ func TestNativeRestartTargetsDoNotRequireRendering(t *testing.T) {
 			}
 			client := fake.NewSimpleClientset(object)
 			service := &applicationsServiceImpl{KubeClient: client}
-			reporter := newRestartReporter()
+			reporter := newOperationReporter("restart")
 			patch, err := buildRestartPatch("2026-09-26T00:00:00Z")
 			require.NoError(t, err)
 			restarted := service.restartNativeApplicationComponents(context.Background(), []*model.ApplicationComponent{component}, patch, reporter)

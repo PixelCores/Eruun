@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -633,29 +634,9 @@ func (t *podTracker) snapshotLocked(componentKey string) (componentSnapshot, boo
 
 func normalizeComponentReadyWaitOptions(options ComponentReadyWaitOptions) ComponentReadyWaitOptions {
 	return ComponentReadyWaitOptions{
-		ExpectedImages:      normalizeExpectedImages(options.ExpectedImages),
+		ExpectedImages:      utils.UniqueTrimmed(options.ExpectedImages),
 		ExpectedAnnotations: normalizeExpectedAnnotations(options.ExpectedAnnotations),
 	}
-}
-
-func normalizeExpectedImages(images []string) []string {
-	if len(images) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(images))
-	normalized := make([]string, 0, len(images))
-	for _, image := range images {
-		image = strings.TrimSpace(image)
-		if image == "" {
-			continue
-		}
-		if _, ok := seen[image]; ok {
-			continue
-		}
-		seen[image] = struct{}{}
-		normalized = append(normalized, image)
-	}
-	return normalized
 }
 
 func normalizeExpectedAnnotations(annotations map[string]string) map[string]string {

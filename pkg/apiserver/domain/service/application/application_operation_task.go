@@ -112,43 +112,52 @@ func recordAppOperationTaskInStore(ctx context.Context, store datastore.DataStor
 	return task, nil
 }
 
-func buildCleanupJobRecords(reporter *cleanupReporter) []operationJobRecord {
-	if reporter == nil {
-		return nil
-	}
-	records := buildResourceJobRecords(reporter.deletedResources, config.StatusCompleted, "deleted")
-	records = append(records, buildFailedResourceJobRecords(reporter.failedResources)...)
-	return records
+// operationReporter collects the per-resource outcome of one lifecycle
+// operation (cleanup, restart, stop or start).
+type operationReporter struct {
+	operation string
+	done      []string
+	skipped   []string
+	failed    []operationJobRecord
+	errs      []error
 }
 
-func buildRestartJobRecords(reporter *restartReporter) []operationJobRecord {
-	if reporter == nil {
-		return nil
-	}
-	records := buildResourceJobRecords(reporter.restartedResources, config.StatusCompleted, "restarted")
-	records = append(records, buildResourceJobRecords(reporter.skippedResources, config.StatusSkipped, "skipped")...)
-	records = append(records, buildFailedResourceJobRecords(reporter.failedResources)...)
-	return records
+func newOperationReporter(operation string) *operationReporter {
+	return &operationReporter{operation: operation, done: []string{}, skipped: []string{}, failed: []operationJobRecord{}}
 }
 
-func buildStopJobRecords(reporter *deploymentScaleReporter) []operationJobRecord {
-	if reporter == nil {
-		return nil
+func (r *operationReporter) record(kind, namespace, name string, skipped bool, err error) {
+	if name == "" {
+		return
 	}
-	records := buildResourceJobRecords(reporter.successfulResources, config.StatusCompleted, "stopped")
-	records = append(records, buildResourceJobRecords(reporter.skippedResources, config.StatusSkipped, "skipped")...)
-	records = append(records, buildFailedResourceJobRecords(reporter.failedResources)...)
-	return records
+	target := formatResource(kind, namespace, name)
+	switch {
+	case err != nil:
+		r.failed = append(r.failed, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
+		r.errs = append(r.errs, err)
+	case skipped:
+		r.skipped = append(r.skipped, target)
+	default:
+		r.done = append(r.done, target)
+	}
 }
 
-func buildStartJobRecords(reporter *deploymentScaleReporter) []operationJobRecord {
-	if reporter == nil {
+func (r *operationReporter) err() error {
+	switch len(r.errs) {
+	case 0:
 		return nil
+	case 1:
+		return r.errs[0]
+	default:
+		return fmt.Errorf("%d %s operations failed; first error: %w", len(r.errs), r.operation, r.errs[0])
 	}
-	records := buildResourceJobRecords(reporter.successfulResources, config.StatusCompleted, "started")
-	records = append(records, buildResourceJobRecords(reporter.skippedResources, config.StatusSkipped, "skipped")...)
-	records = append(records, buildFailedResourceJobRecords(reporter.failedResources)...)
-	return records
+}
+
+// jobRecords lists completed resources under doneInfo, then skipped and failed ones.
+func (r *operationReporter) jobRecords(doneInfo string) []operationJobRecord {
+	records := buildResourceJobRecords(r.done, config.StatusCompleted, doneInfo)
+	records = append(records, buildResourceJobRecords(r.skipped, config.StatusSkipped, "skipped")...)
+	return append(records, buildFailedResourceJobRecords(r.failed)...)
 }
 
 func buildUpdateJobRecords(app *model.Applications, req apisv1.UpdateVersionRequest, updated, added, removed []string) []operationJobRecord {

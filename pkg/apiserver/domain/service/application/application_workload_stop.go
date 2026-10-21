@@ -51,7 +51,7 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 	}
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 
-	reporter := newDeploymentScaleReporter()
+	reporter := newOperationReporter("deployment scale")
 	var task *model.WorkflowQueue
 	var taskID string
 	recordTask := func(taskCtx context.Context, taskApp *model.Applications) error {
@@ -63,8 +63,8 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 			operationTaskNameStop,
 			startTime,
 			time.Now().Unix(),
-			buildStopJobRecords(reporter),
-			reporter.failedResources,
+			reporter.jobRecords("stopped"),
+			reporter.failed,
 			taskCallback,
 		)
 		return taskErr
@@ -102,13 +102,13 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 	resp := &apisv1.StopApplicationDeploymentsResponse{
 		AppID:            app.ID,
 		StoppedAt:        stoppedAt,
-		StoppedResources: reporter.successfulResources,
-		SkippedResources: reporter.skippedResources,
+		StoppedResources: reporter.done,
+		SkippedResources: reporter.skipped,
 		TaskID:           taskID,
 	}
-	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failedResources)
-	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = formatFailedResources(reporter.failedResources)
+	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failed)
+	if len(reporter.failed) > 0 {
+		resp.FailedResources = formatFailedResources(reporter.failed)
 		return resp, reporter.err()
 	}
 	return resp, nil
@@ -147,7 +147,7 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 	}
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 
-	reporter := newDeploymentScaleReporter()
+	reporter := newOperationReporter("deployment scale")
 	var task *model.WorkflowQueue
 	var taskID string
 	recordTask := func(taskCtx context.Context, taskApp *model.Applications) error {
@@ -159,8 +159,8 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 			operationTaskNameStart,
 			startTime,
 			time.Now().Unix(),
-			buildStartJobRecords(reporter),
-			reporter.failedResources,
+			reporter.jobRecords("started"),
+			reporter.failed,
 			taskCallback,
 		)
 		return taskErr
@@ -209,13 +209,13 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 	resp := &apisv1.StartApplicationDeploymentsResponse{
 		AppID:            app.ID,
 		StartedAt:        startedAt,
-		StartedResources: reporter.successfulResources,
-		SkippedResources: reporter.skippedResources,
+		StartedResources: reporter.done,
+		SkippedResources: reporter.skipped,
 		TaskID:           taskID,
 	}
-	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failedResources)
-	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = formatFailedResources(reporter.failedResources)
+	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failed)
+	if len(reporter.failed) > 0 {
+		resp.FailedResources = formatFailedResources(reporter.failed)
 		return resp, reporter.err()
 	}
 	return resp, nil
@@ -286,46 +286,4 @@ func (c *applicationsServiceImpl) markComponentStarted(ctx context.Context, comp
 		"ready_replicas": readyReplicas,
 		"last_abnormal":  lastAbnormal,
 	})
-}
-
-type deploymentScaleReporter struct {
-	successfulResources []string
-	skippedResources    []string
-	failedResources     []operationJobRecord
-	errs                []error
-}
-
-func newDeploymentScaleReporter() *deploymentScaleReporter {
-	return &deploymentScaleReporter{
-		successfulResources: []string{},
-		skippedResources:    []string{},
-		failedResources:     []operationJobRecord{},
-	}
-}
-
-func (r *deploymentScaleReporter) record(kind, namespace, name string, skipped bool, err error) {
-	if name == "" {
-		return
-	}
-	target := formatResource(kind, namespace, name)
-	if err != nil {
-		r.failedResources = append(r.failedResources, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
-		r.errs = append(r.errs, err)
-		return
-	}
-	if skipped {
-		r.skippedResources = append(r.skippedResources, target)
-		return
-	}
-	r.successfulResources = append(r.successfulResources, target)
-}
-
-func (r *deploymentScaleReporter) err() error {
-	if len(r.errs) == 0 {
-		return nil
-	}
-	if len(r.errs) == 1 {
-		return r.errs[0]
-	}
-	return fmt.Errorf("%d deployment scale operations failed; first error: %w", len(r.errs), r.errs[0])
 }
