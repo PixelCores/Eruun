@@ -71,11 +71,14 @@ func EnsureNoPendingStatefulSetCleanup(ctx context.Context, store datastore.Data
 // LoadPendingStatefulSetCleanups replays the application's StatefulSet
 // migration tasks and returns the cleanups no successful task has resolved.
 func LoadPendingStatefulSetCleanups(ctx context.Context, store datastore.DataStore, appID string) (PendingStatefulSetCleanups, error) {
-	pending := make(PendingStatefulSetCleanups)
-	appID = strings.TrimSpace(appID)
-	if store == nil || appID == "" {
-		return pending, nil
+	if store == nil {
+		return nil, fmt.Errorf("datastore is required")
 	}
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return nil, fmt.Errorf("application id is required")
+	}
+	pending := make(PendingStatefulSetCleanups)
 	tasks, err := repository.FindWorkflowTasksByAppID(ctx, store, appID)
 	if err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
