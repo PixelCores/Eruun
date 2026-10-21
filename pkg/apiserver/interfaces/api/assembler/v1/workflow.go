@@ -87,16 +87,16 @@ func workflowDetailsToCreateRequests(details []apisv1.WorkflowStepDetail) []apis
 			Approval:        detail.Approval,
 			Components:      append([]string(nil), detail.Components...),
 			Mode:            string(detail.Mode),
+			Properties:      detail.Properties,
 		}
-		step.SetWorkflowPropertiesList(detail.Properties)
 		for _, subDetail := range detail.SubSteps {
 			subStep := apisv1.CreateWorkflowSubStepRequest{
 				SchedulingClass: subDetail.SchedulingClass,
 				Name:            subDetail.Name,
 				WorkflowType:    subDetail.WorkflowType,
 				Components:      append([]string(nil), subDetail.Components...),
+				Properties:      subDetail.Properties,
 			}
-			subStep.SetWorkflowPropertiesList(subDetail.Properties)
 			step.SubSteps = append(step.SubSteps, subStep)
 		}
 		steps = append(steps, step)

@@ -95,7 +95,7 @@ func TestUpdateApplicationWorkflowRejectsInvalidInitSQLURL(t *testing.T) {
 	step := apisv1.CreateWorkflowStepRequest{
 		Name: "database-reset", WorkflowType: config.JobDatabaseReset, Components: []string{"mysql"},
 	}
-	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: "ftp://files.example/game.sql"}})
+	step.Properties = []apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: "ftp://files.example/game.sql"}}
 	_, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
 		Name: "reset-flow", Workflow: []apisv1.CreateWorkflowStepRequest{step},
 	})
@@ -126,17 +126,17 @@ func TestUpdateApplicationWorkflowRejectsParentOrUntargetedInitSQLURLWithSubStep
 	require.Contains(t, err.Error(), "initSqlUrl cannot be set on a parent step with subSteps")
 	require.Empty(t, store.workflows)
 
-	req.Workflow[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Properties = nil
 	req.Workflow[0].Components = []string{"mysql"}
 	req.Workflow[0].SubSteps[0].Components = nil
-	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	req.Workflow[0].SubSteps[0].Properties = []apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}}
 	_, err = svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
 	require.Contains(t, err.Error(), "initSqlUrl requires a target component")
 	require.Empty(t, store.workflows)
 
-	req.Workflow[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
-	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Properties = []apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}}
+	req.Workflow[0].SubSteps[0].Properties = nil
 	req.Workflow[0].SubSteps[0].Components = []string{"mysql"}
 	_, err = svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
@@ -182,7 +182,7 @@ func TestUpdateApplicationWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) 
 		Name: "approve-reset", StepType: config.WorkflowStepTypeApproval, WorkflowType: config.JobDatabaseReset,
 		Approval: &apisv1.WorkflowStepApproval{NotifyURL: "https://example.com/approve"},
 	}
-	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	step.Properties = []apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}}
 	_, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
 		Name: "approval-flow", Workflow: []apisv1.CreateWorkflowStepRequest{step},
 	})
@@ -352,9 +352,9 @@ func TestUpdateApplicationWorkflowNormalizesComponentRefs(t *testing.T) {
 			Name:         "deploy",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{" API ", "api"},
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Policies: []string{" Worker "},
-			},
+			}},
 		}},
 	})
 	require.NoError(t, err)
@@ -534,9 +534,9 @@ func TestUpdateApplicationWorkflowAllowsLogArchiveWorkflowType(t *testing.T) {
 				Name:         "archive-api",
 				WorkflowType: config.JobLogArchiveUpload,
 				Components:   []string{"api"},
-				Properties: apisv1.WorkflowProperties{
+				Properties: []apisv1.WorkflowProperties{{
 					Path: "/var/log/api",
-				},
+				}},
 			},
 		},
 	}
@@ -566,10 +566,10 @@ func TestUpdateApplicationWorkflowPreservesLogArchivePathForNameBasedStep(t *tes
 		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "api",
 			WorkflowType: config.JobLogArchiveUpload,
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Path:      "/var/log/api",
 				Container: "api",
-			},
+			}},
 		}},
 	})
 	require.NoError(t, err)
@@ -605,9 +605,9 @@ func TestUpdateApplicationWorkflowPreservesLogArchivePathForNameBasedSubStep(t *
 			SubSteps: []apisv1.CreateWorkflowSubStepRequest{{
 				Name:         "api",
 				WorkflowType: config.JobLogArchiveUpload,
-				Properties: apisv1.WorkflowProperties{
+				Properties: []apisv1.WorkflowProperties{{
 					Path: "/var/log/api",
-				},
+				}},
 			}},
 		}},
 	})
@@ -643,9 +643,9 @@ func TestUpdateApplicationWorkflowRejectsLogArchiveNonPodComponent(t *testing.T)
 				Name:         "archive-config",
 				WorkflowType: config.JobLogArchiveUpload,
 				Components:   []string{"config"},
-				Properties: apisv1.WorkflowProperties{
+				Properties: []apisv1.WorkflowProperties{{
 					Path: "/var/log/api",
-				},
+				}},
 			},
 		},
 	}

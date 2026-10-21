@@ -8,46 +8,51 @@ import (
 	"io"
 )
 
-var createApplicationsRequestFields = []string{
-	"id",
-	"name",
-	"namespace",
-	"alias",
-	"version",
-	"project",
-	"description",
-	"icon",
-	"components",
-	"workflow",
-	"callback",
-	"failurePolicy",
-	"templateEnabled",
-}
+// The request decoders below match field names exactly (encoding/json alone
+// is case-insensitive) and reject unknown fields even through json.Unmarshal.
 
 func (r *CreateApplicationsRequest) UnmarshalJSON(data []byte) error {
-	return decodeCreateApplicationsRequest(data, r, nil)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*r = CreateApplicationsRequest{}
+	for name, raw := range fields {
+		known, err := decodeCreateApplicationField(name, raw, r)
+		if err != nil {
+			return err
+		}
+		if !known {
+			return fmt.Errorf("json: unknown field %q", name)
+		}
+	}
+	return nil
 }
 
 func (r *CreateAndExecApplicationRequest) UnmarshalJSON(data []byte) error {
-	var base CreateApplicationsRequest
-	var workflowID string
-	var executeAt int64
-
-	extra := map[string]func(json.RawMessage) error{
-		"workflowId": func(raw json.RawMessage) error {
-			return decodeStrictJSON(raw, &workflowID)
-		},
-		"executeAt": func(raw json.RawMessage) error {
-			return decodeStrictJSON(raw, &executeAt)
-		},
-	}
-	if err := decodeCreateApplicationsRequest(data, &base, extra); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-
-	r.CreateApplicationsRequest = base
-	r.WorkflowID = workflowID
-	r.ExecuteAt = executeAt
+	*r = CreateAndExecApplicationRequest{}
+	for name, raw := range fields {
+		var err error
+		switch name {
+		case "workflowId":
+			err = decodeStrictJSON(raw, &r.WorkflowID)
+		case "executeAt":
+			err = decodeStrictJSON(raw, &r.ExecuteAt)
+		default:
+			var known bool
+			known, err = decodeCreateApplicationField(name, raw, &r.CreateApplicationsRequest)
+			if err == nil && !known {
+				err = fmt.Errorf("json: unknown field %q", name)
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -80,58 +85,36 @@ func (r DatabaseResetRequest) InitSQLURLProvided() bool {
 	return r.initSQLURLProvided || r.InitSQLURL != ""
 }
 
-func decodeCreateApplicationsRequest(data []byte, req *CreateApplicationsRequest, extra map[string]func(json.RawMessage) error) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return err
-	}
-	*req = CreateApplicationsRequest{}
-
-	for name, raw := range fields {
-		fieldName, ok := matchJSONFieldName(name, createApplicationsRequestFields)
-		if !ok {
-			fieldName, ok = matchJSONFieldFunc(name, extra)
-		}
-		if !ok {
-			return fmt.Errorf("json: unknown field %q", name)
-		}
-		if err := decodeCreateApplicationField(fieldName, raw, req, extra); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func decodeCreateApplicationField(fieldName string, raw json.RawMessage, req *CreateApplicationsRequest, extra map[string]func(json.RawMessage) error) error {
-	switch fieldName {
+func decodeCreateApplicationField(name string, raw json.RawMessage, req *CreateApplicationsRequest) (bool, error) {
+	switch name {
 	case "id":
-		return decodeStrictJSON(raw, &req.ID)
+		return true, decodeStrictJSON(raw, &req.ID)
 	case "name":
-		return decodeStrictJSON(raw, &req.Name)
+		return true, decodeStrictJSON(raw, &req.Name)
 	case "namespace":
-		return decodeStrictJSON(raw, &req.Namespace)
+		return true, decodeStrictJSON(raw, &req.Namespace)
 	case "alias":
-		return decodeStrictJSON(raw, &req.Alias)
+		return true, decodeStrictJSON(raw, &req.Alias)
 	case "version":
-		return decodeStrictJSON(raw, &req.Version)
+		return true, decodeStrictJSON(raw, &req.Version)
 	case "project":
-		return decodeStrictJSON(raw, &req.Project)
+		return true, decodeStrictJSON(raw, &req.Project)
 	case "description":
-		return decodeStrictJSON(raw, &req.Description)
+		return true, decodeStrictJSON(raw, &req.Description)
 	case "icon":
-		return decodeStrictJSON(raw, &req.Icon)
+		return true, decodeStrictJSON(raw, &req.Icon)
 	case "components":
-		return decodeStrictJSON(raw, &req.Components)
+		return true, decodeStrictJSON(raw, &req.Components)
 	case "workflow":
-		return decodeWorkflowArray(raw, &req.Workflow)
+		return true, decodeWorkflowArray(raw, &req.Workflow)
 	case "callback":
-		return decodeStrictJSON(raw, &req.Callback)
+		return true, decodeStrictJSON(raw, &req.Callback)
 	case "failurePolicy":
-		return decodeStrictJSON(raw, &req.FailurePolicy)
+		return true, decodeStrictJSON(raw, &req.FailurePolicy)
 	case "templateEnabled":
-		return decodeStrictJSON(raw, &req.TemplateEnabled)
+		return true, decodeStrictJSON(raw, &req.TemplateEnabled)
 	default:
-		return extra[fieldName](raw)
+		return false, nil
 	}
 }
 
@@ -210,13 +193,9 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 				return err
 			}
 		case "properties":
-			properties, propertiesList, fromArray, err := decodeWorkflowStepProperties(raw)
-			if err != nil {
+			if err := decodeWorkflowStepProperties(raw, &r.Properties); err != nil {
 				return err
 			}
-			r.Properties = properties
-			r.propertiesList = propertiesList
-			r.propertiesFromArray = fromArray
 		case "components":
 			if err := decodeStrictJSON(raw, &r.Components); err != nil {
 				return err
@@ -234,31 +213,6 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 		}
 	}
 	return nil
-}
-
-func (r CreateWorkflowStepRequest) MarshalJSON() ([]byte, error) {
-	type canonicalStep struct {
-		SchedulingClass string                         `json:"schedulingClass,omitempty"`
-		Name            string                         `json:"name"`
-		StepType        string                         `json:"stepType,omitempty"`
-		JobType         string                         `json:"jobType,omitempty"`
-		Approval        *WorkflowStepApproval          `json:"approval,omitempty"`
-		Properties      []WorkflowProperties           `json:"properties,omitempty"`
-		Components      []string                       `json:"components,omitempty"`
-		Mode            string                         `json:"mode,omitempty"`
-		SubSteps        []CreateWorkflowSubStepRequest `json:"subSteps,omitempty"`
-	}
-	return json.Marshal(canonicalStep{
-		SchedulingClass: r.SchedulingClass,
-		Name:            r.Name,
-		StepType:        string(r.StepType),
-		JobType:         string(r.WorkflowType),
-		Approval:        r.Approval,
-		Properties:      canonicalWorkflowProperties(r.Properties, r.propertiesList, r.propertiesFromArray),
-		Components:      r.Components,
-		Mode:            r.Mode,
-		SubSteps:        r.SubSteps,
-	})
 }
 
 func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
@@ -283,13 +237,9 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 				return err
 			}
 		case "properties":
-			properties, propertiesList, fromArray, err := decodeWorkflowStepProperties(raw)
-			if err != nil {
+			if err := decodeWorkflowStepProperties(raw, &r.Properties); err != nil {
 				return err
 			}
-			r.Properties = properties
-			r.propertiesList = propertiesList
-			r.propertiesFromArray = fromArray
 		case "components":
 			if err := decodeStrictJSON(raw, &r.Components); err != nil {
 				return err
@@ -301,77 +251,20 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r CreateWorkflowSubStepRequest) MarshalJSON() ([]byte, error) {
-	type canonicalSubStep struct {
-		SchedulingClass string               `json:"schedulingClass,omitempty"`
-		Name            string               `json:"name"`
-		JobType         string               `json:"jobType,omitempty"`
-		Properties      []WorkflowProperties `json:"properties,omitempty"`
-		Components      []string             `json:"components,omitempty"`
-	}
-	return json.Marshal(canonicalSubStep{
-		SchedulingClass: r.SchedulingClass,
-		Name:            r.Name,
-		JobType:         string(r.WorkflowType),
-		Properties:      canonicalWorkflowProperties(r.Properties, r.propertiesList, r.propertiesFromArray),
-		Components:      r.Components,
-	})
-}
-
-func canonicalWorkflowProperties(single WorkflowProperties, list []WorkflowProperties, fromArray bool) []WorkflowProperties {
-	if fromArray {
-		return list
-	}
-	if len(single.Policies) == 0 && single.Path == "" && single.Container == "" && single.InitSQLURL == "" {
+func decodeWorkflowStepProperties(raw json.RawMessage, properties *[]WorkflowProperties) error {
+	trimmed := bytes.TrimSpace(raw)
+	if bytes.Equal(trimmed, []byte("null")) {
 		return nil
 	}
-	return []WorkflowProperties{single}
-}
-
-func decodeWorkflowStepProperties(raw json.RawMessage) (WorkflowProperties, []WorkflowProperties, bool, error) {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		return WorkflowProperties{}, nil, false, nil
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		return errors.New("workflow step properties must be an array")
 	}
-	if trimmed[0] != '[' {
-		return WorkflowProperties{}, nil, false, errors.New("workflow step properties must be an array")
-	}
-
-	var propertiesList []WorkflowProperties
-	if err := decodeStrictJSON(raw, &propertiesList); err != nil {
-		return WorkflowProperties{}, nil, true, err
-	}
-	if len(propertiesList) == 0 {
-		return WorkflowProperties{}, nil, true, nil
-	}
-	return propertiesList[0], propertiesList, true, nil
-}
-
-func matchJSONFieldName(name string, candidates []string) (string, bool) {
-	for _, candidate := range candidates {
-		if name == candidate {
-			return candidate, true
-		}
-	}
-	return "", false
-}
-
-func matchJSONFieldFunc(name string, funcs map[string]func(json.RawMessage) error) (string, bool) {
-	if len(funcs) == 0 {
-		return "", false
-	}
-	if _, ok := funcs[name]; ok {
-		return name, true
-	}
-	return "", false
+	return decodeStrictJSON(raw, properties)
 }
 
 func decodeWorkflowArray(raw json.RawMessage, workflow *[]CreateWorkflowStepRequest) error {
 	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		return errors.New("workflow must be an array")
-	}
-	if trimmed[0] != '[' {
+	if len(trimmed) == 0 || trimmed[0] != '[' {
 		return errors.New("workflow must be an array")
 	}
 	return decodeStrictJSON(raw, workflow)

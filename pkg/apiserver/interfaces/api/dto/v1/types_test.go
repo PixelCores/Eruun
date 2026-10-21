@@ -30,7 +30,7 @@ func TestWorkflowStepCanonicalPropertiesKeepsSingleInitSQLURL(t *testing.T) {
 		"jobType":"database_reset",
 		"properties":[{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}]
 	}`), &step))
-	require.True(t, step.HasWorkflowInitSQLURL())
+	require.Equal(t, "https://files.example/game.sql", step.Properties[0].InitSQLURL)
 	raw, err := json.Marshal(step)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
@@ -422,25 +422,18 @@ func TestUpdateApplicationWorkflowRequestAcceptsReadResponsePropertiesArray(t *t
 	require.Len(t, req.Workflow, 1)
 
 	step := req.Workflow[0]
-	require.True(t, step.WorkflowPropertiesFromArray())
 	require.Equal(t, config.JobLogArchiveUpload, step.WorkflowType)
-	require.Equal(t, WorkflowProperties{
-		Policies:  []string{"api"},
-		Path:      "/var/log/api",
-		Container: "api",
-	}, step.Properties)
 	require.Equal(t, []WorkflowProperties{{
 		Policies:  []string{"api"},
 		Path:      "/var/log/api",
 		Container: "api",
-	}}, step.WorkflowPropertiesList())
+	}}, step.Properties)
 
 	require.Len(t, step.SubSteps, 1)
-	require.True(t, step.SubSteps[0].WorkflowPropertiesFromArray())
 	require.Equal(t, []WorkflowProperties{{
 		Policies: []string{"worker"},
 		Path:     "/var/log/worker",
-	}}, step.SubSteps[0].WorkflowPropertiesList())
+	}}, step.SubSteps[0].Properties)
 }
 
 func TestCreateWorkflowStepRequestRejectsPropertiesArrayUnknownField(t *testing.T) {

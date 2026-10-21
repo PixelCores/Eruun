@@ -206,8 +206,6 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 			reqStep.WorkflowType,
 			reqStep.Components,
 			reqStep.Properties,
-			reqStep.WorkflowPropertiesList(),
-			reqStep.WorkflowPropertiesFromArray(),
 			componentNames,
 		)
 		for _, subReq := range reqStep.SubSteps {
@@ -221,8 +219,6 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 				subReq.WorkflowType,
 				subReq.Components,
 				subReq.Properties,
-				subReq.WorkflowPropertiesList(),
-				subReq.WorkflowPropertiesFromArray(),
 				componentNames,
 			)
 			step.SubSteps = append(step.SubSteps, subStep)
@@ -232,12 +228,13 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 	return workflowSteps
 }
 
-func workflowModelPoliciesFromRequest(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, componentNames map[string]string) []model.Policies {
-	if !fromArray {
-		return workflowModelPoliciesFromSingleProperty(name, jobType, explicit, properties, componentNames)
-	}
+func workflowModelPoliciesFromRequest(name string, jobType config.JobType, explicit []string, propertiesList []apisv1.WorkflowProperties, componentNames map[string]string) []model.Policies {
 	if len(propertiesList) == 0 {
-		return workflowModelPoliciesFromSingleProperty(name, jobType, explicit, apisv1.WorkflowProperties{}, componentNames)
+		policyComponentNames := workflowTargetComponents(name, jobType, explicit, nil, componentNames)
+		if len(policyComponentNames) == 0 {
+			return nil
+		}
+		return []model.Policies{{Policies: policyComponentNames}}
 	}
 
 	result := make([]model.Policies, 0, len(propertiesList))
@@ -257,19 +254,6 @@ func workflowModelPoliciesFromRequest(name string, jobType config.JobType, expli
 		})
 	}
 	return result
-}
-
-func workflowModelPoliciesFromSingleProperty(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, componentNames map[string]string) []model.Policies {
-	policyComponentNames := workflowTargetComponents(name, jobType, explicit, properties.Policies, componentNames)
-	if len(policyComponentNames) == 0 {
-		return nil
-	}
-	return []model.Policies{{
-		Policies:   policyComponentNames,
-		Path:       strings.TrimSpace(properties.Path),
-		Container:  strings.TrimSpace(properties.Container),
-		InitSQLURL: strings.TrimSpace(properties.InitSQLURL),
-	}}
 }
 
 func convertWorkflowStepApprovalFromRequest(req *apisv1.WorkflowStepApproval) *model.WorkflowStepApproval {
@@ -481,7 +465,7 @@ func ValidateWorkflowSteps(steps []apisv1.CreateWorkflowStepRequest, components 
 			continue
 		}
 		if stepType == config.WorkflowStepTypeApproval {
-			if len(step.Components) > 0 || len(step.Properties.Policies) > 0 || len(step.SubSteps) > 0 || step.HasWorkflowInitSQLURL() {
+			if len(step.Components) > 0 || len(step.Properties) > 0 || len(step.SubSteps) > 0 {
 				errors = append(errors, apisv1.ValidationError{
 					Field:   stepField,
 					Code:    apisv1.ErrCodeInvalidApprovalConfig,
@@ -500,8 +484,7 @@ func ValidateWorkflowSteps(steps []apisv1.CreateWorkflowStepRequest, components 
 			continue
 		}
 
-		items, itemErrors := workflowPropertiesValidationItems(step.Name, step.WorkflowType, step.Components, step.Properties,
-			step.WorkflowPropertiesList(), step.WorkflowPropertiesFromArray(), stepField)
+		items, itemErrors := workflowPropertiesValidationItems(step.Name, step.WorkflowType, step.Components, step.Properties, stepField)
 		errors = append(errors, itemErrors...)
 		if workflowPropertiesComponentRefCount(items) == 0 && len(step.SubSteps) == 0 {
 			errors = append(errors, apisv1.ValidationError{
@@ -528,8 +511,7 @@ func ValidateWorkflowSteps(steps []apisv1.CreateWorkflowStepRequest, components 
 			if subStep.Name != "" {
 				errors = append(errors, ValidateLabelName(subStep.Name, subStepField+".name")...)
 			}
-			subItems, subItemErrors := workflowPropertiesValidationItems(subStep.Name, subStep.WorkflowType, subStep.Components, subStep.Properties,
-				subStep.WorkflowPropertiesList(), subStep.WorkflowPropertiesFromArray(), subStepField)
+			subItems, subItemErrors := workflowPropertiesValidationItems(subStep.Name, subStep.WorkflowType, subStep.Components, subStep.Properties, subStepField)
 			errors = append(errors, subItemErrors...)
 			errors = append(errors, validateWorkflowPropertiesItems(subStep.WorkflowType, subItems, true, components)...)
 		}
@@ -590,15 +572,8 @@ type workflowPropertiesValidationItem struct {
 	componentRefs   []workflowComponentValidationRef
 }
 
-func workflowPropertiesValidationItems(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, field string) ([]workflowPropertiesValidationItem, []apisv1.ValidationError) {
+func workflowPropertiesValidationItems(name string, jobType config.JobType, explicit []string, propertiesList []apisv1.WorkflowProperties, field string) ([]workflowPropertiesValidationItem, []apisv1.ValidationError) {
 	explicitField := field + ".components"
-	if !fromArray {
-		return []workflowPropertiesValidationItem{{
-			properties:      properties,
-			propertiesField: field + ".properties",
-			componentRefs:   workflowTargetComponentRefs(name, jobType, explicit, properties.Policies, explicitField, explicitField),
-		}}, nil
-	}
 	if len(propertiesList) == 0 {
 		return []workflowPropertiesValidationItem{{
 			propertiesField: field + ".properties",

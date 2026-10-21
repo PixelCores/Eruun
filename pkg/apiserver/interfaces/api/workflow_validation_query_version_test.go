@@ -231,16 +231,16 @@ func TestNormalizeWorkflowStepsAppliesNodeRulesToStepsAndSubSteps(t *testing.T) 
 			Name:       "Deploy-API",
 			StepType:   config.WorkflowStepType(" Component "),
 			Components: []string{" API ", "Worker"},
-			Properties: apis.WorkflowProperties{
+			Properties: []apis.WorkflowProperties{{
 				Policies: []string{" Policy-A "},
-			},
+			}},
 			SubSteps: []apis.CreateWorkflowSubStepRequest{
 				{
 					Name:       "Migrate-DB",
 					Components: []string{" DB "},
-					Properties: apis.WorkflowProperties{
+					Properties: []apis.WorkflowProperties{{
 						Policies: []string{" Cache "},
-					},
+					}},
 				},
 			},
 		},
@@ -260,12 +260,12 @@ func TestNormalizeWorkflowStepsAppliesNodeRulesToStepsAndSubSteps(t *testing.T) 
 	require.Equal(t, "deploy-api", steps[0].Name)
 	require.Equal(t, config.WorkflowStepTypeComponent, steps[0].StepType)
 	require.Equal(t, []string{"API", "Worker"}, steps[0].Components)
-	require.Equal(t, []string{"Policy-A"}, steps[0].Properties.Policies)
+	require.Equal(t, []string{"Policy-A"}, steps[0].Properties[0].Policies)
 	require.Nil(t, steps[0].Approval)
 	require.Len(t, steps[0].SubSteps, 1)
 	require.Equal(t, "migrate-db", steps[0].SubSteps[0].Name)
 	require.Equal(t, []string{"DB"}, steps[0].SubSteps[0].Components)
-	require.Equal(t, []string{"Cache"}, steps[0].SubSteps[0].Properties.Policies)
+	require.Equal(t, []string{"Cache"}, steps[0].SubSteps[0].Properties[0].Policies)
 
 	require.Equal(t, "manual-gate", steps[1].Name)
 	require.Equal(t, config.WorkflowStepTypeApproval, steps[1].StepType)
@@ -320,8 +320,8 @@ func TestTryWorkflowAcceptsCanonicalWorkflow(t *testing.T) {
 	require.Equal(t, "archive-api", validationSvc.workflow.Workflow[0].Name)
 	require.Equal(t, config.JobLogArchiveUpload, validationSvc.workflow.Workflow[0].WorkflowType)
 	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].Components)
-	require.True(t, validationSvc.workflow.Workflow[0].WorkflowPropertiesFromArray())
-	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].WorkflowPropertiesList()[0].Policies)
+	require.Len(t, validationSvc.workflow.Workflow[0].Properties, 1)
+	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].Properties[0].Policies)
 }
 
 func TestTryWorkflowPreservesExplicitEmptyFailurePolicy(t *testing.T) {

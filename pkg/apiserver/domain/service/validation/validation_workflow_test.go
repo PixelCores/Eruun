@@ -146,7 +146,7 @@ func TestValidationService_TryWorkflowChecksDatabaseResetInitSQLURL(t *testing.T
 			step := apisv1.CreateWorkflowStepRequest{
 				Name: "reset-mysql", WorkflowType: tt.jobType, Components: []string{"mysql"},
 			}
-			step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: tt.url}})
+			step.Properties = []apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: tt.url}}
 			resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
 				Workflow: []apisv1.CreateWorkflowStepRequest{step},
 			})
@@ -180,16 +180,16 @@ func TestValidationService_TryWorkflowRejectsParentOrUntargetedInitSQLURLWithSub
 	require.False(t, resp.Valid)
 	requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
 
-	req.Workflow[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Properties = nil
 	req.Workflow[0].Components = []string{"mysql"}
 	req.Workflow[0].SubSteps[0].Components = nil
-	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	req.Workflow[0].SubSteps[0].Properties = []apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}}
 	resp = svc.TryWorkflow(context.Background(), "app-1", req)
 	require.False(t, resp.Valid)
 	requireValidationPath(t, resp.Errors, "/workflow/0/subSteps/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
 
-	req.Workflow[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
-	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Properties = []apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}}
+	req.Workflow[0].SubSteps[0].Properties = nil
 	req.Workflow[0].SubSteps[0].Components = []string{"mysql"}
 	resp = svc.TryWorkflow(context.Background(), "app-1", req)
 	require.False(t, resp.Valid)
@@ -218,7 +218,7 @@ func TestValidationService_TryWorkflowAllowsTargetedSubStepInitSQLURL(t *testing
 
 	resp := svc.TryWorkflow(context.Background(), "app-1", req)
 	require.True(t, resp.Valid, "%+v", resp.Errors)
-	require.Equal(t, "https://files.example/game.sql", resp.NormalizedSpec.Workflow[0].SubSteps[0].WorkflowPropertiesList()[0].InitSQLURL)
+	require.Equal(t, "https://files.example/game.sql", resp.NormalizedSpec.Workflow[0].SubSteps[0].Properties[0].InitSQLURL)
 }
 
 func TestValidationService_TryWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) {
@@ -227,7 +227,21 @@ func TestValidationService_TryWorkflowRejectsInitSQLURLOnApprovalStep(t *testing
 		Name: "approve-reset", StepType: config.WorkflowStepTypeApproval, WorkflowType: config.JobDatabaseReset,
 		Approval: &apisv1.WorkflowStepApproval{NotifyURL: "https://example.com/approve"},
 	}
-	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	step.Properties = []apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}}
+	resp := svc.TryWorkflow(context.Background(), "", apisv1.TryWorkflowRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{step},
+	})
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0", apisv1.ErrCodeInvalidApprovalConfig)
+}
+
+func TestValidationService_TryWorkflowRejectsLaterPropertiesOnApprovalStep(t *testing.T) {
+	svc := &validationServiceImpl{}
+	step := apisv1.CreateWorkflowStepRequest{
+		Name: "approve", StepType: config.WorkflowStepTypeApproval,
+		Approval:   &apisv1.WorkflowStepApproval{NotifyURL: "https://example.com/approve"},
+		Properties: []apisv1.WorkflowProperties{{}, {Policies: []string{"api"}}},
+	}
 	resp := svc.TryWorkflow(context.Background(), "", apisv1.TryWorkflowRequest{
 		Workflow: []apisv1.CreateWorkflowStepRequest{step},
 	})
@@ -709,9 +723,9 @@ func TestValidationService_TryApplication_LogArchiveUploadAllowsNameBasedStep(t 
 			Name:         "api",
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Path: "/var/log/api",
-			},
+			}},
 		}},
 	})
 
@@ -736,9 +750,9 @@ func TestValidationService_TryApplication_LogArchiveUploadRejectsNonPodComponent
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
 			Components:   []string{"app-config"},
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Path: "/var/log/app",
-			},
+			}},
 		}},
 	})
 
@@ -795,9 +809,9 @@ func TestValidationService_TryWorkflow_LogArchiveUploadAllowsNameBasedStep(t *te
 			Name:         "api",
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Path: "/var/log/api",
-			},
+			}},
 		}},
 	})
 
@@ -823,9 +837,9 @@ func TestValidationService_TryWorkflow_LogArchiveUploadRejectsNonPodComponent(t 
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
 			Components:   []string{"app-config"},
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Path: "/var/log/app",
-			},
+			}},
 		}},
 	})
 

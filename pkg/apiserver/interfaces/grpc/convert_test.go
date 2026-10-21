@@ -81,13 +81,12 @@ func TestTypedNestedDynamicFieldsAndEmbeddedRequest(t *testing.T) {
 }
 
 func TestTypedWorkflowPropertiesArrayRoundTrip(t *testing.T) {
-	step := apis.CreateWorkflowStepRequest{Name: "archive"}
-	step.SetWorkflowPropertiesList([]apis.WorkflowProperties{
+	step := apis.CreateWorkflowStepRequest{Name: "archive", Properties: []apis.WorkflowProperties{
 		{Policies: []string{"api"}, Path: "/var/log/api"},
 		{Policies: []string{"worker"}, Path: "/var/log/worker"},
-	})
+	}}
 	subStep := apis.CreateWorkflowSubStepRequest{Name: "archive-sidecar"}
-	subStep.SetWorkflowPropertiesList([]apis.WorkflowProperties{{Policies: []string{"sidecar"}, Container: "logs"}})
+	subStep.Properties = []apis.WorkflowProperties{{Policies: []string{"sidecar"}, Container: "logs"}}
 	step.SubSteps = []apis.CreateWorkflowSubStepRequest{subStep}
 
 	applicationSpec := apis.CreateApplicationsRequest{Name: "demo", Workflow: []apis.CreateWorkflowStepRequest{step}}
@@ -97,9 +96,8 @@ func TestTypedWorkflowPropertiesArrayRoundTrip(t *testing.T) {
 	require.Len(t, message.Workflow[0].SubSteps[0].Properties, 1)
 	decoded, err := decodeTypedRequest[apis.CreateApplicationsRequest](message)
 	require.NoError(t, err)
-	require.True(t, decoded.Workflow[0].WorkflowPropertiesFromArray())
-	require.Equal(t, step.WorkflowPropertiesList(), decoded.Workflow[0].WorkflowPropertiesList())
-	require.Equal(t, subStep.WorkflowPropertiesList(), decoded.Workflow[0].SubSteps[0].WorkflowPropertiesList())
+	require.Equal(t, step.Properties, decoded.Workflow[0].Properties)
+	require.Equal(t, subStep.Properties, decoded.Workflow[0].SubSteps[0].Properties)
 
 	// ListApplicationWorkflows includes a resubmittable spec assembled from the
 	// stored Workflow. Its canonical JSON also contains properties arrays.

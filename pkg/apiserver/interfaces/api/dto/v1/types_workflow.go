@@ -20,72 +20,11 @@ type WorkflowProperties struct {
 }
 
 type CreateWorkflowSubStepRequest struct {
-	SchedulingClass string             `json:"schedulingClass,omitempty"`
-	Name            string             `json:"name"`
-	WorkflowType    config.JobType     `json:"jobType,omitempty"`
-	Properties      WorkflowProperties `json:"properties,omitempty"`
-	Components      []string           `json:"components,omitempty"`
-
-	propertiesList      []WorkflowProperties
-	propertiesFromArray bool
-}
-
-func (r CreateWorkflowStepRequest) WorkflowPropertiesList() []WorkflowProperties {
-	if !r.propertiesFromArray {
-		return nil
-	}
-	return r.propertiesList
-}
-
-func (r CreateWorkflowStepRequest) WorkflowPropertiesFromArray() bool {
-	return r.propertiesFromArray
-}
-
-func (r CreateWorkflowStepRequest) HasWorkflowInitSQLURL() bool {
-	if r.Properties.InitSQLURL != "" {
-		return true
-	}
-	for _, properties := range r.WorkflowPropertiesList() {
-		if properties.InitSQLURL != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (r *CreateWorkflowStepRequest) SetWorkflowPropertiesList(properties []WorkflowProperties) {
-	if r == nil {
-		return
-	}
-	r.propertiesFromArray = true
-	r.propertiesList = append([]WorkflowProperties(nil), properties...)
-	r.Properties = WorkflowProperties{}
-	if len(properties) > 0 {
-		r.Properties = properties[0]
-	}
-}
-
-func (r CreateWorkflowSubStepRequest) WorkflowPropertiesList() []WorkflowProperties {
-	if !r.propertiesFromArray {
-		return nil
-	}
-	return r.propertiesList
-}
-
-func (r CreateWorkflowSubStepRequest) WorkflowPropertiesFromArray() bool {
-	return r.propertiesFromArray
-}
-
-func (r *CreateWorkflowSubStepRequest) SetWorkflowPropertiesList(properties []WorkflowProperties) {
-	if r == nil {
-		return
-	}
-	r.propertiesFromArray = true
-	r.propertiesList = append([]WorkflowProperties(nil), properties...)
-	r.Properties = WorkflowProperties{}
-	if len(properties) > 0 {
-		r.Properties = properties[0]
-	}
+	SchedulingClass string               `json:"schedulingClass,omitempty"`
+	Name            string               `json:"name"`
+	WorkflowType    config.JobType       `json:"jobType,omitempty"`
+	Properties      []WorkflowProperties `json:"properties,omitempty"`
+	Components      []string             `json:"components,omitempty"`
 }
 
 type WorkflowCallback struct {
