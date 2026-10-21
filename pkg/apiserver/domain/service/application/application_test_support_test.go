@@ -84,18 +84,6 @@ func findComponentByAppAndName(store *inMemoryAppStore, appID, name string) *mod
 	return nil
 }
 
-type syncFailWorkflowRepo struct {
-	*mockWorkflowRepo
-	updateErr error
-}
-
-func (m *syncFailWorkflowRepo) Update(ctx context.Context, workflow *model.Workflow) error {
-	if m.updateErr != nil {
-		return m.updateErr
-	}
-	return m.mockWorkflowRepo.Update(ctx, workflow)
-}
-
 func decodeWorkflowSteps(t *testing.T, js *model.JSONStruct) *model.WorkflowSteps {
 	t.Helper()
 	var steps model.WorkflowSteps
@@ -138,6 +126,7 @@ type inMemoryAppStore struct {
 	runtimeUpdateErr          error
 	beforeTransaction         func(*inMemoryAppStore)
 	skipNilCallbackOnPut      bool
+	workflowCASErr            error
 	errExistingApplicationAdd bool
 }
 
@@ -655,6 +644,9 @@ func (s *inMemoryAppStore) CompareAndSwap(_ context.Context, entity datastore.En
 		applyInMemoryApplicationUpdates(app, updates)
 		return true, nil
 	case *model.Workflow:
+		if s.workflowCASErr != nil {
+			return false, s.workflowCASErr
+		}
 		workflow, ok := s.workflows[v.ID]
 		if !ok || !matchesInMemoryCondition(workflow.ID, conditionField, conditionValue) {
 			return false, nil

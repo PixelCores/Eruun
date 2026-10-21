@@ -19,8 +19,6 @@ const workflowDispatchQueryBatchSize = 100
 // WorkflowRepository defines the interface for workflow data operations.
 type WorkflowRepository interface {
 	FindByID(ctx context.Context, workflowID string) (*model.Workflow, error)
-	Create(ctx context.Context, workflow *model.Workflow) error
-	Update(ctx context.Context, workflow *model.Workflow) error
 	FindByAppID(ctx context.Context, appID string) ([]*model.Workflow, error)
 }
 
@@ -36,14 +34,6 @@ func NewWorkflowRepository() WorkflowRepository {
 
 func (r *workflowRepository) FindByID(ctx context.Context, workflowID string) (*model.Workflow, error) {
 	return WorkflowByID(ctx, r.Store, workflowID)
-}
-
-func (r *workflowRepository) Create(ctx context.Context, workflow *model.Workflow) error {
-	return CreateWorkflow(ctx, r.Store, workflow)
-}
-
-func (r *workflowRepository) Update(ctx context.Context, workflow *model.Workflow) error {
-	return r.Store.Put(ctx, workflow)
 }
 
 func (r *workflowRepository) FindByAppID(ctx context.Context, appID string) ([]*model.Workflow, error) {

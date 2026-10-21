@@ -26,9 +26,6 @@ func TestWorkflowRepositoryMethods(t *testing.T) {
 	_, err := repo.FindByID(context.Background(), "wf-1")
 	require.NoError(t, err)
 
-	require.NoError(t, repo.Create(context.Background(), &model.Workflow{ID: "wf-2"}))
-	require.NoError(t, repo.Update(context.Background(), &model.Workflow{ID: "wf-2"}))
-
 	list, err := repo.FindByAppID(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, list, 1)

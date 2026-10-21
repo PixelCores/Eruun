@@ -3,8 +3,9 @@ package application
 import (
 	"context"
 	"errors"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -131,57 +132,6 @@ func TestUpdateVersionTemplateDoesNotUseVersionForResourceKey(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "2.0.0", store.apps["tmpl-1"].Version)
 	require.Equal(t, "nginx:2.0", store.components["api"].Image)
-}
-
-func TestUpdateVersionKeepsCommittedChangesWhenWorkflowStepSyncFails(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{
-		ID:        "app-1",
-		Name:      "DemoApp",
-		Version:   "1.0.0",
-		Namespace: "default",
-	}
-	store.components["backend"] = &model.ApplicationComponent{
-		Name:  "backend",
-		AppID: "app-1",
-	}
-	store.workflows["wf-1"] = &model.Workflow{
-		ID:    "wf-1",
-		AppID: "app-1",
-		Steps: mustJSONStruct(&model.WorkflowSteps{
-			Steps: []*model.WorkflowStep{
-				{Name: "backend", WorkflowType: config.JobDeploy},
-			},
-		}),
-	}
-
-	svc := newMockServiceWithStore(store)
-	svc.WorkflowRepo = &syncFailWorkflowRepo{
-		mockWorkflowRepo: &mockWorkflowRepo{store: store},
-		updateErr:        errors.New("workflow update failed"),
-	}
-
-	replicas := int32(1)
-	req := apisv1.UpdateVersionRequest{
-		Version: "2.0.0",
-		Components: []apisv1.ComponentUpdateSpec{
-			{
-				Action:        "add",
-				Name:          "redis-cache",
-				ComponentType: config.StoreJob,
-				Image:         "redis:7-alpine",
-				Replicas:      &replicas,
-			},
-		},
-		AutoExec: boolPtr(false),
-	}
-
-	resp, err := svc.UpdateVersion(context.Background(), "app-1", req)
-	require.NoError(t, err)
-	require.Equal(t, "2.0.0", resp.Version)
-	require.Contains(t, resp.AddedComponents, "redis-cache")
-	require.Equal(t, "2.0.0", store.apps["app-1"].Version)
-	require.NotNil(t, store.components["redis-cache"])
 }
 
 func TestUpdateVersionRejectsStructureChangesWhenWorkflowTaskActive(t *testing.T) {

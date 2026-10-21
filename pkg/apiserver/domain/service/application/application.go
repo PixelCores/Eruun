@@ -887,6 +887,10 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		return nil, fmt.Errorf("marshal workflow steps: %w", err)
 	}
 
+	transactional, ok := c.Store.(datastore.Transactional)
+	if !ok {
+		return nil, fmt.Errorf("workflow update requires transactional datastore")
+	}
 	if target == nil {
 		namespace, projectID, description := deriveWorkflowMetadata(app, workflows)
 		if workflowType == "" {
@@ -906,7 +910,9 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 			Callback:     callbackStruct,
 		}
 		target.Steps = stepsStruct
-		if err := c.WorkflowRepo.Create(ctx, target); err != nil {
+		if err := transactional.WithTransaction(ctx, func(tx datastore.DataStore) error {
+			return repository.CreateWorkflow(ctx, tx, target)
+		}); err != nil {
 			return nil, err
 		}
 	} else {
@@ -923,13 +929,18 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 			target.WorkflowType = workflowType
 		}
 		target.Steps = stepsStruct
-		if err := c.WorkflowRepo.Update(ctx, target); err != nil {
-			return nil, err
-		}
-		if req.Callback != nil && callbackStruct == nil {
-			if err := updateWorkflowCallbackField(ctx, c.Store, target.ID, nil); err != nil {
-				return nil, err
+		// Put skips nil fields, so clearing the callback is a second write that
+		// must commit together with the new steps.
+		if err := transactional.WithTransaction(ctx, func(tx datastore.DataStore) error {
+			if err := tx.Put(ctx, target); err != nil {
+				return err
 			}
+			if req.Callback != nil && callbackStruct == nil {
+				return updateWorkflowCallbackField(ctx, tx, target.ID, nil)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
 	}
 	c.invalidateApplicationListCaches(ctx)
