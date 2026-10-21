@@ -11,12 +11,6 @@ import (
 type pathParamBinder func(*gin.Context) (string, bool)
 type requestBinder[T any] func(*gin.Context) (*T, bool)
 
-func validatedRequestBody[T any](invalidErr error, logBindErr bool) requestBinder[T] {
-	return func(c *gin.Context) (*T, bool) {
-		return bindAndValidate[T](c, invalidErr, logBindErr)
-	}
-}
-
 func validatedStrictJSONBody[T any](invalidErr error, logBindErr bool) requestBinder[T] {
 	return func(c *gin.Context) (*T, bool) {
 		return bindAndValidateStrictJSON[T](c, invalidErr, logBindErr)

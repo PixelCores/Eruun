@@ -41,7 +41,7 @@ func (s *settings) getSetting(c *gin.Context) {
 func (s *settings) createSetting(c *gin.Context) {
 	handleBoundResult(
 		c,
-		validatedRequestBody[apis.CreateSystemSettingRequest](bcode.ErrSystemSettingValueInvalid, false),
+		validatedStrictJSONBody[apis.CreateSystemSettingRequest](bcode.ErrSystemSettingValueInvalid, false),
 		func(ctx context.Context, req *apis.CreateSystemSettingRequest) (*apis.SystemSetting, error) {
 			return s.SystemSettingService.Create(ctx, *req)
 		},
@@ -52,7 +52,7 @@ func (s *settings) updateSetting(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		settingTypePathParam,
-		validatedRequestBody[apis.UpdateSystemSettingRequest](bcode.ErrSystemSettingValueInvalid, false),
+		validatedStrictJSONBody[apis.UpdateSystemSettingRequest](bcode.ErrSystemSettingValueInvalid, false),
 		func(ctx context.Context, settingType string, req *apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error) {
 			return s.SystemSettingService.Update(ctx, settingType, *req)
 		},

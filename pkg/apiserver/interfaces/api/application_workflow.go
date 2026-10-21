@@ -51,7 +51,7 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req, ok := bindRequest[apis.UpdateApplicationWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
+	req, ok := bindStrictJSON[apis.UpdateApplicationWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
 	if !ok {
 		return
 	}
@@ -88,7 +88,7 @@ func (app *applicationWorkflows) upsertWorkflowSchedule(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		appIDPathParam,
-		validatedRequestBody[apis.UpsertWorkflowScheduleRequest](bcode.ErrWorkflowConfig, true),
+		validatedStrictJSONBody[apis.UpsertWorkflowScheduleRequest](bcode.ErrWorkflowConfig, true),
 		func(ctx context.Context, appID string, req *apis.UpsertWorkflowScheduleRequest) (*apis.UpsertWorkflowScheduleResponse, error) {
 			return app.WorkflowService.UpsertWorkflowSchedule(ctx, appID, *req)
 		},
@@ -124,7 +124,7 @@ func (app *applicationWorkflows) execApplicationWorkflow(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		appIDPathParam,
-		validatedRequestBody[apis.ExecWorkflowRequest](bcode.ErrWorkflowConfig, true),
+		validatedStrictJSONBody[apis.ExecWorkflowRequest](bcode.ErrWorkflowConfig, true),
 		func(ctx context.Context, appID string, req *apis.ExecWorkflowRequest) (*apis.ExecWorkflowResponse, error) {
 			resp, err := app.WorkflowService.ExecWorkflowTaskForApp(ctx, appID, req.WorkflowID, req.ExecuteAt, idempotencyKey)
 			if resp != nil {
@@ -167,7 +167,7 @@ func (app *applicationWorkflows) approveWorkflowTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req, ok := bindRequest[apis.TaskApprovalRequest](c, bcode.ErrWorkflowConfig, true)
+	req, ok := bindStrictJSON[apis.TaskApprovalRequest](c, bcode.ErrWorkflowConfig, true)
 	if !ok {
 		return
 	}
@@ -250,7 +250,7 @@ func (app *applicationWorkflows) cancelWorkflow(
 	if !ok {
 		return
 	}
-	req, ok := bindAndValidate[apis.CancelWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
+	req, ok := bindAndValidateStrictJSON[apis.CancelWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
 	if !ok {
 		return
 	}
@@ -315,7 +315,7 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 		return
 	}
 
-	req, ok := bindRequest[apis.UpdateApplicationWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
+	req, ok := bindStrictJSON[apis.UpdateApplicationWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
 	if !ok {
 		return
 	}

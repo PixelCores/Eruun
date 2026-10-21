@@ -44,7 +44,7 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 func (app *applications) convertApplications(c *gin.Context) {
 	handleBoundResult(
 		c,
-		validatedRequestBody[apis.ConvertApplicationsRequest](bcode.ErrApplicationConfig, true),
+		validatedStrictJSONBody[apis.ConvertApplicationsRequest](bcode.ErrApplicationConfig, true),
 		func(ctx context.Context, req *apis.ConvertApplicationsRequest) (*apis.ConvertApplicationsResponse, error) {
 			return app.ConversionService.ConvertKubeResources(ctx, *req)
 		},
@@ -69,7 +69,7 @@ func (app *applications) listApplications(c *gin.Context) {
 }
 
 func (app *applications) batchGetApplications(c *gin.Context) {
-	req, ok := bindRequest[apis.BatchGetApplicationsRequest](c, bcode.ErrApplicationConfig, true)
+	req, ok := bindStrictJSON[apis.BatchGetApplicationsRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return
 	}
@@ -161,7 +161,7 @@ func (app *applications) deleteApplication(c *gin.Context) {
 		return
 	}
 
-	req, ok := bindJSONAllowEOF[apis.DeleteApplicationRequest](c, bcode.ErrApplicationConfig, true)
+	req, ok := bindStrictJSONAllowEOF[apis.DeleteApplicationRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return
 	}

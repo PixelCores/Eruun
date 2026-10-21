@@ -39,7 +39,7 @@ func (app *applications) listApplicationComponents(c *gin.Context) {
 }
 
 func (app *applications) listBatchApplicationComponentStatus(c *gin.Context) {
-	req, ok := bindRequest[apis.BatchApplicationComponentStatusRequest](c, bcode.ErrApplicationConfig, true)
+	req, ok := bindStrictJSON[apis.BatchApplicationComponentStatusRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return
 	}

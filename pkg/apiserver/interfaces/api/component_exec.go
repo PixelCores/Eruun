@@ -22,7 +22,7 @@ func (app *applications) execComponentShellScript(c *gin.Context) {
 }
 
 func validatedComponentShellScriptRequest(c *gin.Context) (*apis.ExecComponentShellScriptRequest, bool) {
-	req, ok := bindRequest[apis.ExecComponentShellScriptRequest](c, bcode.ErrApplicationConfig, true)
+	req, ok := bindStrictJSON[apis.ExecComponentShellScriptRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return nil, false
 	}

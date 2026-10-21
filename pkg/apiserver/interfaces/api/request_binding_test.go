@@ -23,7 +23,7 @@ func TestBindAndValidateRejectsInvalidPayload(t *testing.T) {
 
 	r := gin.New()
 	r.POST("/binding", func(c *gin.Context) {
-		if _, ok := bindAndValidate[bindingTestRequest](c, bcode.ErrApplicationConfig, true); !ok {
+		if _, ok := bindAndValidateStrictJSON[bindingTestRequest](c, bcode.ErrApplicationConfig, true); !ok {
 			return
 		}
 		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
@@ -44,7 +44,7 @@ func TestBindAndValidateRejectsValidationFailure(t *testing.T) {
 
 	r := gin.New()
 	r.POST("/binding", func(c *gin.Context) {
-		if _, ok := bindAndValidate[bindingTestRequest](c, bcode.ErrApplicationConfig, false); !ok {
+		if _, ok := bindAndValidateStrictJSON[bindingTestRequest](c, bcode.ErrApplicationConfig, false); !ok {
 			return
 		}
 		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
@@ -65,7 +65,7 @@ func TestBindJSONAllowEOFAcceptsEmptyBody(t *testing.T) {
 
 	r := gin.New()
 	r.DELETE("/binding", func(c *gin.Context) {
-		req, ok := bindJSONAllowEOF[bindingTestRequest](c, bcode.ErrApplicationConfig, true)
+		req, ok := bindStrictJSONAllowEOF[bindingTestRequest](c, bcode.ErrApplicationConfig, true)
 		if !ok {
 			return
 		}

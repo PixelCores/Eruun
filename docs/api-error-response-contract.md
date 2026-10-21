@@ -34,6 +34,8 @@ HTTP envelope 与错误映射由 `pkg/apiserver/interfaces/api/response` 统一�
 | `datastore.ErrRecordNotExist` | `404` | `404` | `404 Not Found` |
 | 非业务通用错误 | `500` | `500` | `The service has lapsed.` |
 
+所有 HTTP JSON 请求体都按严格模式解码：未知字段、类型错误或多个 JSON 值都会被拒绝，返回入口对应的 4xx 业务错误，不会静默忽略拼错的字段。必填等约束由 `validate` 标签校验。
+
 应用不存在是业务级不存在，响应使用 HTTP `200`，body 中返回 `code=10005`、`message=application not found`；客户端应依赖 body `code` 区分该场景。
 
 非业务通用错误不会在响应体中回显原始 `err.Error()`。这包括但不限于 DB、Kubernetes、网络、文件路径、DSN、password、token、API key 等内部或敏感细节。

@@ -25,7 +25,7 @@ func (app *applications) exportComponentFilesZip(c *gin.Context) {
 		return
 	}
 
-	req, ok := bindRequest[apis.ExportComponentFilesRequest](c, bcode.ErrApplicationConfig, false)
+	req, ok := bindStrictJSON[apis.ExportComponentFilesRequest](c, bcode.ErrApplicationConfig, false)
 	if !ok {
 		return
 	}
