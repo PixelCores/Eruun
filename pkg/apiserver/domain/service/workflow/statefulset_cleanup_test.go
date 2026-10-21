@@ -36,6 +36,15 @@ func TestExecWorkflowTaskForAppBlocksPendingStatefulSetCleanup(t *testing.T) {
 	}
 }
 
+func TestLoadPendingStatefulSetCleanupsRequiresStoreAndAppID(t *testing.T) {
+	_, err := LoadPendingStatefulSetCleanups(context.Background(), nil, "app-1")
+	require.ErrorContains(t, err, "datastore is required")
+
+	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
+	_, err = LoadPendingStatefulSetCleanups(context.Background(), store, " ")
+	require.ErrorContains(t, err, "application id is required")
+}
+
 func TestStatefulSetCleanupFenceRequiresAV3ResumeForPendingPVCTemplates(t *testing.T) {
 	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
 	v2Store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
