@@ -52,7 +52,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 
 	restartedAt := formatWorkloadRestartAt(time.Now())
-	reporter := newRestartReporter()
+	reporter := newOperationReporter("restart")
 	restartedComponents := make([]string, 0, len(components))
 	var markErr error
 	var task *model.WorkflowQueue
@@ -66,8 +66,8 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 			operationTaskNameRestart,
 			startTime,
 			time.Now().Unix(),
-			buildRestartJobRecords(reporter),
-			reporter.failedResources,
+			reporter.jobRecords("restarted"),
+			reporter.failed,
 			taskCallback,
 		)
 		return taskErr
@@ -82,7 +82,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		if err := c.markComponentsStatus(ctx, app.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {
 			markErr = fmt.Errorf("mark components restarting: %w", err)
 			statusTarget := formatResource("ComponentStatus", pickNamespace(app.Namespace, config.DefaultNamespace), app.ID)
-			reporter.failedResources = append(reporter.failedResources, operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)})
+			reporter.failed = append(reporter.failed, operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)})
 		}
 	}
 	if taskErr := recordTask(ctx, app); taskErr != nil {
@@ -92,16 +92,16 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	resp := &apisv1.RestartApplicationWorkloadsResponse{
 		AppID:              app.ID,
 		RestartedAt:        restartedAt,
-		RestartedResources: reporter.restartedResources,
-		SkippedResources:   reporter.skippedResources,
+		RestartedResources: reporter.done,
+		SkippedResources:   reporter.skipped,
 		TaskID:             taskID,
 	}
-	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failedResources)
+	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failed)
 	if markErr != nil {
 		klog.ErrorS(markErr, "mark components restarting failed after workloads restarted", "appID", app.ID, "taskID", resp.TaskID)
 	}
-	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = formatFailedResources(reporter.failedResources)
+	if len(reporter.failed) > 0 {
+		resp.FailedResources = formatFailedResources(reporter.failed)
 		if markErr != nil {
 			return resp, errors.Join(reporter.err(), markErr)
 		}
@@ -113,7 +113,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	return resp, nil
 }
 
-func (c *applicationsServiceImpl) restartNativeApplicationComponents(ctx context.Context, components []*model.ApplicationComponent, patch []byte, reporter *restartReporter) []string {
+func (c *applicationsServiceImpl) restartNativeApplicationComponents(ctx context.Context, components []*model.ApplicationComponent, patch []byte, reporter *operationReporter) []string {
 	restartedComponents := make([]string, 0, len(components))
 	for _, component := range components {
 		if component == nil {
@@ -162,7 +162,7 @@ func formatWorkloadRestartAt(now time.Time) string {
 	return now.UTC().Format(time.RFC3339Nano)
 }
 
-func recordRestartSkippedResource(component *model.ApplicationComponent, reporter *restartReporter) {
+func recordRestartSkippedResource(component *model.ApplicationComponent, reporter *operationReporter) {
 	if component == nil || reporter == nil {
 		return
 	}
@@ -231,46 +231,4 @@ func (c *applicationsServiceImpl) restartStatefulSet(ctx context.Context, namesp
 		return false, err
 	}
 	return false, nil
-}
-
-type restartReporter struct {
-	restartedResources []string
-	skippedResources   []string
-	failedResources    []operationJobRecord
-	errs               []error
-}
-
-func newRestartReporter() *restartReporter {
-	return &restartReporter{
-		restartedResources: []string{},
-		skippedResources:   []string{},
-		failedResources:    []operationJobRecord{},
-	}
-}
-
-func (r *restartReporter) record(kind, namespace, name string, skipped bool, err error) {
-	if name == "" {
-		return
-	}
-	target := formatResource(kind, namespace, name)
-	if err != nil {
-		r.failedResources = append(r.failedResources, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
-		r.errs = append(r.errs, err)
-		return
-	}
-	if skipped {
-		r.skippedResources = append(r.skippedResources, target)
-		return
-	}
-	r.restartedResources = append(r.restartedResources, target)
-}
-
-func (r *restartReporter) err() error {
-	if len(r.errs) == 0 {
-		return nil
-	}
-	if len(r.errs) == 1 {
-		return r.errs[0]
-	}
-	return fmt.Errorf("%d restart operations failed; first error: %w", len(r.errs), r.errs[0])
 }

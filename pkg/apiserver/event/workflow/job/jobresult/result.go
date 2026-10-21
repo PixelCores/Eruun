@@ -412,19 +412,7 @@ func decodeResultPayload(raw []byte) (*JobResultPayload, error) {
 }
 
 func (d *ResultDispatcher) ackMessage(ctx context.Context, msgID, reason string) error {
-	if d.queue == nil {
-		return fmt.Errorf("result dispatcher queue is not configured")
-	}
-	if msgID == "" {
-		return nil
-	}
-	if err := d.queue.Ack(ctx, d.Group, msgID); err != nil {
-		failures := d.ackFailures.Add(1)
-		klog.ErrorS(err, "result dispatcher ack failed", "group", d.Group, "msgID", msgID, "reason", reason, "failureCount", failures)
-		return err
-	}
-	klog.V(4).InfoS("result dispatcher ack succeeded", "group", d.Group, "msgID", msgID, "reason", reason)
-	return nil
+	return msg.Ack(ctx, d.queue, d.Group, msgID, reason, "result dispatcher", &d.ackFailures)
 }
 
 func isResultPayloadProcessable(payload *JobResultPayload) bool {

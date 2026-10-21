@@ -15,7 +15,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
@@ -102,7 +101,7 @@ func (c *VersionRestartJobCtl) run(ctx context.Context) error {
 	if c.Job.Status == config.StatusSkipped {
 		return nil
 	}
-	if err := c.markComponentRuntime(ctx, component, config.ComponentStatusRestarting, 0, ""); err != nil {
+	if err := c.MarkComponentRuntime(ctx, component, config.ComponentStatusRestarting, 0, "", "version restart status sync"); err != nil {
 		return err
 	}
 	return c.waitRestartReady(ctx, component, target, restartedAt)
@@ -243,25 +242,6 @@ func (c *VersionRestartJobCtl) skip(reason string) {
 	}
 	c.Job.Status = config.StatusSkipped
 	c.Job.Info = strings.TrimSpace(reason)
-}
-
-func (c *VersionRestartJobCtl) markComponentRuntime(ctx context.Context, component *model.ApplicationComponent, status config.ComponentStatus, readyReplicas int32, lastAbnormal string) error {
-	if component == nil {
-		return nil
-	}
-	if err := repository.UpdateComponentRuntimeFields(ctx, c.Store, component, map[string]interface{}{
-		"status":         string(status),
-		"ready_replicas": readyReplicas,
-		"last_abnormal":  lastAbnormal,
-	}); err != nil {
-		klog.ErrorS(err, "update component runtime status failed", "appID", component.AppID, "component", component.Name, "status", status)
-		return err
-	}
-	component.Status = string(status)
-	component.ReadyReplicas = readyReplicas
-	component.LastAbnormal = lastAbnormal
-	jobexec.InvalidateComponentsCache(ctx, c.Runtime, component.AppID, "version restart status sync")
-	return nil
 }
 
 func normalizeVersionRestartComponent(component *model.ApplicationComponent) *model.ApplicationComponent {

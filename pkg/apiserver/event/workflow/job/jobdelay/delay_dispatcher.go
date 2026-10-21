@@ -486,19 +486,7 @@ func (d *DelayDispatcher) itemKey(item *delayItem) string {
 }
 
 func (d *DelayDispatcher) ackMessage(ctx context.Context, msgID, reason string) error {
-	if d.queue == nil {
-		return fmt.Errorf("delay dispatcher queue is not configured")
-	}
-	if msgID == "" {
-		return nil
-	}
-	if err := d.queue.Ack(ctx, d.group, msgID); err != nil {
-		failures := d.ackFailures.Add(1)
-		klog.ErrorS(err, "delay dispatcher ack failed", "group", d.group, "msgID", msgID, "reason", reason, "failureCount", failures)
-		return err
-	}
-	klog.V(4).InfoS("delay dispatcher ack succeeded", "group", d.group, "msgID", msgID, "reason", reason)
-	return nil
+	return msg.Ack(ctx, d.queue, d.group, msgID, reason, "delay dispatcher", &d.ackFailures)
 }
 
 func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {

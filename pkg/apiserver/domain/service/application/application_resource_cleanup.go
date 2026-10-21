@@ -83,7 +83,7 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 		return resp, err
 	}
 
-	reporter := newCleanupReporter()
+	reporter := newOperationReporter("cleanup")
 	for _, component := range components {
 		if component == nil {
 			continue
@@ -105,15 +105,15 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 
 	resp := &apisv1.CleanupApplicationResourcesResponse{
 		AppID:            app.ID,
-		DeletedResources: reporter.deletedResources,
+		DeletedResources: reporter.done,
 	}
-	resp.TaskID, _, err = c.attachOperationTaskWithCallback(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, endTime, buildCleanupJobRecords(reporter), reporter.failedResources, nil)
+	resp.TaskID, _, err = c.attachOperationTaskWithCallback(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, endTime, reporter.jobRecords("deleted"), reporter.failed, nil)
 	if err != nil {
-		resp.FailedResources = formatFailedResources(reporter.failedResources)
+		resp.FailedResources = formatFailedResources(reporter.failed)
 		return resp, errors.Join(reporter.err(), fmt.Errorf("Kubernetes cleanup may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err))
 	}
-	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = formatFailedResources(reporter.failedResources)
+	if len(reporter.failed) > 0 {
+		resp.FailedResources = formatFailedResources(reporter.failed)
 		return resp, reporter.err()
 	}
 	return resp, nil
@@ -268,7 +268,7 @@ func (c *applicationsServiceImpl) sharedComponentHasAbnormalPods(ctx context.Con
 	return false, "", nil
 }
 
-func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) error {
+func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) error {
 	props, err := jobexec.ParseProperties(component.Properties)
 	if err != nil {
 		return err
@@ -298,7 +298,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			}
 			c.deleteAdditionalObjects(ctx, componentPtr.Namespace, result.AdditionalObjects, reporter)
 		}
-		reporter.record("Deployment", deployNS, deployName, c.deleteDeployment(ctx, deployNS, deployName))
+		reporter.record("Deployment", deployNS, deployName, false, c.deleteDeployment(ctx, deployNS, deployName))
 	case config.StoreJob:
 		result, err := jobdeploy.GenerateStoreService(componentPtr, workflowtraits.IdentityProfiles(componentPtr))
 		if err != nil {
@@ -317,7 +317,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			}
 			c.deleteAdditionalObjects(ctx, componentPtr.Namespace, result.AdditionalObjects, reporter)
 		}
-		reporter.record("StatefulSet", statefulNS, statefulName, c.deleteStatefulSet(ctx, statefulNS, statefulName))
+		reporter.record("StatefulSet", statefulNS, statefulName, false, c.deleteStatefulSet(ctx, statefulNS, statefulName))
 	case config.ConfJob:
 		c.deleteConfigMapForComponent(ctx, componentPtr, &props, reporter)
 	case config.SecretJob:
@@ -344,7 +344,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			}
 			c.deleteAdditionalObjects(ctx, componentPtr.Namespace, result.AdditionalObjects, reporter)
 		}
-		reporter.record("Job", jobNS, jobName, c.deleteJob(ctx, jobNS, jobName))
+		reporter.record("Job", jobNS, jobName, false, c.deleteJob(ctx, jobNS, jobName))
 	case config.ScheduledJob:
 		c.deleteScheduledJobForComponent(ctx, componentPtr, &props, reporter)
 	}
@@ -354,11 +354,11 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 	return nil
 }
 
-func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) {
 	ns := component.Namespace
 	appID, componentName := strings.TrimSpace(component.AppID), strings.TrimSpace(component.Name)
 	if c.KubeClient == nil || appID == "" || componentName == "" {
-		reporter.record("Job", ns, component.Name, fmt.Errorf("evaluation cleanup requires a Kubernetes client and component identity"))
+		reporter.record("Job", ns, component.Name, false, fmt.Errorf("evaluation cleanup requires a Kubernetes client and component identity"))
 		return
 	}
 	selector := labels.Set{
@@ -369,7 +369,7 @@ func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.C
 	jobs, err := c.KubeClient.BatchV1().Jobs(ns).List(opCtx, metav1.ListOptions{LabelSelector: selector})
 	cancel()
 	if err != nil {
-		reporter.record("Job", ns, component.Name, fmt.Errorf("list evaluation Jobs: %w", err))
+		reporter.record("Job", ns, component.Name, false, fmt.Errorf("list evaluation Jobs: %w", err))
 		return
 	}
 	for i := range jobs.Items {
@@ -382,11 +382,11 @@ func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.C
 			}
 			return c.KubeClient.BatchV1().Jobs(namespace).Delete(deleteCtx, item.Name, options)
 		})
-		reporter.record("Job", ns, item.Name, err)
+		reporter.record("Job", ns, item.Name, false, err)
 	}
 }
 
-func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) {
 	if component == nil || reporter == nil {
 		return
 	}
@@ -407,7 +407,7 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 	})
 	cancel()
 	if err != nil {
-		reporter.record("Service", ns, componentName, fmt.Errorf("list services: %w", err))
+		reporter.record("Service", ns, componentName, false, fmt.Errorf("list services: %w", err))
 		return
 	}
 	for i := range serviceList.Items {
@@ -415,11 +415,11 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 		if svcName == "" {
 			continue
 		}
-		reporter.record("Service", ns, svcName, c.deleteService(ctx, ns, svcName))
+		reporter.record("Service", ns, svcName, false, c.deleteService(ctx, ns, svcName))
 	}
 }
 
-func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) {
 	if component == nil || reporter == nil {
 		return
 	}
@@ -440,7 +440,7 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 	})
 	cancel()
 	if err != nil {
-		reporter.record("Ingress", ns, componentName, fmt.Errorf("list ingresses: %w", err))
+		reporter.record("Ingress", ns, componentName, false, fmt.Errorf("list ingresses: %w", err))
 		return
 	}
 	for i := range ingressList.Items {
@@ -448,31 +448,31 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 		if ingressName == "" {
 			continue
 		}
-		reporter.record("Ingress", ns, ingressName, c.deleteIngress(ctx, ns, ingressName))
+		reporter.record("Ingress", ns, ingressName, false, c.deleteIngress(ctx, ns, ingressName))
 	}
 }
 
-func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *operationReporter) {
 	cm := jobdeploy.GenerateConfigMap(component, props)
 	ns := pickNamespace(cm.Namespace, component.Namespace)
 	name := cm.Name
 	if name == "" {
 		name = component.Name
 	}
-	reporter.record("ConfigMap", ns, name, c.deleteConfigMap(ctx, ns, name))
+	reporter.record("ConfigMap", ns, name, false, c.deleteConfigMap(ctx, ns, name))
 }
 
-func (c *applicationsServiceImpl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *operationReporter) {
 	sec := jobdeploy.GenerateSecret(component, props)
 	ns := pickNamespace(sec.Namespace, component.Namespace)
 	name := sec.Name
 	if name == "" {
 		name = component.Name
 	}
-	reporter.record("Secret", ns, name, c.deleteSecret(ctx, ns, name))
+	reporter.record("Secret", ns, name, false, c.deleteSecret(ctx, ns, name))
 }
 
-func (c *applicationsServiceImpl) deleteAdditionalObjects(ctx context.Context, fallbackNamespace string, objs []client.Object, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteAdditionalObjects(ctx context.Context, fallbackNamespace string, objs []client.Object, reporter *operationReporter) {
 	for _, obj := range objs {
 		switch resource := obj.(type) {
 		case *corev1.PersistentVolumeClaim:
@@ -480,7 +480,7 @@ func (c *applicationsServiceImpl) deleteAdditionalObjects(ctx context.Context, f
 			klog.V(4).Infof("cleanup: preserving pvc %s/%s", ns, resource.Name)
 		case *networkingv1.Ingress:
 			ns := pickNamespace(resource.Namespace, fallbackNamespace)
-			reporter.record("Ingress", ns, resource.Name, c.deleteIngress(ctx, ns, resource.Name))
+			reporter.record("Ingress", ns, resource.Name, false, c.deleteIngress(ctx, ns, resource.Name))
 		default:
 			klog.V(4).Infof("cleanup: unsupported additional object type %T", obj)
 		}
@@ -573,42 +573,6 @@ func (c *applicationsServiceImpl) deleteNamespaced(ctx context.Context, namespac
 	return nil
 }
 
-type cleanupReporter struct {
-	deletedResources []string
-	failedResources  []operationJobRecord
-	errs             []error
-}
-
-func newCleanupReporter() *cleanupReporter {
-	return &cleanupReporter{
-		deletedResources: []string{},
-		failedResources:  []operationJobRecord{},
-	}
-}
-
-func (r *cleanupReporter) record(kind, namespace, name string, err error) {
-	if name == "" {
-		return
-	}
-	target := formatResource(kind, namespace, name)
-	if err != nil {
-		r.failedResources = append(r.failedResources, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
-		r.errs = append(r.errs, err)
-	} else {
-		r.deletedResources = append(r.deletedResources, target)
-	}
-}
-
-func (r *cleanupReporter) err() error {
-	if len(r.errs) == 0 {
-		return nil
-	}
-	if len(r.errs) == 1 {
-		return r.errs[0]
-	}
-	return fmt.Errorf("%d cleanup operations failed; first error: %w", len(r.errs), r.errs[0])
-}
-
 func formatResource(kind, namespace, name string) string {
 	if namespace == "" {
 		return fmt.Sprintf("%s:%s", kind, name)
@@ -626,7 +590,7 @@ func pickNamespace(candidate, fallback string) string {
 	return config.DefaultNamespace
 }
 
-func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
+func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *operationReporter) {
 	schedule := strings.TrimSpace(props.Schedule)
 	if schedule != "" {
 		normalized, err := utils.NormalizeCronSchedule(schedule)
@@ -635,7 +599,7 @@ func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Con
 		}
 		result, err := jobdeploy.GenerateScheduledCronJob(component, props, normalized, workflowtraits.IdentityProfiles(component))
 		if err != nil {
-			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), err)
+			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), false, err)
 			return
 		}
 		cronNS := component.Namespace
@@ -651,6 +615,6 @@ func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Con
 			}
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, reporter)
 		}
-		reporter.record("CronJob", cronNS, cronName, c.deleteCronJob(ctx, cronNS, cronName))
+		reporter.record("CronJob", cronNS, cronName, false, c.deleteCronJob(ctx, cronNS, cronName))
 	}
 }

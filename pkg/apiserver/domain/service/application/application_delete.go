@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 )
@@ -95,7 +96,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 
 		if len(activeTaskIDs) > 0 {
 			return fmt.Errorf("refusing to delete application while workflow tasks remain active: %s",
-				strings.Join(uniqueStrings(activeTaskIDs), ","))
+				strings.Join(utils.UniqueTrimmed(activeTaskIDs), ","))
 		}
 
 		// Cascading deletion is the terminal application override: it already owns
@@ -119,18 +120,18 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp.Warnings = append(resp.Warnings, warnings...)
 		if len(activeTaskIDs) > 0 {
 			return fmt.Errorf("refusing to delete application while workflow tasks remain active: %s",
-				strings.Join(uniqueStrings(activeTaskIDs), ","))
+				strings.Join(utils.UniqueTrimmed(activeTaskIDs), ","))
 		}
 
 		if err := c.deleteApplicationMetadataTx(lockCtx, app); err != nil {
 			return err
 		}
 
-		resp.CancelledTaskIDs = uniqueStrings(resp.CancelledTaskIDs)
-		resp.ActiveTaskIDs = uniqueStrings(resp.ActiveTaskIDs)
-		resp.DeletedResources = uniqueStrings(resp.DeletedResources)
-		resp.FailedResources = uniqueStrings(resp.FailedResources)
-		resp.Warnings = uniqueStrings(resp.Warnings)
+		resp.CancelledTaskIDs = utils.UniqueTrimmed(resp.CancelledTaskIDs)
+		resp.ActiveTaskIDs = utils.UniqueTrimmed(resp.ActiveTaskIDs)
+		resp.DeletedResources = utils.UniqueTrimmed(resp.DeletedResources)
+		resp.FailedResources = utils.UniqueTrimmed(resp.FailedResources)
+		resp.Warnings = utils.UniqueTrimmed(resp.Warnings)
 		hasIncompleteCleanup := len(resp.Warnings) > 0 || len(resp.FailedResources) > 0 || len(resp.ActiveTaskIDs) > 0
 
 		c.invalidateApplicationListCaches(ctx)
@@ -342,7 +343,7 @@ func (c *applicationsServiceImpl) activeTaskIDs(ctx context.Context, appID strin
 		}
 		ids = append(ids, task.TaskID)
 	}
-	return uniqueStrings(ids), nil
+	return utils.UniqueTrimmed(ids), nil
 }
 
 func (c *applicationsServiceImpl) cancelAndWaitAppTasks(ctx context.Context, appID string, waitSeconds int64, cancelReason, phase string) ([]string, []string, []string, error) {
@@ -466,7 +467,7 @@ func (c *applicationsServiceImpl) deleteApplicationMetadataTx(ctx context.Contex
 				activeTaskIDs = append(activeTaskIDs, task.TaskID)
 			}
 			return fmt.Errorf("refusing to delete application while workflow tasks remain active: %s",
-				strings.Join(uniqueStrings(activeTaskIDs), ","))
+				strings.Join(utils.UniqueTrimmed(activeTaskIDs), ","))
 		}
 		if err := repository.DeleteWorkflowSchedulesByAppID(ctx, tx, app.ID); err != nil {
 			return err
@@ -489,24 +490,4 @@ func (c *applicationsServiceImpl) deleteApplicationMetadataTx(ctx context.Contex
 		return bcode.ErrApplicationNotExist
 	}
 	return err
-}
-
-func uniqueStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
 }

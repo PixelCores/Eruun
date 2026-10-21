@@ -174,3 +174,24 @@ func componentStatusForJob(status config.Status) (config.ComponentStatus, bool) 
 		return "", false
 	}
 }
+
+// MarkComponentRuntime records a runtime status the Job controller observed
+// and invalidates the application's component cache.
+func (b *DeployNamespacedResourceJobBase) MarkComponentRuntime(ctx context.Context, component *model.ApplicationComponent, status config.ComponentStatus, readyReplicas int32, lastAbnormal, cacheReason string) error {
+	if component == nil {
+		return nil
+	}
+	if err := repository.UpdateComponentRuntimeFields(ctx, b.Store, component, map[string]interface{}{
+		"status":         string(status),
+		"ready_replicas": readyReplicas,
+		"last_abnormal":  lastAbnormal,
+	}); err != nil {
+		klog.ErrorS(err, "update component runtime status failed", "appID", component.AppID, "component", component.Name, "status", status)
+		return err
+	}
+	component.Status = string(status)
+	component.ReadyReplicas = readyReplicas
+	component.LastAbnormal = lastAbnormal
+	InvalidateComponentsCache(ctx, b.Runtime, component.AppID, cacheReason)
+	return nil
+}
