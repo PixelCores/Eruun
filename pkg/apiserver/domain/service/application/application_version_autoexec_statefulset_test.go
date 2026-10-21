@@ -94,19 +94,17 @@ func TestUpdateVersionFullRebuildAllowsOnlyRecreatedStatefulSetImmutableChanges(
 			cleanupInfo := requireVersionUpdateCleanupInfoVersion(
 				t,
 				store.tasks[resp.TaskID],
-				model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+				statefulSetPVCDeletion,
 			)
 			cleanupComponent := requireVersionUpdateCleanupComponent(t, cleanupInfo, "mysql")
 			require.True(t, cleanupComponent.RequireStatefulSetDeletion)
 			require.Equal(t, []string{"data", "data-v2"}, cleanupComponent.StatefulSetPVCTemplatesToDelete)
 			require.Len(t, store.jobs, 1)
 			var marker struct {
-				Version                         int      `json:"version"`
 				RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion"`
 				StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(store.jobs[0].InternalInfo), &marker))
-			require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, marker.Version)
 			require.True(t, marker.RequireStatefulSetDeletion)
 			require.Equal(t, []string{"data", "data-v2"}, marker.StatefulSetPVCTemplatesToDelete)
 		})
@@ -170,7 +168,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetPVCPlan(t *testing.T)
 			firstCleanup := requireVersionUpdateCleanupInfoVersion(
 				t,
 				store.tasks[first.TaskID],
-				model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+				statefulSetPVCDeletion,
 			)
 			firstComponent := requireVersionUpdateCleanupComponent(t, firstCleanup, "mysql")
 			require.Equal(t, []string{"data", "data-v2"}, firstComponent.StatefulSetPVCTemplatesToDelete)
@@ -184,7 +182,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetPVCPlan(t *testing.T)
 			secondCleanup := requireVersionUpdateCleanupInfoVersion(
 				t,
 				store.tasks[second.TaskID],
-				model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+				statefulSetPVCDeletion,
 			)
 			secondComponent := requireVersionUpdateCleanupComponent(t, secondCleanup, "mysql")
 			require.True(t, secondComponent.RequireStatefulSetDeletion)
@@ -198,7 +196,6 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetPVCPlan(t *testing.T)
 			require.Equal(t, string(config.StatusQueued), secondJob.Status)
 			var marker model.VersionUpdateCleanupJobMarker
 			require.NoError(t, json.Unmarshal([]byte(secondJob.InternalInfo), &marker))
-			require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, marker.Version)
 			require.Equal(t, []string{"data", "data-v2"}, marker.StatefulSetPVCTemplatesToDelete)
 		})
 	}
@@ -331,7 +328,7 @@ func TestUpdateVersionFullRebuildRejectsMismatchedPendingStatefulSetPVCPlan(t *t
 	store.tasks[first.TaskID].Status = config.StatusCancelled
 	firstJob := requireVersionUpdateCleanupJobForTask(t, store, first.TaskID, "mysql")
 	firstJob.Status = string(config.StatusCancelled)
-	firstJob.InternalInfo = `{"source":"version_update_remove","version":3,"requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["unexpected"]}`
+	firstJob.InternalInfo = `{"source":"version_update_remove","requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["unexpected"]}`
 
 	second, err := svc.UpdateVersion(context.Background(), "app-1", req)
 	require.Error(t, err)
@@ -358,7 +355,7 @@ func TestUpdateVersionFullRebuildRejectsIncompleteHistoricalStatefulSetPVCPlan(t
 			mutate: func(cleanupInfo *model.VersionUpdateCleanupInfo) {
 				cleanupInfo.Components[0].StatefulSetPVCTemplatesToDelete = nil
 			},
-			want: "has no StatefulSet PVC deletion contract",
+			want: "cleanup job marker does not match component mysql PVC cleanup contract",
 		},
 	}
 	for _, tt := range tests {
@@ -417,8 +414,7 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 	store := newInMemoryAppStore()
 	addAttempt := func(taskID string, status config.Status, component *model.ApplicationComponent) {
 		payload, err := json.Marshal(model.VersionUpdateCleanupInfo{
-			Source:  config.JobInfoSourceVersionUpdateRemove,
-			Version: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+			Source: config.JobInfoSourceVersionUpdateRemove,
 			Components: []model.VersionUpdateCleanupComponent{{
 				Component: component, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
 				StatefulSetPVCTemplatesToDelete: []string{"data"},

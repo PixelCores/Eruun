@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"testing"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/stretchr/testify/require"
-	"strings"
-	"testing"
 )
 
 type fakeDataStore struct {
@@ -136,7 +137,6 @@ func mustVersionUpdateCleanupInfo(t *testing.T, components ...model.VersionUpdat
 	t.Helper()
 	payload, err := json.Marshal(model.VersionUpdateCleanupInfo{
 		Source:     config.JobInfoSourceVersionUpdateRemove,
-		Version:    1,
 		Components: components,
 	})
 	require.NoError(t, err)
@@ -147,7 +147,6 @@ func mustVersionUpdateCleanupOnlyInfo(t *testing.T, components ...model.VersionU
 	t.Helper()
 	payload, err := json.Marshal(model.VersionUpdateCleanupInfo{
 		Source:      config.JobInfoSourceVersionUpdateRemove,
-		Version:     1,
 		CleanupOnly: true,
 		Components:  components,
 	})

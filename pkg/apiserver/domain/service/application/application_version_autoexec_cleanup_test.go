@@ -1217,7 +1217,7 @@ func TestUpdateVersionFullRebuildRestoresCompletedCleanupWhenWorkflowFails(t *te
 	cleanupInfo := requireVersionUpdateCleanupInfoVersion(
 		t,
 		store.tasks[second.TaskID],
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+		statefulSetPVCDeletion,
 	)
 	cleanupComponent := requireVersionUpdateCleanupComponent(t, cleanupInfo, "mysql")
 	require.True(t, cleanupComponent.RequireStatefulSetDeletion)
@@ -1235,7 +1235,7 @@ func TestUpdateVersionFullRebuildClearsCompletedCleanupAfterWorkflowCompletes(t 
 
 	second, err := svc.UpdateVersion(context.Background(), "app-1", req)
 	require.NoError(t, err)
-	cleanupInfo := requireVersionUpdateCleanupInfoVersion(t, store.tasks[second.TaskID], model.VersionUpdateCleanupInfoVersionV1)
+	cleanupInfo := requireVersionUpdateCleanupInfoVersion(t, store.tasks[second.TaskID], noStatefulSetCleanup)
 	cleanupComponent := requireVersionUpdateCleanupComponent(t, cleanupInfo, "mysql")
 	require.False(t, cleanupComponent.RequireStatefulSetDeletion)
 	require.Empty(t, cleanupComponent.StatefulSetPVCTemplatesToDelete)

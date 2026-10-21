@@ -23,10 +23,10 @@ import (
 func TestCreateApplicationsRefreshRejectsPendingStatefulSetCleanupWithoutWrites(t *testing.T) {
 	tests := []struct {
 		name           string
-		cleanupVersion int
+		cleanupVersion statefulSetCleanupKind
 	}{
-		{name: "failed v2 cleanup", cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion},
-		{name: "failed v3 cleanup", cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion},
+		{name: "failed v2 cleanup", cleanupVersion: statefulSetRecreation},
+		{name: "failed v3 cleanup", cleanupVersion: statefulSetPVCDeletion},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestCreateApplicationsRefreshRejectsPendingStatefulSetCleanupWithoutWrites(
 func TestCreateApplicationsTemplateRefreshRejectsPendingStatefulSetCleanupWithoutWrites(t *testing.T) {
 	store := newCreateRefreshFenceStore()
 	store.apps["app-1"].TemplateEnabled = true
-	addCreateRefreshPendingCleanup(t, store, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion)
+	addCreateRefreshPendingCleanup(t, store, statefulSetPVCDeletion)
 	before := store.snapshot()
 	svc := newMockServiceWithStore(store)
 	templateEnabled := true
@@ -86,7 +86,7 @@ func TestCreateApplicationsRefreshRechecksFencesInsideTransaction(t *testing.T) 
 		{
 			name: "cleanup becomes pending",
 			inject: func(t *testing.T, store *inMemoryAppStore) {
-				addCreateRefreshPendingCleanup(t, store, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion)
+				addCreateRefreshPendingCleanup(t, store, statefulSetPVCDeletion)
 			},
 			expectedErr: bcode.ErrApplicationConfig,
 		},
@@ -335,16 +335,16 @@ func createRefreshRequest(appID, version string) apisv1.CreateApplicationsReques
 	}
 }
 
-func addCreateRefreshPendingCleanup(t *testing.T, store *inMemoryAppStore, cleanupVersion int) {
+func addCreateRefreshPendingCleanup(t *testing.T, store *inMemoryAppStore, cleanupVersion statefulSetCleanupKind) {
 	t.Helper()
 	component := store.components["mysql"]
 	require.NotNil(t, component)
 	templates := []string(nil)
-	if cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+	if cleanupVersion == statefulSetPVCDeletion {
 		templates = []string{"data"}
 	}
 	cleanupInfo := model.VersionUpdateCleanupInfo{
-		Source: config.JobInfoSourceVersionUpdateRemove, Version: cleanupVersion,
+		Source: config.JobInfoSourceVersionUpdateRemove,
 		Components: []model.VersionUpdateCleanupComponent{{
 			Component: component, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
 			StatefulSetPVCTemplatesToDelete: templates,

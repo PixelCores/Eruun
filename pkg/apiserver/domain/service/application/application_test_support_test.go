@@ -17,17 +17,36 @@ import (
 )
 
 func requireVersionUpdateCleanupInfo(t *testing.T, task *model.WorkflowQueue) model.VersionUpdateCleanupInfo {
-	return requireVersionUpdateCleanupInfoVersion(t, task, model.VersionUpdateCleanupInfoVersionV1)
+	return requireVersionUpdateCleanupInfoVersion(t, task, noStatefulSetCleanup)
 }
 
-func requireVersionUpdateCleanupInfoVersion(t *testing.T, task *model.WorkflowQueue, wantVersion int) model.VersionUpdateCleanupInfo {
+// statefulSetCleanupKind selects a cleanup fixture by its content: plain
+// removal, StatefulSet recreation, or recreation plus VCT PVC deletion.
+type statefulSetCleanupKind int
+
+const (
+	noStatefulSetCleanup statefulSetCleanupKind = iota
+	statefulSetRecreation
+	statefulSetPVCDeletion
+)
+
+func requireVersionUpdateCleanupInfoVersion(t *testing.T, task *model.WorkflowQueue, want statefulSetCleanupKind) model.VersionUpdateCleanupInfo {
 	t.Helper()
 	require.NotNil(t, task)
 	require.NotEmpty(t, task.CleanupInfo)
 	var cleanupInfo model.VersionUpdateCleanupInfo
 	require.NoError(t, json.Unmarshal([]byte(task.CleanupInfo), &cleanupInfo))
 	require.Equal(t, config.JobInfoSourceVersionUpdateRemove, cleanupInfo.Source)
-	require.Equal(t, wantVersion, cleanupInfo.Version)
+	got := noStatefulSetCleanup
+	for _, component := range cleanupInfo.Components {
+		switch {
+		case len(component.StatefulSetPVCTemplatesToDelete) > 0:
+			got = statefulSetPVCDeletion
+		case component.RequireStatefulSetDeletion && got == noStatefulSetCleanup:
+			got = statefulSetRecreation
+		}
+	}
+	require.Equal(t, want, got)
 	return cleanupInfo
 }
 

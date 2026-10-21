@@ -28,9 +28,10 @@ var errPendingStatefulSetCleanup = errors.New("unfinished StatefulSet cleanup")
 type PendingStatefulSetCleanup struct {
 	Component       *model.ApplicationComponent
 	ResourceAppName string
-	CleanupVersion  int
-	Templates       map[string]struct{}
-	TaskIDs         map[string]struct{}
+	// Templates lists the VCT PVC templates still to delete; empty means the
+	// pending cleanup only recreates the StatefulSet and keeps every PVC.
+	Templates map[string]struct{}
+	TaskIDs   map[string]struct{}
 }
 
 // PendingStatefulSetCleanups is keyed by lower-cased component name, then by
@@ -154,9 +155,6 @@ func (p PendingStatefulSetCleanups) apply(attempt *statefulSetCleanupAttempt) er
 		return fmt.Errorf("StatefulSet cleanup attempt is nil")
 	}
 	task := attempt.task
-	if err := validateStatefulSetCleanupContract(task, attempt.cleanupInfo); err != nil {
-		return err
-	}
 	taskStatus := config.Status(strings.TrimSpace(string(task.Status)))
 	if taskStatus == "" || model.IsWorkflowActiveStatus(taskStatus) {
 		return bcode.ErrWorkflowTaskRunning
@@ -184,10 +182,6 @@ func (p PendingStatefulSetCleanups) applyComponent(
 	cleanupComponent model.VersionUpdateCleanupComponent,
 ) error {
 	task := attempt.task
-	componentVersion, err := statefulSetCleanupComponentVersion(task, attempt.cleanupInfo.Version, cleanupComponent)
-	if err != nil {
-		return err
-	}
 	component := cleanupComponent.Component
 	if component == nil {
 		return fmt.Errorf("task %s StatefulSet cleanup contract is missing its component descriptor", task.TaskID)
@@ -207,7 +201,7 @@ func (p PendingStatefulSetCleanups) applyComponent(
 		return fmt.Errorf("task %s component %s StatefulSet identity: %w", task.TaskID, component.Name, err)
 	}
 	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)
-	job, err := matchingStatefulSetCleanupJob(task, componentVersion, key, templates, attempt.jobs)
+	job, err := matchingStatefulSetCleanupJob(task, key, templates, attempt.jobs)
 	if err != nil {
 		return err
 	}
@@ -223,7 +217,7 @@ func (p PendingStatefulSetCleanups) applyComponent(
 	}
 	switch {
 	case jobStatus == config.StatusCompleted && taskCompleted:
-		p.resolve(key, identity, componentVersion, templates)
+		p.resolve(key, identity, templates)
 	case job == nil,
 		taskRequiresRetry && shouldTerminalizePrecreatedCleanupStatus(jobStatus),
 		jobStatus == config.StatusCompleted && taskRequiresRetry,
@@ -240,16 +234,12 @@ func (p PendingStatefulSetCleanups) applyComponent(
 			plan = &PendingStatefulSetCleanup{
 				Component:       component,
 				ResourceAppName: strings.TrimSpace(cleanupComponent.ResourceAppName),
-				CleanupVersion:  componentVersion,
 				Templates:       make(map[string]struct{}, len(templates)),
 				TaskIDs:         make(map[string]struct{}),
 			}
 			p[key][identity] = plan
 		}
 		plan.TaskIDs[task.TaskID] = struct{}{}
-		if componentVersion > plan.CleanupVersion {
-			plan.CleanupVersion = componentVersion
-		}
 		for _, template := range templates {
 			plan.Templates[template] = struct{}{}
 		}
@@ -265,17 +255,20 @@ func (p PendingStatefulSetCleanups) applyComponent(
 	return nil
 }
 
-func (p PendingStatefulSetCleanups) resolve(key, identity string, componentVersion int, templates []string) {
+// resolve removes what a completed cleanup covered. A cleanup that deletes no
+// PVC cannot resolve a pending PVC deletion; one that deletes PVCs resolves
+// only its own templates of a pending PVC deletion.
+func (p PendingStatefulSetCleanups) resolve(key, identity string, templates []string) {
 	plan := p[key][identity]
 	if plan == nil {
 		return
 	}
 	switch {
-	case componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
-		if plan.CleanupVersion != model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
+	case len(templates) == 0:
+		if len(plan.Templates) > 0 {
 			return
 		}
-	case plan.CleanupVersion != model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
+	case len(plan.Templates) > 0:
 		for _, template := range templates {
 			delete(plan.Templates, template)
 		}
@@ -287,31 +280,6 @@ func (p PendingStatefulSetCleanups) resolve(key, identity string, componentVersi
 	if len(p[key]) == 0 {
 		delete(p, key)
 	}
-}
-
-func validateStatefulSetCleanupContract(task *model.WorkflowQueue, cleanupInfo model.VersionUpdateCleanupInfo) error {
-	hasRequiredContract := false
-	hasPVCDeletionContract := false
-	for _, component := range cleanupInfo.Components {
-		if !component.RequireStatefulSetDeletion {
-			continue
-		}
-		hasRequiredContract = true
-		componentVersion, err := statefulSetCleanupComponentVersion(task, cleanupInfo.Version, component)
-		if err != nil {
-			return err
-		}
-		if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
-			hasPVCDeletionContract = true
-		}
-	}
-	if !hasRequiredContract {
-		return fmt.Errorf("task %s cleanup info version %d has no required StatefulSet deletion contract", task.TaskID, cleanupInfo.Version)
-	}
-	if cleanupInfo.Version == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion && !hasPVCDeletionContract {
-		return fmt.Errorf("task %s cleanup info version %d has no StatefulSet PVC deletion contract", task.TaskID, cleanupInfo.Version)
-	}
-	return nil
 }
 
 func resolvedStatefulSetCleanupTaskIDs(
@@ -361,30 +329,6 @@ func resolvedStatefulSetCleanupTaskIDs(
 	return resolved, nil
 }
 
-// statefulSetCleanupComponentVersion derives a component's contract version:
-// a v3 task may still carry v2 components that delete no PVC templates.
-func statefulSetCleanupComponentVersion(
-	task *model.WorkflowQueue,
-	cleanupInfoVersion int,
-	component model.VersionUpdateCleanupComponent,
-) (int, error) {
-	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
-	switch cleanupInfoVersion {
-	case model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
-		if len(templates) > 0 {
-			return 0, fmt.Errorf("task %s cleanup info v2 cannot contain a StatefulSet PVC deletion plan", task.TaskID)
-		}
-		return model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, nil
-	case model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion:
-		if len(templates) > 0 {
-			return model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, nil
-		}
-		return model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, nil
-	default:
-		return 0, fmt.Errorf("task %s has unsupported cleanup info version %d", task.TaskID, cleanupInfoVersion)
-	}
-}
-
 func statefulSetCleanupInfo(task *model.WorkflowQueue) (model.VersionUpdateCleanupInfo, bool, error) {
 	if task == nil || strings.TrimSpace(task.CleanupInfo) == "" {
 		return model.VersionUpdateCleanupInfo{}, false, nil
@@ -393,13 +337,15 @@ func statefulSetCleanupInfo(task *model.WorkflowQueue) (model.VersionUpdateClean
 	if err := json.Unmarshal([]byte(task.CleanupInfo), &cleanupInfo); err != nil {
 		return model.VersionUpdateCleanupInfo{}, false, fmt.Errorf("decode cleanup info for task %s: %w", task.TaskID, err)
 	}
-	if cleanupInfo.Source != config.JobInfoSourceVersionUpdateRemove || cleanupInfo.Version < model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
+	if cleanupInfo.Source != config.JobInfoSourceVersionUpdateRemove {
 		return model.VersionUpdateCleanupInfo{}, false, nil
 	}
-	if cleanupInfo.Version > model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
-		return model.VersionUpdateCleanupInfo{}, false, fmt.Errorf("task %s has unsupported cleanup info version %d", task.TaskID, cleanupInfo.Version)
+	for _, component := range cleanupInfo.Components {
+		if component.RequireStatefulSetDeletion {
+			return cleanupInfo, true, nil
+		}
 	}
-	return cleanupInfo, true, nil
+	return model.VersionUpdateCleanupInfo{}, false, nil
 }
 
 func statefulSetCleanupJobs(ctx context.Context, store datastore.DataStore, taskID string) ([]*model.JobInfo, error) {
@@ -483,14 +429,10 @@ func ValidateStatefulSetCleanupComponent(previous, current *model.ApplicationCom
 // removal cleanups and rejects a removal marker that breaks the contract.
 func matchingStatefulSetCleanupJob(
 	task *model.WorkflowQueue,
-	componentVersion int,
 	componentName string,
 	expectedTemplates []string,
 	jobs []*model.JobInfo,
 ) (*model.JobInfo, error) {
-	if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion && len(expectedTemplates) == 0 {
-		return nil, fmt.Errorf("task %s component %s StatefulSet PVC cleanup contract has no templates", task.TaskID, componentName)
-	}
 	var matched *model.JobInfo
 	for _, job := range jobs {
 		if job == nil || strings.ToLower(strings.TrimSpace(job.ServiceName)) != componentName {
@@ -510,12 +452,8 @@ func matchingStatefulSetCleanupJob(
 		if !marker.RequireStatefulSetDeletion {
 			return nil, fmt.Errorf("task %s cleanup job marker does not require StatefulSet deletion for component %s", task.TaskID, componentName)
 		}
-		if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
-			if marker.Version != componentVersion || !model.EqualVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete, expectedTemplates) {
-				return nil, fmt.Errorf("task %s cleanup job marker does not match component %s PVC cleanup contract", task.TaskID, componentName)
-			}
-		} else if marker.Version != 0 || len(model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)) != 0 {
-			return nil, fmt.Errorf("task %s cleanup job marker does not match component %s StatefulSet deletion contract", task.TaskID, componentName)
+		if !model.EqualVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete, expectedTemplates) {
+			return nil, fmt.Errorf("task %s cleanup job marker does not match component %s PVC cleanup contract", task.TaskID, componentName)
 		}
 		if matched != nil {
 			return nil, fmt.Errorf("task %s has duplicate cleanup jobs for component %s", task.TaskID, componentName)

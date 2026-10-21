@@ -48,7 +48,6 @@ func TestBuildVersionUpdateFullCleanupInfoKeepsV2WhenVCTsAreUnchanged(t *testing
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, cleanupInfo.Version)
 	require.Len(t, cleanupInfo.Components, 1)
 	require.True(t, cleanupInfo.Components[0].RequireStatefulSetDeletion)
 	require.Empty(t, cleanupInfo.Components[0].StatefulSetPVCTemplatesToDelete)
@@ -83,7 +82,6 @@ func TestBuildVersionUpdateFullCleanupInfoKeepsV1WithoutImmutableChanges(t *test
 			)
 
 			require.NoError(t, err)
-			require.Equal(t, model.VersionUpdateCleanupInfoVersionV1, cleanupInfo.Version)
 			require.Len(t, cleanupInfo.Components, 1)
 			require.False(t, cleanupInfo.Components[0].RequireStatefulSetDeletion)
 			require.Empty(t, cleanupInfo.Components[0].StatefulSetPVCTemplatesToDelete)

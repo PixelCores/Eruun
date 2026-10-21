@@ -57,7 +57,7 @@ func mergePendingVersionUpdateStatefulSetPVCDeletions(
 		cleanupComponent.Component = descriptor
 		cleanupComponent.ResourceAppName = plan.ResourceAppName
 		cleanupComponent.RequireStatefulSetDeletion = true
-		if plan.CleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+		if len(plan.Templates) > 0 {
 			transitionTemplates, err := versionUpdateStatefulSetPVCTemplatesToDelete(plan.Component, update)
 			if err != nil {
 				return fmt.Errorf("restore component %s pending StatefulSet PVC plan: %w", cleanupComponent.Component.Name, err)
@@ -67,9 +67,6 @@ func mergePendingVersionUpdateStatefulSetPVCDeletions(
 				pendingStatefulSetPVCTemplateNames(plan),
 				transitionTemplates,
 			)
-			cleanupInfo.Version = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
-		} else if cleanupInfo.Version < model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-			cleanupInfo.Version = model.VersionUpdateCleanupInfoVersionStatefulSetDeletion
 		}
 		merged[key] = struct{}{}
 	}
@@ -140,8 +137,7 @@ func validatePendingVersionUpdateStatefulSetPVCResume(
 		if !exists {
 			return pendingStatefulSetPVCResumeError(key, "request does not repeat the immutable StatefulSet update")
 		}
-		switch plan.CleanupVersion {
-		case model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
+		if len(plan.Templates) == 0 {
 			changed, err := versionUpdateStatefulSetRequiresDeletion(plan.Component, update)
 			if err != nil {
 				return fmt.Errorf("validate component %s pending StatefulSet recreation resume: %w", key, err)
@@ -149,35 +145,30 @@ func validatePendingVersionUpdateStatefulSetPVCResume(
 			if !changed {
 				return pendingStatefulSetPVCResumeError(key, "request does not reproduce a StatefulSet immutable field change")
 			}
-		case model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion:
-			if len(plan.Templates) == 0 {
-				return pendingStatefulSetPVCResumeError(key, "pending cleanup descriptor is missing its VCT deletion plan")
+			continue
+		}
+		transitionTemplates, err := versionUpdateStatefulSetPVCTemplatesToDelete(plan.Component, update)
+		if err != nil {
+			return fmt.Errorf("validate component %s pending StatefulSet PVC resume: %w", key, err)
+		}
+		if len(transitionTemplates) == 0 {
+			return pendingStatefulSetPVCResumeError(key, "request does not reproduce a VCT identity or spec change")
+		}
+		transitionTemplateSet := make(map[string]struct{}, len(transitionTemplates))
+		for _, template := range transitionTemplates {
+			transitionTemplateSet[template] = struct{}{}
+		}
+		missingTemplates := make([]string, 0)
+		for _, template := range pendingStatefulSetPVCTemplateNames(plan) {
+			if _, covered := transitionTemplateSet[template]; !covered {
+				missingTemplates = append(missingTemplates, template)
 			}
-			transitionTemplates, err := versionUpdateStatefulSetPVCTemplatesToDelete(plan.Component, update)
-			if err != nil {
-				return fmt.Errorf("validate component %s pending StatefulSet PVC resume: %w", key, err)
-			}
-			if len(transitionTemplates) == 0 {
-				return pendingStatefulSetPVCResumeError(key, "request does not reproduce a VCT identity or spec change")
-			}
-			transitionTemplateSet := make(map[string]struct{}, len(transitionTemplates))
-			for _, template := range transitionTemplates {
-				transitionTemplateSet[template] = struct{}{}
-			}
-			missingTemplates := make([]string, 0)
-			for _, template := range pendingStatefulSetPVCTemplateNames(plan) {
-				if _, covered := transitionTemplateSet[template]; !covered {
-					missingTemplates = append(missingTemplates, template)
-				}
-			}
-			if len(missingTemplates) > 0 {
-				return pendingStatefulSetPVCResumeError(key, fmt.Sprintf(
-					"request does not reproduce the pending VCT deletion plan for templates %s",
-					strings.Join(missingTemplates, ","),
-				))
-			}
-		default:
-			return pendingStatefulSetPVCResumeError(key, fmt.Sprintf("unsupported pending cleanup version %d", plan.CleanupVersion))
+		}
+		if len(missingTemplates) > 0 {
+			return pendingStatefulSetPVCResumeError(key, fmt.Sprintf(
+				"request does not reproduce the pending VCT deletion plan for templates %s",
+				strings.Join(missingTemplates, ","),
+			))
 		}
 	}
 	return nil

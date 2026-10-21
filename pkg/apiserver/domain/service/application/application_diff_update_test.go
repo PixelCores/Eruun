@@ -438,17 +438,17 @@ func TestDiffUpdateVersionDryRunPreservesStandalonePVCSnapshots(t *testing.T) {
 func TestDiffUpdateVersionDryRunBlocksPendingStatefulSetCleanup(t *testing.T) {
 	tests := []struct {
 		name           string
-		cleanupVersion int
+		cleanupVersion statefulSetCleanupKind
 		status         config.Status
 	}{
 		{
 			name:           "failed StatefulSet deletion v2",
-			cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+			cleanupVersion: statefulSetRecreation,
 			status:         config.StatusFailed,
 		},
 		{
 			name:           "cancelled StatefulSet PVC deletion v3",
-			cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+			cleanupVersion: statefulSetPVCDeletion,
 			status:         config.StatusCancelled,
 		},
 	}
@@ -482,7 +482,7 @@ func TestDiffUpdateVersionDryRunBlocksPendingStatefulSetCleanup(t *testing.T) {
 func TestDiffUpdateVersionPendingStatefulSetCleanupAllowsVersionOnlyChange(t *testing.T) {
 	store, svc := newDiffUpdatePendingCleanupFixture(
 		t,
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+		statefulSetPVCDeletion,
 		config.StatusFailed,
 	)
 	store.components["source-api"].Image = store.components["target-api"].Image
@@ -510,7 +510,7 @@ func TestDiffUpdateVersionPendingStatefulSetCleanupAllowsVersionOnlyChange(t *te
 func TestDiffUpdateVersionDryRunPropagatesPendingHistoryReadError(t *testing.T) {
 	store, svc := newDiffUpdatePendingCleanupFixture(
 		t,
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+		statefulSetRecreation,
 		config.StatusFailed,
 	)
 	wantErr := errors.New("list workflow history")
@@ -549,7 +549,7 @@ func TestDiffUpdateVersionExecutesVersionOnlyChange(t *testing.T) {
 
 func newDiffUpdatePendingCleanupFixture(
 	t *testing.T,
-	cleanupVersion int,
+	cleanupVersion statefulSetCleanupKind,
 	status config.Status,
 ) (*inMemoryAppStore, *applicationsServiceImpl) {
 	t.Helper()
@@ -586,12 +586,11 @@ func newDiffUpdatePendingCleanupFixture(
 	store.components["source-mysql"] = &sourceMySQL
 
 	templates := []string(nil)
-	if cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+	if cleanupVersion == statefulSetPVCDeletion {
 		templates = []string{"data"}
 	}
 	cleanupInfo := model.VersionUpdateCleanupInfo{
-		Source:  config.JobInfoSourceVersionUpdateRemove,
-		Version: cleanupVersion,
+		Source: config.JobInfoSourceVersionUpdateRemove,
 		Components: []model.VersionUpdateCleanupComponent{{
 			Component:                       targetMySQL,
 			ResourceAppName:                 "target",

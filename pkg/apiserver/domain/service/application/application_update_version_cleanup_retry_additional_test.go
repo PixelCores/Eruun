@@ -25,8 +25,8 @@ func TestVersionUpdateCleanupJobMarkerPreservesPersistedJSON(t *testing.T) {
 		want      string
 	}{
 		{name: "ordinary cleanup", want: `{"source":"version_update_remove"}`},
-		{name: "legacy statefulset deletion", deletion: true, want: `{"source":"version_update_remove","requireStatefulSetDeletion":true}`},
-		{name: "v3 normalized pvc names", deletion: true, templates: []string{" logs ", "data", "logs"}, want: `{"source":"version_update_remove","version":3,"requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["data","logs"]}`},
+		{name: "statefulset deletion", deletion: true, want: `{"source":"version_update_remove","requireStatefulSetDeletion":true}`},
+		{name: "normalized pvc names", deletion: true, templates: []string{" logs ", "data", "logs"}, want: `{"source":"version_update_remove","requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["data","logs"]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			marker, err := versionUpdateCleanupJobInfoMarker(tc.deletion, tc.templates)
@@ -44,7 +44,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing
 	firstCleanup := requireVersionUpdateCleanupInfoVersion(
 		t,
 		store.tasks[first.TaskID],
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+		statefulSetRecreation,
 	)
 	firstComponent := requireVersionUpdateCleanupComponent(t, firstCleanup, "mysql")
 	require.True(t, firstComponent.RequireStatefulSetDeletion)
@@ -61,7 +61,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing
 	secondCleanup := requireVersionUpdateCleanupInfoVersion(
 		t,
 		store.tasks[second.TaskID],
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+		statefulSetRecreation,
 	)
 	require.Equal(t, []string{first.TaskID}, secondCleanup.ResolvesTaskIDs)
 	secondComponent := requireVersionUpdateCleanupComponent(t, secondCleanup, "mysql")
@@ -74,7 +74,6 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing
 	secondJob := requireVersionUpdateCleanupJobForTask(t, store, second.TaskID, "mysql")
 	var marker model.VersionUpdateCleanupJobMarker
 	require.NoError(t, json.Unmarshal([]byte(secondJob.InternalInfo), &marker))
-	require.Zero(t, marker.Version)
 	require.True(t, marker.RequireStatefulSetDeletion)
 	require.Empty(t, marker.StatefulSetPVCTemplatesToDelete)
 
@@ -87,7 +86,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing
 	thirdCleanup := requireVersionUpdateCleanupInfoVersion(
 		t,
 		store.tasks[third.TaskID],
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+		statefulSetRecreation,
 	)
 	require.ElementsMatch(t, []string{first.TaskID, second.TaskID}, thirdCleanup.ResolvesTaskIDs)
 	store.tasks[third.TaskID].CreateTime = time.Unix(100, 0)
@@ -158,7 +157,7 @@ func TestPendingStatefulSetDeletionV2TracksAndClearsSuccessfulRetry(t *testing.T
 	require.NoError(t, err)
 	require.Len(t, pending["mysql"], 1)
 	for _, plan := range pending["mysql"] {
-		require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, plan.CleanupVersion)
+		require.Empty(t, plan.Templates)
 		require.Empty(t, plan.Templates)
 	}
 
@@ -397,7 +396,7 @@ func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T)
 		secondResolver  bool
 		namespace       string
 		pvcTemplate     string
-		resolverVersion int
+		resolverVersion statefulSetCleanupKind
 		err             string
 	}{
 		{name: "normalized reference"},
@@ -405,15 +404,14 @@ func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T)
 		{name: "multiple successful resolvers", secondResolver: true, err: "resolved by both tasks"},
 		{name: "different resource identity", namespace: "other", err: "does not cover every referenced"},
 		{name: "different PVC template", pvcTemplate: "other", err: "does not cover every referenced"},
-		{name: "V2 cannot resolve V3", resolverVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, err: "does not cover every referenced"},
+		{name: "V2 cannot resolve V3", resolverVersion: statefulSetRecreation, err: "does not cover every referenced"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newInMemoryAppStore()
-			addAttempt := func(taskID string, status config.Status, version int, template string, references []string) {
+			addAttempt := func(taskID string, status config.Status, version statefulSetCleanupKind, template string, references []string) {
 				addStatefulSetDeletionV2Attempt(t, store, taskID, status, status, references, time.Time{})
 				var info model.VersionUpdateCleanupInfo
 				require.NoError(t, json.Unmarshal([]byte(store.tasks[taskID].CleanupInfo), &info))
-				info.Version = version
 				if template != "" {
 					info.Components[0].StatefulSetPVCTemplatesToDelete = []string{template}
 				}
@@ -435,10 +433,10 @@ func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T)
 			if tt.completedTarget {
 				targetStatus = config.StatusCompleted
 			}
-			addAttempt("failed", targetStatus, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, "data", nil)
+			addAttempt("failed", targetStatus, statefulSetPVCDeletion, "data", nil)
 			version, template := tt.resolverVersion, tt.pvcTemplate
 			if version == 0 {
-				version = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+				version = statefulSetPVCDeletion
 				if template == "" {
 					template = "data"
 				}
@@ -458,21 +456,6 @@ func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T)
 			require.Empty(t, pending)
 		})
 	}
-}
-
-func TestPendingStatefulSetDeletionV2RejectsPVCTemplatePlan(t *testing.T) {
-	store := newInMemoryAppStore()
-	addStatefulSetDeletionV2Attempt(t, store, "invalid-v2", config.StatusFailed, config.StatusFailed, nil, time.Time{})
-	var info model.VersionUpdateCleanupInfo
-	require.NoError(t, json.Unmarshal([]byte(store.tasks["invalid-v2"].CleanupInfo), &info))
-	info.Components[0].StatefulSetPVCTemplatesToDelete = []string{"data"}
-	payload, err := json.Marshal(info)
-	require.NoError(t, err)
-	store.tasks["invalid-v2"].CleanupInfo = string(payload)
-
-	_, err = workflowservice.LoadPendingStatefulSetCleanups(context.Background(), store, "app-1")
-
-	require.ErrorContains(t, err, "v2 cannot contain a StatefulSet PVC deletion plan")
 }
 
 func TestLoadPendingStatefulSetDeletionTracksMixedV2V3Components(t *testing.T) {
@@ -496,8 +479,7 @@ func TestLoadPendingStatefulSetDeletionTracksMixedV2V3Components(t *testing.T) {
 			v3Component.ID = 202
 			v3Component.Name = "redis"
 			cleanupInfo := model.VersionUpdateCleanupInfo{
-				Source:  config.JobInfoSourceVersionUpdateRemove,
-				Version: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+				Source: config.JobInfoSourceVersionUpdateRemove,
 				Components: []model.VersionUpdateCleanupComponent{
 					{Component: v2Component, ResourceAppName: "shop", RequireStatefulSetDeletion: true},
 					{
@@ -532,12 +514,12 @@ func TestLoadPendingStatefulSetDeletionTracksMixedV2V3Components(t *testing.T) {
 			require.Len(t, pending, 2, "a terminal workflow failure keeps every destructive component pending")
 			require.Len(t, pending["mysql"], 1)
 			for _, plan := range pending["mysql"] {
-				require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, plan.CleanupVersion)
+				require.Empty(t, plan.Templates)
 				require.Empty(t, pendingStatefulSetPVCTemplateNames(plan))
 			}
 			require.Len(t, pending["redis"], 1)
 			for _, plan := range pending["redis"] {
-				require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, plan.CleanupVersion)
+				require.NotEmpty(t, plan.Templates)
 				require.Equal(t, []string{"data"}, pendingStatefulSetPVCTemplateNames(plan))
 			}
 		})
@@ -567,7 +549,6 @@ func addStatefulSetDeletionV2Attempt(
 	component := statefulSetDeletionV2Component("mysql-headless")
 	cleanupInfo := model.VersionUpdateCleanupInfo{
 		Source:          config.JobInfoSourceVersionUpdateRemove,
-		Version:         model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
 		ResolvesTaskIDs: append([]string(nil), resolvesTaskIDs...),
 		Components: []model.VersionUpdateCleanupComponent{{
 			Component: component, ResourceAppName: "shop", RequireStatefulSetDeletion: true,
@@ -679,7 +660,7 @@ func TestStatefulSetCleanupFenceAndResumeAgree(t *testing.T) {
 		{
 			name: "removal marker with an invalid field",
 			mutate: func(t *testing.T, store *inMemoryAppStore) {
-				store.jobs[0].InternalInfo = `{"source":"version_update_remove","version":"invalid","requireStatefulSetDeletion":true}`
+				store.jobs[0].InternalInfo = `{"source":"version_update_remove","requireStatefulSetDeletion":"invalid"}`
 			},
 			wantErr: "decode cleanup job marker",
 		},
