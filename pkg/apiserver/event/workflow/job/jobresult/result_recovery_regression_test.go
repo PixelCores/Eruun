@@ -784,3 +784,24 @@ func TestResultRecoveryCompletedJobWithUnstartedFailedPod(t *testing.T) {
 	_, err = getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
 }
+
+func TestResultWithoutTimeoutFailsOutboxWithoutRetry(t *testing.T) {
+	payload, live, pod, store := completedResultFixture(t)
+	payload.TimeoutSeconds = 0
+	outbox, err := CreateJobResultOutbox(context.Background(), store, payload, config.JobResultOutboxStateResultPending)
+	require.NoError(t, err)
+	publisher := NewResultOutboxDispatcher(&jobtest.EnqueueCaptureQueue{EnqueueID: "delivery"}, store)
+	require.NoError(t, publisher.dispatchPendingOutbox(context.Background(), outbox))
+	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
+	require.NoError(t, err)
+
+	client := fake.NewSimpleClientset(live, pod)
+	queue := &jobtest.DispatcherAckQueue{}
+	dispatcher := NewResultDispatcher(queue, client, store, "result", "consumer")
+	require.True(t, dispatcher.handleMessage(context.Background(), msg.Message{ID: "delivery", Payload: raw}))
+	require.Len(t, queue.AckCalls, 1)
+	failed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
+	require.NoError(t, err)
+	require.Equal(t, config.JobResultOutboxStateFailed, failed.State, "a payload without timeout cannot succeed on retry")
+	require.Contains(t, failed.LastError, "has no timeout")
+}
