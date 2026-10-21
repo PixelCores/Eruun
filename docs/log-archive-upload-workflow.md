@@ -13,9 +13,6 @@ Content-Type: application/json
 
 ```json
 {
-  "name": "archive-worker",
-  "jobType": "log_archive_upload",
-  "mode": "StepByStep",
   "components": ["worker"],
   "path": "/data/logs/archive",
   "container": "worker"
@@ -25,8 +22,6 @@ Content-Type: application/json
 - `components` 必填，第一版必须恰好 1 个组件名。
 - `path` 必填，表示目标容器内要归档的日志文件或目录路径。
 - `container` 可选；不传时优先匹配组件同名容器，否则选择第一个具名容器。
-- `jobType` 可选；传入时必须是 `log_archive_upload`。
-- `name` / `mode` 可选；同步下载接口接受但不参与执行。
 - 组件必须存在且会产生 Pod：`webservice`、`store`、`job`、`scheduledjob`。
 
 成功响应不使用统一 JSON envelope，而是直接返回文件流：
@@ -37,7 +32,7 @@ Content-Type: application/json
 - `X-Eruun-Pod`: 实际读取的 Pod
 - `X-Eruun-Container`: 实际读取的容器
 
-错误响应仍使用统一错误 envelope。空组件、多组件、未知组件、非 Pod 型组件、错误 `jobType` 返回 `ErrApplicationConfig`；空路径或无效路径返回 `ErrComponentFilePathInvalid`。
+错误响应仍使用统一错误 envelope。请求体为严格 JSON，未知字段（包括已删除的 `name`、`jobType`、`mode`）会被拒绝；空组件、多组件、未知组件、非 Pod 型组件返回 `ErrApplicationConfig`；空路径或无效路径返回 `ErrComponentFilePathInvalid`。
 
 ## Execution Behavior
 
@@ -65,9 +60,6 @@ curl -X POST http://127.0.0.1:8000/api/v1/applications/app-123/log-archives \
   -H 'Content-Type: application/json' \
   -o worker-logs.zip \
   -d '{
-    "name": "archive-worker",
-    "jobType": "log_archive_upload",
-    "mode": "StepByStep",
     "components": ["worker"],
     "path": "/data/logs/archive",
     "container": "worker"

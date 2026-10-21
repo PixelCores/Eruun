@@ -58,10 +58,9 @@ func TestResetApplicationDatabasesCreatesWorkflowAndQueue(t *testing.T) {
 	require.NotEmpty(t, resp.WorkflowID)
 	require.NotEmpty(t, resp.TaskID)
 	require.Equal(t, []string{"mysql", "redis"}, resp.DatabaseComponents)
-	require.Empty(t, resp.RestartComponents)
 	responseJSON, err := json.Marshal(resp)
 	require.NoError(t, err)
-	require.Contains(t, string(responseJSON), `"restartComponents":[]`)
+	require.NotContains(t, string(responseJSON), "restartComponents")
 
 	workflow := store.workflows[resp.WorkflowID]
 	require.NotNil(t, workflow)

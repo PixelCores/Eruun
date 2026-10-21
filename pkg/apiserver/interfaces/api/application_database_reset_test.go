@@ -39,7 +39,6 @@ func TestDatabaseResetEndpointSuccess(t *testing.T) {
 			WorkflowID:         "workflow-123",
 			TaskID:             "task-123",
 			DatabaseComponents: []string{"mysql", "redis"},
-			RestartComponents:  []string{},
 		},
 	}
 	appHandler := &applications{
@@ -57,8 +56,8 @@ func TestDatabaseResetEndpointSuccess(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("unexpected status code: %d body=%s", resp.Code, resp.Body.String())
 	}
-	if !strings.Contains(resp.Body.String(), `"restartComponents":[]`) {
-		t.Fatalf("expected restartComponents to be an empty array: %s", resp.Body.String())
+	if strings.Contains(resp.Body.String(), "restartComponents") {
+		t.Fatalf("response must not carry the removed restartComponents field: %s", resp.Body.String())
 	}
 	var payload apis.DatabaseResetResponse
 	requireSuccessResponse(t, resp.Body.Bytes(), &payload)

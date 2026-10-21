@@ -18,9 +18,6 @@ func (c *applicationsServiceImpl) DownloadLogArchive(ctx context.Context, appID 
 	if appID == "" {
 		return nil, bcode.ErrApplicationNotExist
 	}
-	if req.JobType != "" && req.JobType != config.JobLogArchiveUpload {
-		return nil, fmt.Errorf("%w: log archive jobType must be %q", bcode.ErrApplicationConfig, config.JobLogArchiveUpload)
-	}
 	if len(req.Components) != 1 {
 		return nil, fmt.Errorf("%w: log archive download requires exactly one component", bcode.ErrApplicationConfig)
 	}

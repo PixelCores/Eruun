@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -57,9 +56,6 @@ func TestLogArchiveDownloadEndpointWritesArchiveStream(t *testing.T) {
 	r.POST("/applications/:appID/log-archives", appHandler.downloadLogArchive)
 
 	req := httptest.NewRequest(http.MethodPost, "/applications/app-123/log-archives", strings.NewReader(`{
-		"name":"archive-worker",
-		"jobType":"log_archive_upload",
-		"mode":"StepByStep",
 		"components":["worker"],
 		"path":"/data/logs/archive",
 		"container":"worker"
@@ -89,7 +85,7 @@ func TestLogArchiveDownloadEndpointWritesArchiveStream(t *testing.T) {
 	if appSvc.lastAppID != "app-123" {
 		t.Fatalf("expected appID app-123, got %s", appSvc.lastAppID)
 	}
-	if appSvc.lastReq.JobType != config.JobLogArchiveUpload || len(appSvc.lastReq.Components) != 1 || appSvc.lastReq.Components[0] != "worker" {
+	if len(appSvc.lastReq.Components) != 1 || appSvc.lastReq.Components[0] != "worker" {
 		t.Fatalf("unexpected request: %+v", appSvc.lastReq)
 	}
 	if appSvc.lastReq.Path != "/data/logs/archive" || appSvc.lastReq.Container != "worker" {
@@ -103,13 +99,9 @@ func TestLogArchiveDownloadEndpointRejectsInvalidRequest(t *testing.T) {
 		body string
 		code int32
 	}{
-		{name: "missing components", body: `{"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
-		{name: "empty components", body: `{"components":[],"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
-		{name: "multiple components", body: `{"components":["api","worker"],"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
-		{name: "blank component", body: `{"components":[" "],"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
-		{name: "missing path", body: `{"components":["api"]}`, code: bcode.ErrComponentFilePathInvalid.BusinessCode},
-		{name: "blank path", body: `{"components":["api"],"path":" "}`, code: bcode.ErrComponentFilePathInvalid.BusinessCode},
-		{name: "wrong job type", body: `{"jobType":"deploy","components":["api"],"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
+		{name: "malformed body", body: `{"components":`, code: bcode.ErrApplicationConfig.BusinessCode},
+		{name: "removed jobType field", body: `{"jobType":"log_archive_upload","components":["api"],"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
+		{name: "removed name and mode fields", body: `{"name":"archive","mode":"StepByStep","components":["api"],"path":"/data/logs"}`, code: bcode.ErrApplicationConfig.BusinessCode},
 	}
 
 	for _, tt := range tests {

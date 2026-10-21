@@ -519,7 +519,8 @@ message AppDTODatabaseResetResponse {
   string workflow_id = 2 [json_name = "workflowId"];
   string task_id = 3 [json_name = "taskId"];
   repeated string database_components = 4 [json_name = "databaseComponents"];
-  repeated string restart_components = 5 [json_name = "restartComponents"];
+  reserved 5;
+  reserved "restart_components";
 }
 
 message AppDTODeleteApplicationRequest {
@@ -640,9 +641,8 @@ message AppDTOListWorkflowSchedulesResponse {
 }
 
 message AppDTOLogArchiveDownloadRequest {
-  string name = 1 [json_name = "name"];
-  string job_type = 2 [json_name = "jobType"];
-  string mode = 3 [json_name = "mode"];
+  reserved 1, 2, 3;
+  reserved "name", "job_type", "mode";
   repeated string components = 4 [json_name = "components"];
   string path = 5 [json_name = "path"];
   string container = 6 [json_name = "container"];
