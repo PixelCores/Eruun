@@ -11,20 +11,8 @@ import (
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
-func bindRequest[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
-	var req T
-	if err := c.Bind(&req); err != nil {
-		if logBindErr {
-			logRequestError(c, err, "bind request failed")
-		}
-		apiresponse.ReturnError(c, invalidErr)
-		return nil, false
-	}
-	return &req, true
-}
-
-func bindAndValidate[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
-	req, ok := bindRequest[T](c, invalidErr, logBindErr)
+func bindAndValidateStrictJSON[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
+	req, ok := bindStrictJSON[T](c, invalidErr, logBindErr)
 	if !ok {
 		return nil, false
 	}
@@ -65,30 +53,6 @@ func bindStrictJSONBody[T any](c *gin.Context, invalidErr error, logBindErr, all
 			} else {
 				logRequestError(c, err, "decode strict json request failed")
 			}
-		}
-		apiresponse.ReturnError(c, invalidErr)
-		return nil, false
-	}
-	return &req, true
-}
-
-func bindAndValidateStrictJSON[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
-	req, ok := bindStrictJSON[T](c, invalidErr, logBindErr)
-	if !ok {
-		return nil, false
-	}
-	if err := validate.Struct(*req); err != nil {
-		apiresponse.ReturnError(c, invalidErr)
-		return nil, false
-	}
-	return req, true
-}
-
-func bindJSONAllowEOF[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
-	var req T
-	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		if logBindErr {
-			logRequestError(c, err, "bind json request failed")
 		}
 		apiresponse.ReturnError(c, invalidErr)
 		return nil, false

@@ -14,7 +14,7 @@ import (
 )
 
 type handlerResultTestRequest struct {
-	Name string `json:"name" binding:"required"`
+	Name string `json:"name" validate:"required"`
 }
 
 func TestHandleContextResultReturnsSuccess(t *testing.T) {
@@ -62,7 +62,7 @@ func TestHandlePathBoundResultSkipsRunOnPathError(t *testing.T) {
 		handlePathBoundResult(
 			c,
 			appIDPathParam,
-			validatedRequestBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
+			validatedStrictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
 			func(context.Context, string, *handlerResultTestRequest) (gin.H, error) {
 				called = true
 				return gin.H{}, nil
@@ -91,7 +91,7 @@ func TestHandleBoundResultSkipsRunOnBindError(t *testing.T) {
 	r.POST("/result", func(c *gin.Context) {
 		handleBoundResult(
 			c,
-			validatedRequestBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
+			validatedStrictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
 			func(context.Context, *handlerResultTestRequest) (gin.H, error) {
 				called = true
 				return gin.H{}, errors.New("unexpected call")
@@ -139,7 +139,7 @@ func TestHandleComponentBoundResultSkipsRunOnComponentPathError(t *testing.T) {
 	r.POST("/apps/:appID/components/:componentName", func(c *gin.Context) {
 		handleComponentBoundResult(
 			c,
-			validatedRequestBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
+			validatedStrictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
 			func(context.Context, string, string, *handlerResultTestRequest) (gin.H, error) {
 				called = true
 				return gin.H{}, nil

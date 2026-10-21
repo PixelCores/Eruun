@@ -186,3 +186,29 @@ func TestSettingsAPI_UpdateUnsupportedType(t *testing.T) {
 	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
 	require.Equal(t, bcode.ErrSystemSettingTypeInvalid.BusinessCode, envelope.Code)
 }
+
+// TestSettingsAPI_UpdateRejectsUnknownField covers the endpoints that used to
+// bind leniently and silently drop misspelled fields.
+func TestSettingsAPI_UpdateRejectsUnknownField(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	called := false
+	service := &mockSettingService{
+		updateFn: func(context.Context, string, apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error) {
+			called = true
+			return &apis.SystemSetting{}, nil
+		},
+	}
+
+	h := &settings{SystemSettingService: service}
+	r := gin.New()
+	r.PUT("/settings/:type", h.updateSetting)
+
+	req := httptest.NewRequest(http.MethodPut, "/settings/workflowScheduler", strings.NewReader(`{"value":{},"valeu":{}}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+	require.False(t, called, "an unknown field must be rejected before the service runs")
+}
