@@ -35,11 +35,6 @@ const (
 	SchemaModeValidate SchemaMode = "validate"
 )
 
-// New mysql datastore instance
-func New(ctx context.Context, cfg datastore.Config, models []model.Interface) (datastore.DataStore, error) {
-	return NewWithSchemaMode(ctx, cfg, models, SchemaModeMigrate)
-}
-
 func NewWithSchemaMode(ctx context.Context, cfg datastore.Config, models []model.Interface, schemaMode SchemaMode) (datastore.DataStore, error) {
 	if ctx == nil {
 		ctx = context.Background()

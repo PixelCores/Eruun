@@ -125,14 +125,6 @@ func (w *CancelWatcher) Stop(ctx context.Context) {
 	})
 }
 
-// Reason returns the cancellation reason observed by the watcher, if any.
-func (w *CancelWatcher) Reason() string {
-	if w == nil || w.state == nil {
-		return ""
-	}
-	return w.state.get()
-}
-
 func (w *CancelWatcher) maintain(ctx context.Context, cancelFn context.CancelFunc) {
 	defer w.wg.Done()
 	checkTicker := time.NewTicker(cancelCheckInterval)

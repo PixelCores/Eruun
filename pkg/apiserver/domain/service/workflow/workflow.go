@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -46,14 +44,12 @@ type WorkflowService interface {
 }
 
 type workflowServiceImpl struct {
-	Store                     datastore.DataStore  `inject:"datastore"`
-	KubeClient                kubernetes.Interface `inject:"kubeClient"`
-	KubeConfig                *rest.Config         `inject:"kubeConfig"`
-	Cache                     cache.ICache         `inject:"cache"`
-	RedisClient               *redis.Client        `inject:"redisClient"`
-	Cfg                       *config.Config       `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider  `inject:""`
-	ScheduleLocker            locker.Locker        `inject:"appScheduleLocker"`
+	Store                     datastore.DataStore `inject:"datastore"`
+	Cache                     cache.ICache        `inject:"cache"`
+	RedisClient               *redis.Client       `inject:"redisClient"`
+	Cfg                       *config.Config      `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
+	ScheduleLocker            locker.Locker       `inject:"appScheduleLocker"`
 	scheduleDispatchMu        sync.Mutex
 	scheduleDispatchPage      int
 }

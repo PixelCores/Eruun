@@ -12,10 +12,7 @@ import (
 )
 
 func TestSystemSettingRepositoryConstructors(t *testing.T) {
-	require.NotNil(t, NewSystemSettingRepository())
-	store := &repositoryTestStore{}
-	repo := NewSystemSettingRepositoryWithStore(store)
-	require.NotNil(t, repo)
+	require.NotNil(t, NewSystemSettingRepository(&repositoryTestStore{}))
 }
 
 func TestSystemSettingRepositoryDelegates(t *testing.T) {
@@ -46,7 +43,7 @@ func TestSystemSettingRepositoryDelegates(t *testing.T) {
 }
 
 func TestInitRepositoryBeanContainsCoreRepositories(t *testing.T) {
-	beans := InitRepositoryBean(NewApplicationRepository(nil), NewComponentRepository(nil))
+	beans := InitRepositoryBean(nil, NewApplicationRepository(nil), NewComponentRepository(nil))
 	require.NotEmpty(t, beans)
 }
 

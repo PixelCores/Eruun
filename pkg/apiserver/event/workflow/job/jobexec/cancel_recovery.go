@@ -32,13 +32,6 @@ func IsCancelledJobCleanupPending(record *model.JobInfo) bool {
 		record.Status == string(config.StatusCancelled) && record.SchedulingReason == cancelledJobCleanupPending
 }
 
-// CleanupRecoveredCancelledJobs deletes durable Kubernetes Job attempts after
-// the database recovery fence has made their JobInfo terminal.
-func CleanupRecoveredCancelledJobs(ctx context.Context, client kubernetes.Interface, store datastore.DataStore) (int, error) {
-	cleaned, _, err := CleanupRecoveredCancelledJobsPage(ctx, client, store, 1, 100)
-	return cleaned, err
-}
-
 // CleanupRecoveredCancelledJobsPage lets the controller rotate through durable
 // cleanup intents so a bad record cannot hide newer work.
 func CleanupRecoveredCancelledJobsPage(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, page, pageSize int) (int, int, error) {

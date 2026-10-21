@@ -142,3 +142,11 @@ func TestCancelWatcherMultipleWatchersSameTask(t *testing.T) {
 		t.Fatalf("unexpected watcher2 cancel reason: %s", reason)
 	}
 }
+
+// Reason returns the cancellation reason observed by the watcher, if any.
+func (w *CancelWatcher) Reason() string {
+	if w == nil || w.state == nil {
+		return ""
+	}
+	return w.state.get()
+}

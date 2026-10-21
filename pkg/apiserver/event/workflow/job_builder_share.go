@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -83,29 +82,6 @@ func defaultServiceTraitsFromProperties(component *model.ApplicationComponent, p
 			Ports: ports,
 		},
 	}
-}
-
-func decodeComponentTraits(component *model.ApplicationComponent) *spec.Traits {
-	if component == nil || component.Traits == nil {
-		return nil
-	}
-
-	traitBytes, err := json.Marshal(component.Traits)
-	if err != nil {
-		klog.Errorf("failed to marshal component traits: %v", err)
-		return nil
-	}
-
-	if string(traitBytes) == "{}" || string(traitBytes) == "null" {
-		return nil
-	}
-
-	var traits spec.Traits
-	if err := json.Unmarshal(traitBytes, &traits); err != nil {
-		klog.Errorf("failed to unmarshal component traits: %v", err)
-		return nil
-	}
-	return &traits
 }
 
 func shareNameForComponent(component *model.ApplicationComponent) string {

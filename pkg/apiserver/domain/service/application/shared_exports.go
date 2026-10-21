@@ -46,10 +46,6 @@ func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository
 	return validateApplicationResourceNames(ctx, appRepo, componentRepo, resourceApp, components)
 }
 
-func ValidateComponentTraitsForWrite(componentType config.JobType, traits apisv1.Traits, fieldPrefix string) error {
-	return validateComponentTraitsForWrite(componentType, traits, fieldPrefix)
-}
-
 func ValidateCreateApplicationCallback(ctx context.Context, cfg *config.Config, provider *urlpolicy.Provider, req apisv1.CreateApplicationsRequest) error {
 	_, err := resolveCreateApplicationCallback(ctx, cfg, provider, req)
 	return err
@@ -62,10 +58,6 @@ func ValidateWorkflowCallback(ctx context.Context, cfg *config.Config, provider 
 
 func LoadURLSecurityPolicy(ctx context.Context, provider *urlpolicy.Provider) (*spec.URLSecurityPolicySpec, error) {
 	return loadURLSecurityPolicy(ctx, provider)
-}
-
-func CopyStringMap(source map[string]string) map[string]string {
-	return copyStringMap(source)
 }
 
 func ServiceNamespaceOrDefault(namespace string) string {

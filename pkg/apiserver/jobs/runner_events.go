@@ -29,7 +29,6 @@ import (
 
 const (
 	RunnerProtocolVersion = "v1"
-	RunnerHeartbeatPeriod = 15 * time.Second
 	RunnerStaleAfter      = 60 * time.Second
 )
 

@@ -175,7 +175,7 @@ func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T
 	require.NoError(t, db.Where("execution_key = ?", waitingKey).First(waiting).Error)
 	require.Equal(t, workflowconfig.JobSchedulingQueued, waiting.SchedulingState)
 
-	cleaned, err := jobexec.CleanupRecoveredCancelledJobs(ctx, client, store)
+	cleaned, _, err := jobexec.CleanupRecoveredCancelledJobsPage(ctx, client, store, 1, 100)
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
 	require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)

@@ -76,14 +76,3 @@ func NewWaitErrorWithAbnormal(status config.Status, err error, abnormalReason st
 		AbnormalReason: abnormalReason,
 	}
 }
-
-// ExtractWaitError 提取 WaitError
-func ExtractWaitError(err error) (*WaitError, bool) {
-	if err == nil {
-		return nil, false
-	}
-	if we, ok := err.(*WaitError); ok {
-		return we, true
-	}
-	return nil, false
-}

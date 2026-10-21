@@ -92,12 +92,10 @@ type PlanAction struct {
 // Validation error codes
 const (
 	// Naming errors
-	ErrCodeInvalidName          = "INVALID_NAME"
 	ErrCodeNameTooShort         = "NAME_TOO_SHORT"
 	ErrCodeNameTooLong          = "NAME_TOO_LONG"
 	ErrCodeInvalidNameFormat    = "INVALID_NAME_FORMAT"
 	ErrCodeInvalidComponentName = "INVALID_COMPONENT_NAME"
-	ErrCodeInvalidStepName      = "INVALID_STEP_NAME"
 
 	// Component errors
 	ErrCodeInvalidComponentType = "INVALID_COMPONENT_TYPE"
@@ -112,8 +110,6 @@ const (
 	ErrCodeInvalidProbeType      = "INVALID_PROBE_TYPE"
 	ErrCodeInvalidProbeConfig    = "INVALID_PROBE_CONFIG"
 	ErrCodeNestedTraitForbidden  = "NESTED_TRAIT_FORBIDDEN"
-	ErrCodeMissingRBACRules      = "MISSING_RBAC_RULES"
-	ErrCodeMissingRBACVerbs      = "MISSING_RBAC_VERBS"
 	ErrCodeMissingIngressRoutes  = "MISSING_INGRESS_ROUTES"
 	ErrCodeMissingServiceName    = "MISSING_SERVICE_NAME"
 	ErrCodeInvalidEnvFromType    = "INVALID_ENVFROM_TYPE"
@@ -128,7 +124,6 @@ const (
 	ErrCodeInvalidWorkflowStepType      = "INVALID_WORKFLOW_STEP_TYPE"
 	ErrCodeInvalidWorkflowFailurePolicy = "INVALID_WORKFLOW_FAILURE_POLICY"
 	ErrCodeInvalidApprovalConfig        = "INVALID_APPROVAL_CONFIG"
-	ErrCodeEmptyWorkflowStep            = "EMPTY_WORKFLOW_STEP"
 	ErrCodeDuplicateWorkflowStep        = "DUPLICATE_WORKFLOW_STEP"
 	ErrCodeWorkflowStepNoComponent      = "WORKFLOW_STEP_NO_COMPONENT"
 )

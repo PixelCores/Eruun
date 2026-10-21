@@ -33,15 +33,6 @@ func ConvertComponentModelsToDTO(components []*model.ApplicationComponent) ([]*a
 	return result, nil
 }
 
-func ConvertComponentModelToDTO(component *model.ApplicationComponent) (*apisv1.ApplicationComponent, error) {
-	dto, err := convertComponentModelToDTOBase(component)
-	if err != nil || dto == nil {
-		return dto, err
-	}
-	enrichComponentResourceDetails(dto, nil)
-	return dto, nil
-}
-
 func convertComponentModelToDTOBase(component *model.ApplicationComponent) (*apisv1.ApplicationComponent, error) {
 	if component == nil {
 		return nil, nil

@@ -376,3 +376,12 @@ func TestRetryCount(t *testing.T) {
 
 	mutex1.Unlock(ctx)
 }
+
+// WithRetryDelay sets the delay between retry attempts.
+func WithRetryDelay(delay time.Duration) Option {
+	return func(o *Options) {
+		if delay > 0 {
+			o.RetryDelay = delay
+		}
+	}
+}

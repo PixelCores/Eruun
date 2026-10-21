@@ -572,7 +572,7 @@ func TestMigrateSchemaDeletesRemovedSystemSettings(t *testing.T) {
 		require.NoError(t, db.Create(&settings[i]).Error)
 	}
 	store := &sqlstore.Driver{Client: *db}
-	repo := repository.NewSystemSettingRepositoryWithStore(store)
+	repo := repository.NewSystemSettingRepository(store)
 	svc := systemsetting.NewSystemSettingService()
 	beans := containerutil.NewContainer()
 	require.NoError(t, beans.ProvideWithName("datastore", store))

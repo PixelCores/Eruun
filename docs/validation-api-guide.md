@@ -736,12 +736,10 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 | 错误码 | 说明 |
 |--------|------|
-| `INVALID_NAME` | 名称无效 |
 | `NAME_TOO_SHORT` | 名称太短 (< 2 字符) |
 | `NAME_TOO_LONG` | 名称太长 (> 63 字符) |
 | `INVALID_NAME_FORMAT` | 名称格式不符合 DNS-1123 子域名规范 |
 | `INVALID_COMPONENT_NAME` | 组件名称无效 |
-| `INVALID_STEP_NAME` | 工作流步骤名称无效 |
 
 ### 组件错误
 
@@ -772,7 +770,6 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 |--------|------|
 | `COMPONENT_NOT_FOUND` | 组件不存在 |
 | `INVALID_WORKFLOW_MODE` | 无效的工作流模式 |
-| `EMPTY_WORKFLOW_STEP` | 空的工作流步骤 |
 | `DUPLICATE_WORKFLOW_STEP` | 重复的工作流步骤名称 |
 | `WORKFLOW_STEP_NO_COMPONENT` | 工作流步骤没有组件 |
 

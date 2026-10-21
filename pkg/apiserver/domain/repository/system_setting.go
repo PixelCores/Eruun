@@ -16,18 +16,13 @@ type SystemSettingRepository interface {
 	List(ctx context.Context, options datastore.ListOptions) ([]*model.SystemSetting, error)
 }
 
-// NewSystemSettingRepository creates a new SystemSettingRepository.
-func NewSystemSettingRepository() SystemSettingRepository {
-	return &systemSettingRepository{}
-}
-
-// NewSystemSettingRepositoryWithStore creates a SystemSettingRepository with an explicit datastore.
-func NewSystemSettingRepositoryWithStore(store datastore.DataStore) SystemSettingRepository {
+// NewSystemSettingRepository creates a SystemSettingRepository backed by store.
+func NewSystemSettingRepository(store datastore.DataStore) SystemSettingRepository {
 	return &systemSettingRepository{Store: store}
 }
 
 type systemSettingRepository struct {
-	Store datastore.DataStore `inject:"datastore"`
+	Store datastore.DataStore
 }
 
 func (r *systemSettingRepository) FindByType(ctx context.Context, settingType string) (*model.SystemSetting, error) {

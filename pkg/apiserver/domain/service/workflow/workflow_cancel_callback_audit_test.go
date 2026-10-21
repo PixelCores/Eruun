@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -1809,4 +1812,26 @@ func TestApproveWorkflowTaskCancelCASRejectsCheckpointDrift(t *testing.T) {
 	require.True(t, store.task.ApprovalPending)
 	require.Equal(t, "manual-approval-next", store.task.PendingApprovalStep)
 	require.Equal(t, 4, store.task.CurrentStep)
+}
+
+// ReconcileWorkflowTerminalCallbacks replays durable cancellation callbacks
+// whose worker cleanup has completed or expired.
+func ReconcileWorkflowTerminalCallbacks(ctx context.Context, store datastore.DataStore, cfg *config.Config, provider *urlpolicy.Provider) (int, error) {
+	tasks, err := PendingWorkflowTerminalCallbacks(ctx, store, 1, 100)
+	if err != nil {
+		return 0, err
+	}
+	reconciled := 0
+	var reconcileErr error
+	for _, task := range tasks {
+		done, err := ReconcileWorkflowTerminalCallback(ctx, store, cfg, provider, task)
+		if err != nil {
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("task %s: %w", task.TaskID, err))
+			continue
+		}
+		if done {
+			reconciled++
+		}
+	}
+	return reconciled, reconcileErr
 }

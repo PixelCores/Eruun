@@ -256,28 +256,6 @@ func (w *workflowServiceImpl) reconcileWorkflowTerminalCallback(ctx context.Cont
 	return true, nil
 }
 
-// ReconcileWorkflowTerminalCallbacks replays durable cancellation callbacks
-// whose worker cleanup has completed or expired.
-func ReconcileWorkflowTerminalCallbacks(ctx context.Context, store datastore.DataStore, cfg *config.Config, provider *urlpolicy.Provider) (int, error) {
-	tasks, err := PendingWorkflowTerminalCallbacks(ctx, store, 1, 100)
-	if err != nil {
-		return 0, err
-	}
-	reconciled := 0
-	var reconcileErr error
-	for _, task := range tasks {
-		done, err := ReconcileWorkflowTerminalCallback(ctx, store, cfg, provider, task)
-		if err != nil {
-			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("task %s: %w", task.TaskID, err))
-			continue
-		}
-		if done {
-			reconciled++
-		}
-	}
-	return reconciled, reconcileErr
-}
-
 // PendingWorkflowTerminalCallbacks returns one stable page for the controller
 // replay loop. The caller rotates pages so one failing callback cannot starve
 // newer cancellation intents.

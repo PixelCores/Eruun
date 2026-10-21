@@ -27,7 +27,6 @@ import (
 
 const (
 	callbackResponseMaxBytes  = 4096
-	defaultCallbackTimeout    = 10 * time.Second
 	callbackLogRedacted       = "<redacted>"
 	callbackIdempotencyHeader = "Idempotency-Key"
 )

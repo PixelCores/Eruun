@@ -39,11 +39,6 @@ func IngressName(name, appName string) string {
 	return buildResourceName(maxResourceNameLength, appName, name)
 }
 
-// PVCName formats PVC names as <appName>-<traitName> with normalized segments.
-func PVCName(traitName, appName string) string {
-	return buildResourceName(maxResourceNameLength, appName, normalizeSegment(traitName, "data"))
-}
-
 // JobName builds a deterministic Job name for instant tasks.
 func JobName(name, appName string) string {
 	return buildResourceName(maxResourceNameLength, appName, name)
