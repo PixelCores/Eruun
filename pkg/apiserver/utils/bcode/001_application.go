@@ -3,8 +3,6 @@ package bcode
 // ErrApplicationConfig application config does not comply with OAM specification
 var ErrApplicationConfig = NewBcode(400, 10000, "application config does not comply with OAM specification")
 
-var ErrComponentNotImageSet = NewBcode(400, 10001, "the image of the component has not been set..")
-
 var ErrComponentBuild = NewBcode(400, 10002, "application component build error")
 
 // ErrApplicationExist application is existed

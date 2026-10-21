@@ -111,7 +111,7 @@ func TestGenerateEvaluationTakeoverDuringCollectionPreservesAttempt(t *testing.T
 			parent := &model.WorkflowQueue{TaskID: "takeover", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob,
 				JobSpec: string(raw), Status: config.StatusRunning, RunGeneration: 1, RunToken: "first-owner", WorkerID: "worker-1"}
 			store := &evaluationWorkflowStore{}
-			cfg := &config.Config{Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
+			cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig(), Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
 			executions, err := GenerateJobTasks(ctx, parent, store, 3600, cfg)
 			require.NoError(t, err)
 			original := executions[0].Jobs[config.JobPriorityNormal][0]

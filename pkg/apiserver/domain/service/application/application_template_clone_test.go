@@ -526,6 +526,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 			TmpCreate:  true,
 			Size:       "1Gi",
 			Type:       spec.StorageTypePersistent,
+			MountPath:  "/var/lib/mysql",
 		}},
 		Ingress: []spec.IngressTraitsSpec{{
 			Name: "mysql",
@@ -575,7 +576,8 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 			},
 		}},
 		Sidecar: []spec.SidecarTraitsSpec{{
-			Name: "backup",
+			Name:  "backup",
+			Image: "busybox:1.36",
 			Env: map[string]string{
 				"DB_HOST": "mysql-master",
 			},

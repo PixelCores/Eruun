@@ -30,34 +30,6 @@ var (
 	}
 )
 
-func ValidateResourcesInTraits(traits spec.Traits, fieldPrefix string) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-	if traits.Resources != nil {
-		errors = append(errors, ValidateResourcesTraitSpec(*traits.Resources, fmt.Sprintf("%s.resources", fieldPrefix))...)
-	}
-	for i, initTrait := range traits.Init {
-		errors = append(errors, ValidateResourcesInTraits(initTrait.Traits, fmt.Sprintf("%s.init[%d].traits", fieldPrefix, i))...)
-	}
-	for i, sidecar := range traits.Sidecar {
-		errors = append(errors, ValidateResourcesInTraits(sidecar.Traits, fmt.Sprintf("%s.sidecar[%d].traits", fieldPrefix, i))...)
-	}
-	return errors
-}
-
-func ValidateStorageSubPathConflictsInTraits(traits spec.Traits, fieldPrefix string) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-	for i, storage := range traits.Storage {
-		errors = append(errors, ValidateStorageSubPathConflict(storage, fmt.Sprintf("%s.storage[%d]", fieldPrefix, i))...)
-	}
-	for i, initTrait := range traits.Init {
-		errors = append(errors, ValidateStorageSubPathConflictsInTraits(initTrait.Traits, fmt.Sprintf("%s.init[%d].traits", fieldPrefix, i))...)
-	}
-	for i, sidecar := range traits.Sidecar {
-		errors = append(errors, ValidateStorageSubPathConflictsInTraits(sidecar.Traits, fmt.Sprintf("%s.sidecar[%d].traits", fieldPrefix, i))...)
-	}
-	return errors
-}
-
 func ValidateStorageSubPathConflict(storage spec.StorageTraitSpec, field string) []apisv1.ValidationError {
 	if strings.TrimSpace(storage.SubPath) == "" || strings.TrimSpace(storage.SubPathExpr) == "" {
 		return nil
@@ -497,19 +469,15 @@ func intOrPercentIsZero(value *intstr.IntOrString) bool {
 	}
 }
 
-func validateReservedLabelMap(labels map[string]string, field, labelName string) []apisv1.ValidationError {
-	if len(labels) == 0 {
-		return nil
-	}
-	var errors []apisv1.ValidationError
-	for key := range labels {
-		if spec.IsReservedComponentLabel(key) {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   field,
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: fmt.Sprintf("%s must not contain reserved label %q", labelName, key),
-			})
-		}
+func validateReservedLabelMap(labels map[string]string, field, source string) []apisv1.ValidationError {
+	keys := spec.ReservedComponentLabelsIn(labels)
+	errors := make([]apisv1.ValidationError, 0, len(keys))
+	for _, key := range keys {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   fmt.Sprintf("%s.%s", field, key),
+			Code:    apisv1.ErrCodeInvalidTraitConfig,
+			Message: fmt.Sprintf("%s key %q is reserved and cannot be overridden", source, key),
+		})
 	}
 	return errors
 }

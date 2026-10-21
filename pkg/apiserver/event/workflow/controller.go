@@ -78,6 +78,9 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 	if urlSecurityPolicy == nil {
 		return nil, fmt.Errorf("url security policy is required")
 	}
+	if cfg == nil {
+		return nil, fmt.Errorf("server config is required")
+	}
 	ctl := &WorkflowCtl{
 		workflowTask:             workflowTask,
 		runtimeConfig:            cfg,
@@ -89,11 +92,9 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		Cache:                    cache,
 		prefix:                   fmt.Sprintf("workflowctl-%s-%s", workflowTask.WorkflowName, workflowTask.TaskID),
 		defaultJobTimeoutSeconds: resolveDefaultJobTimeout(cfg),
-		callbackTimeoutMax:       workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime()),
+		callbackTimeoutMax:       workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.Workflow),
 		urlSecurityPolicy:        urlSecurityPolicy,
-	}
-	if cfg != nil {
-		ctl.accountConfig = cfg.Accounts
+		accountConfig:            cfg.Accounts,
 	}
 	ctl.ack = ctl.updateWorkflowTask
 	return ctl, nil
@@ -260,10 +261,7 @@ func (w *WorkflowCtl) updateWorkflowStatus(_ context.Context) {
 }
 
 func resolveDefaultJobTimeout(cfg *config.Config) int64 {
-	timeout := config.DefaultJobTaskTimeout
-	if cfg != nil && cfg.Workflow.DefaultJobTimeout > 0 {
-		timeout = cfg.Workflow.DefaultJobTimeout
-	}
+	timeout := cfg.Workflow.DefaultJobTimeout
 	seconds := int64(timeout / time.Second)
 	// JobTask and Kubernetes deadlines use whole seconds. Round fractional
 	// values up, but keep conversion back to time.Duration within its range.

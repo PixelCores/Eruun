@@ -8,7 +8,6 @@ require (
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/barnettZQG/inject v0.0.1
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/fatih/color v1.19.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-playground/validator/v10 v10.30.5
@@ -98,7 +97,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect

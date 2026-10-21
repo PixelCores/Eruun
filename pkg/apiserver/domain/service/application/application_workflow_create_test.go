@@ -590,6 +590,7 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 		Namespace:     config.DefaultNamespace,
 		Image:         "busybox:1.36",
 		ComponentType: config.ScheduledJob,
+		Properties:    mustJSONStruct(&model.Properties{Schedule: "*/5 * * * *"}),
 	}
 
 	svc := newMockServiceWithStore(store)

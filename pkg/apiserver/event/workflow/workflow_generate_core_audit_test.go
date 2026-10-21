@@ -60,7 +60,7 @@ func TestGenerateJobTasksPropagatesWorkflowFailurePolicy(t *testing.T) {
 		WorkflowName: "test-workflow",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.NotEmpty(t, executions)
 	for _, execution := range executions {
 		require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, execution.FailurePolicy)
@@ -103,7 +103,7 @@ func TestGenerateJobTasksDefaultsMissingFailurePolicyToCleanupAll(t *testing.T) 
 		WorkflowName: "test-workflow",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.NotEmpty(t, executions)
 	for _, execution := range executions {
 		require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, execution.FailurePolicy)
@@ -128,7 +128,7 @@ func TestBuildWorkflowFailureCleanupJobsCoversAllComponents(t *testing.T) {
 		WorkerID:      "worker-a",
 	}
 
-	jobs, err := buildWorkflowFailureCleanupJobs(context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	jobs, err := buildWorkflowFailureCleanupJobs(context.Background(), task, store, testJobTimeoutSeconds)
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
 	require.Equal(t, []string{"api", "worker"}, []string{jobs[0].Name, jobs[1].Name})
@@ -174,7 +174,7 @@ func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 		ProjectID:  "proj-1",
 	}
 
-	jobs, err := buildWorkflowFailureCleanupJobs(ctx, task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	jobs, err := buildWorkflowFailureCleanupJobs(ctx, task, store, testJobTimeoutSeconds)
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
 	require.Equal(t, []string{"api", "worker"}, []string{jobs[0].Name, jobs[1].Name})
@@ -251,7 +251,7 @@ func TestGenerateJobTasksSequential(t *testing.T) {
 		WorkflowName: "test-workflow",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 2)
 
 	first := executions[0]
@@ -334,7 +334,7 @@ func TestGenerateJobTasksParallel(t *testing.T) {
 		WorkflowName: "parallel-workflow",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 1)
 
 	parallel := executions[0]
@@ -399,7 +399,7 @@ func TestGenerateJobTasksResetWorkflowCleanupThenDeploy(t *testing.T) {
 		TaskID:       "task-reset",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 2)
 
 	cleanupJobs := executions[0].Jobs[config.JobPriorityLow]
@@ -456,7 +456,7 @@ func TestGenerateJobTasksPlacesCleanupMetadataListFailureBeforeNormalSteps(t *te
 		}),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 2)
 	require.Equal(t, versionUpdateCleanupStepName, executions[0].Name)
 	cleanupJobs := executions[0].Jobs[config.JobPriorityLow]
@@ -514,7 +514,7 @@ func TestGenerateJobTasksPlacesInvalidCleanupPayloadFailureBeforeNormalSteps(t *
 		}),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 2)
 	require.Equal(t, versionUpdateCleanupStepName, executions[0].Name)
 	cleanupJobs := executions[0].Jobs[config.JobPriorityLow]
@@ -548,7 +548,7 @@ func TestGenerateJobTasksRejectsUnsupportedWorkflowJobType(t *testing.T) {
 		TaskID:       "task-reset",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	requireWorkflowGenerationFailed(t, executions, "unsupported_job_type")
 }
 
@@ -607,7 +607,7 @@ func TestGenerateJobTasksSubStepByStepGroupsComponents(t *testing.T) {
 		TaskID:       "task-substep",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 1)
 	require.Equal(t, "deploy-substep", executions[0].Name)
 	require.Equal(t, config.WorkflowModeStepByStep, executions[0].Mode)
@@ -660,7 +660,7 @@ func TestGenerateJobTasksUsesApplicationNameForResourceNames(t *testing.T) {
 		TaskID:       "task-store",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 1)
 	jobs := executions[0].Jobs[config.JobPriorityNormal]
 	require.Len(t, jobs, 1)

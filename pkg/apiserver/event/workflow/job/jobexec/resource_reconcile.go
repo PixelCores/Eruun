@@ -17,14 +17,13 @@ type onExistingResourceFunc[T any] func(context.Context, *T) error
 type updateResourceFunc[T any] func(context.Context, *T) error
 
 type SharedResourceAccessOptions struct {
-	Job             *model.JobTask
-	Ack             func()
-	Labels          map[string]string
-	Kind            domainspec.ResourceKind
-	ListFn          resourceListFn
-	LockProvider    locker.Locker
-	LogSkip         func(domainspec.ShareStrategy)
-	ReconcileShared bool
+	Job          *model.JobTask
+	Ack          func()
+	Labels       map[string]string
+	Kind         domainspec.ResourceKind
+	ListFn       resourceListFn
+	LockProvider locker.Locker
+	LogSkip      func(domainspec.ShareStrategy)
 }
 
 type TrackedResourceReconcileOptions[T any] struct {
@@ -103,12 +102,6 @@ func CreateOrUpdateTrackedResource[T any](
 }
 
 func ResolveSharedResourceAccess(ctx context.Context, opts SharedResourceAccessOptions) (func(), bool, error) {
-	if opts.ReconcileShared {
-		_, strategy := ShareInfoFromLabels(opts.Labels)
-		if strategy != domainspec.ShareStrategyIgnore {
-			return nil, false, nil
-		}
-	}
 	return handleSharedResource(ctx, opts.Job, opts.Ack, opts.Labels, opts.Kind, opts.ListFn, opts.LockProvider, opts.LogSkip)
 }
 

@@ -5,8 +5,6 @@ import (
 	"net/url"
 	"strings"
 
-	"k8s.io/klog/v2"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -274,17 +272,6 @@ func workflowModelPoliciesFromSingleProperty(name string, jobType config.JobType
 	}}
 }
 
-func workflowPolicyComponentNames(policies []model.Policies) []string {
-	if len(policies) == 0 {
-		return nil
-	}
-	var components []string
-	for _, policy := range policies {
-		components = append(components, policy.Policies...)
-	}
-	return canonicalWorkflowComponentRefs(components, nil)
-}
-
 func convertWorkflowStepApprovalFromRequest(req *apisv1.WorkflowStepApproval) *model.WorkflowStepApproval {
 	if req == nil {
 		return nil
@@ -376,26 +363,6 @@ func workflowComponentNamesFromModels(components []*model.ApplicationComponent) 
 	return componentNames
 }
 
-func workflowComponentRefKeys(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	var result []string
-	for _, value := range values {
-		key := workflowComponentRefKey(value)
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, key)
-	}
-	return result
-}
-
 func ensureUniqueWorkflowName(base string, workflows []*model.Workflow) string {
 	return ensureUniqueWorkflowNameExcluding(base, workflows, "")
 }
@@ -451,279 +418,375 @@ func workflowComponentTypesFromModels(components []*model.ApplicationComponent) 
 	return componentTypes
 }
 
-// ValidateWorkflowMode keeps stored workflows and Try on the same public mode contract.
-func ValidateWorkflowMode(mode string) error {
-	switch config.WorkflowMode(mode) {
-	case "", config.WorkflowModeStepByStep, config.WorkflowModeDAG:
-		return nil
-	default:
-		return fmt.Errorf("invalid workflow mode: %s, must be one of: StepByStep, DAG", mode)
+var (
+	validWorkflowStepTypes = map[config.WorkflowStepType]bool{
+		config.WorkflowStepTypeComponent: true,
+		config.WorkflowStepTypeApproval:  true,
 	}
-}
+	validApprovalMethods = map[string]bool{
+		"GET":    true,
+		"POST":   true,
+		"PUT":    true,
+		"DELETE": true,
+	}
+)
 
-// ValidateUniqueWorkflowStepName records nonempty names using Try's case-insensitive identity.
-func ValidateUniqueWorkflowStepName(name string, seen map[string]bool) error {
-	if name == "" {
-		return nil
-	}
-	key := strings.ToLower(name)
-	if seen[key] {
-		return fmt.Errorf("duplicate workflow step name: %s", name)
-	}
-	seen[key] = true
-	return nil
-}
-
+// validateWorkflowComponentRefs rejects a workflow write with the first error
+// of the rule set Try reports in full.
 func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, existing map[string]config.JobType) error {
-	stepNames := make(map[string]bool, len(steps))
-	for _, step := range steps {
+	return firstValidationError(bcode.ErrWorkflowConfig, ValidateWorkflowSteps(steps, existing, "workflow"))
+}
+
+// ValidateWorkflowSteps is the single rule set for workflow steps. components
+// maps lower-cased component names to their types.
+func ValidateWorkflowSteps(steps []apisv1.CreateWorkflowStepRequest, components map[string]config.JobType, field string) []apisv1.ValidationError {
+	var errors []apisv1.ValidationError
+	stepNames := make(map[string]bool)
+	for i, step := range steps {
+		stepField := fmt.Sprintf("%s[%d]", field, i)
 		if err := workflowconfig.ValidateJobSchedulingClass(step.SchedulingClass); err != nil {
-			return fmt.Errorf("%w: step %q: %v", bcode.ErrWorkflowConfig, step.Name, err)
-		}
-		if err := ValidateUniqueWorkflowStepName(step.Name, stepNames); err != nil {
-			return fmt.Errorf("%w: %v", bcode.ErrWorkflowConfig, err)
-		}
-		if err := ValidateWorkflowMode(step.Mode); err != nil {
-			return fmt.Errorf("%w: step %q: %v", bcode.ErrWorkflowConfig, step.Name, err)
-		}
-		for _, sub := range step.SubSteps {
-			if err := workflowconfig.ValidateJobSchedulingClass(sub.SchedulingClass); err != nil {
-				return fmt.Errorf("%w: substep %q: %v", bcode.ErrWorkflowConfig, sub.Name, err)
-			}
+			errors = append(errors, apisv1.ValidationError{Field: stepField + ".schedulingClass", Code: apisv1.ErrCodeInvalidWorkflowStepType, Message: err.Error()})
 		}
 		stepType := config.WorkflowStepType(strings.ToLower(strings.TrimSpace(string(step.StepType))))
 		if stepType == "" {
 			stepType = config.WorkflowStepTypeComponent
 		}
-		stepPolicies, err := validateWorkflowRequestProperties(
-			step.Name,
-			step.WorkflowType,
-			step.Components,
-			step.Properties,
-			step.WorkflowPropertiesList(),
-			step.WorkflowPropertiesFromArray(),
-			len(step.SubSteps) == 0,
-		)
-		if err != nil {
-			return err
+		if step.Name != "" {
+			errors = append(errors, ValidateLabelName(step.Name, stepField+".name")...)
+			if key := strings.ToLower(step.Name); stepNames[key] {
+				errors = append(errors, apisv1.ValidationError{
+					Field:   stepField + ".name",
+					Code:    apisv1.ErrCodeDuplicateWorkflowStep,
+					Message: fmt.Sprintf("duplicate workflow step name: %s", step.Name),
+				})
+			} else {
+				stepNames[key] = true
+			}
 		}
-		stepComponents := workflowPolicyComponentNames(stepPolicies)
-		switch stepType {
-		case config.WorkflowStepTypeComponent:
-			if err := validateWorkflowJobType(step.WorkflowType, step.Name); err != nil {
-				return err
-			}
-			if err := validateLogArchiveUploadWorkflowProperties(step.WorkflowType, step.Name, stepPolicies); err != nil {
-				return err
-			}
-			for _, sub := range step.SubSteps {
-				subPolicies, err := validateWorkflowRequestProperties(
-					sub.Name,
-					sub.WorkflowType,
-					sub.Components,
-					sub.Properties,
-					sub.WorkflowPropertiesList(),
-					sub.WorkflowPropertiesFromArray(),
-					true,
-				)
-				if err != nil {
-					return err
-				}
-				if err := validateWorkflowJobType(sub.WorkflowType, sub.Name); err != nil {
-					return err
-				}
-				if err := validateLogArchiveUploadWorkflowProperties(sub.WorkflowType, sub.Name, subPolicies); err != nil {
-					return err
-				}
-			}
-		case config.WorkflowStepTypeApproval:
-			if err := validateApprovalWorkflowStep(step, stepComponents); err != nil {
-				return err
-			}
-			continue
+		switch config.WorkflowMode(step.Mode) {
+		case "", config.WorkflowModeStepByStep, config.WorkflowModeDAG:
 		default:
-			return fmt.Errorf("%w: step %q has invalid stepType %q", bcode.ErrWorkflowConfig, step.Name, step.StepType)
+			errors = append(errors, apisv1.ValidationError{
+				Field:   stepField + ".mode",
+				Code:    apisv1.ErrCodeInvalidWorkflowMode,
+				Message: fmt.Sprintf("invalid workflow mode: %s, must be one of: StepByStep, DAG", step.Mode),
+			})
 		}
-		if err := ensureComponentsExist(stepComponents, existing); err != nil {
-			klog.Errorf("workflow step=%s references missing components: %v", step.Name, err)
-			return err
+		if !validWorkflowStepTypes[stepType] {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   stepField + ".stepType",
+				Code:    apisv1.ErrCodeInvalidWorkflowStepType,
+				Message: fmt.Sprintf("invalid workflow step type: %s", step.StepType),
+			})
+			continue
 		}
-		if err := validateLogArchiveUploadWorkflowComponents(step.WorkflowType, step.Name, stepComponents, existing); err != nil {
-			return err
+		if stepType == config.WorkflowStepTypeApproval {
+			if len(step.Components) > 0 || len(step.Properties.Policies) > 0 || len(step.SubSteps) > 0 || step.HasWorkflowInitSQLURL() {
+				errors = append(errors, apisv1.ValidationError{
+					Field:   stepField,
+					Code:    apisv1.ErrCodeInvalidApprovalConfig,
+					Message: "approval step cannot define components, properties or substeps",
+				})
+			}
+			errors = append(errors, validateWorkflowApproval(step.Approval, stepField+".approval")...)
+			continue
 		}
-		for _, sub := range step.SubSteps {
-			subPolicies, err := validateWorkflowRequestProperties(
-				sub.Name,
-				sub.WorkflowType,
-				sub.Components,
-				sub.Properties,
-				sub.WorkflowPropertiesList(),
-				sub.WorkflowPropertiesFromArray(),
-				true,
-			)
-			if err != nil {
-				return err
+		if !config.IsSupportedWorkflowJobType(step.WorkflowType) {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   stepField + ".jobType",
+				Code:    apisv1.ErrCodeInvalidWorkflowStepType,
+				Message: fmt.Sprintf("unsupported workflow jobType: %s", step.WorkflowType),
+			})
+			continue
+		}
+
+		items, itemErrors := workflowPropertiesValidationItems(step.Name, step.WorkflowType, step.Components, step.Properties,
+			step.WorkflowPropertiesList(), step.WorkflowPropertiesFromArray(), stepField)
+		errors = append(errors, itemErrors...)
+		if workflowPropertiesComponentRefCount(items) == 0 && len(step.SubSteps) == 0 {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   stepField,
+				Code:    apisv1.ErrCodeWorkflowStepNoComponent,
+				Message: "workflow step must have at least one component or substep",
+			})
+		}
+		errors = append(errors, validateWorkflowPropertiesItems(step.WorkflowType, items, len(step.SubSteps) == 0, components)...)
+
+		for j, subStep := range step.SubSteps {
+			subStepField := fmt.Sprintf("%s.subSteps[%d]", stepField, j)
+			if err := workflowconfig.ValidateJobSchedulingClass(subStep.SchedulingClass); err != nil {
+				errors = append(errors, apisv1.ValidationError{Field: subStepField + ".schedulingClass", Code: apisv1.ErrCodeInvalidWorkflowStepType, Message: err.Error()})
 			}
-			subComponents := workflowPolicyComponentNames(subPolicies)
-			if err := ensureComponentsExist(subComponents, existing); err != nil {
-				klog.Errorf("workflow substep=%s references missing components: %v", sub.Name, err)
-				return err
+			if !config.IsSupportedWorkflowJobType(subStep.WorkflowType) {
+				errors = append(errors, apisv1.ValidationError{
+					Field:   subStepField + ".jobType",
+					Code:    apisv1.ErrCodeInvalidWorkflowStepType,
+					Message: fmt.Sprintf("unsupported workflow jobType: %s", subStep.WorkflowType),
+				})
+				continue
 			}
-			if err := validateLogArchiveUploadWorkflowComponents(sub.WorkflowType, sub.Name, subComponents, existing); err != nil {
-				return err
+			if subStep.Name != "" {
+				errors = append(errors, ValidateLabelName(subStep.Name, subStepField+".name")...)
 			}
+			subItems, subItemErrors := workflowPropertiesValidationItems(subStep.Name, subStep.WorkflowType, subStep.Components, subStep.Properties,
+				subStep.WorkflowPropertiesList(), subStep.WorkflowPropertiesFromArray(), subStepField)
+			errors = append(errors, subItemErrors...)
+			errors = append(errors, validateWorkflowPropertiesItems(subStep.WorkflowType, subItems, true, components)...)
 		}
 	}
-	return nil
+	return errors
 }
 
-func validateWorkflowRequestProperties(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, executable bool) ([]model.Policies, error) {
-	if fromArray {
-		for _, item := range propertiesList {
-			hasTarget := len(workflowTargetComponents(name, jobType, explicit, item.Policies, nil)) > 0
-			if err := ValidateWorkflowInitSQLURL(jobType, item.InitSQLURL, hasTarget, executable); err != nil {
-				return nil, fmt.Errorf("workflow step %q: %w", name, err)
-			}
+func validateWorkflowPropertiesItems(jobType config.JobType, items []workflowPropertiesValidationItem, executable bool, components map[string]config.JobType) []apisv1.ValidationError {
+	var errors []apisv1.ValidationError
+	for _, item := range items {
+		if err := validateWorkflowInitSQLURL(jobType, item.properties.InitSQLURL, len(item.componentRefs) > 0, executable); err != nil {
+			errors = append(errors, apisv1.ValidationError{Field: item.propertiesField + ".initSqlUrl", Code: apisv1.ErrCodeInvalidWorkflowStepType, Message: err.Error()})
 		}
-	} else if err := ValidateWorkflowInitSQLURL(jobType, properties.InitSQLURL,
-		len(workflowTargetComponents(name, jobType, explicit, properties.Policies, nil)) > 0, executable); err != nil {
-		return nil, fmt.Errorf("workflow step %q: %w", name, err)
-	}
-	if fromArray && len(propertiesList) > 1 {
-		seen := make(map[string]struct{})
-		var propertyComponents []string
-		for _, item := range propertiesList {
-			componentNames := workflowComponentRefKeys(item.Policies)
-			if len(componentNames) == 0 {
-				return nil, fmt.Errorf("%w: workflow step %q properties entries require policies when multiple properties are provided", bcode.ErrWorkflowConfig, name)
+		errors = append(errors, validateLogArchiveUploadWorkflowStep(jobType, item, components)...)
+		for _, ref := range item.componentRefs {
+			if _, ok := components[ref.name]; !ok {
+				errors = append(errors, apisv1.ValidationError{
+					Field:   ref.field,
+					Code:    apisv1.ErrCodeComponentNotFound,
+					Message: fmt.Sprintf("component '%s' not found in application", ref.name),
+				})
 			}
-			for _, componentName := range componentNames {
-				if _, ok := seen[componentName]; ok {
-					return nil, fmt.Errorf("%w: workflow step %q properties entries duplicate policy %q", bcode.ErrWorkflowConfig, name, componentName)
-				}
-				seen[componentName] = struct{}{}
-				propertyComponents = append(propertyComponents, componentName)
-			}
-		}
-		if err := validateWorkflowComponentsMatchProperties(name, explicit, propertyComponents); err != nil {
-			return nil, err
 		}
 	}
-	return workflowModelPoliciesFromRequest(name, jobType, explicit, properties, propertiesList, fromArray, nil), nil
+	return errors
 }
 
-// ValidateWorkflowInitSQLURL keeps database reset parameters within the same
+// validateWorkflowInitSQLURL keeps database reset parameters within the same
 // HTTP(S) URL contract as the database reset submission endpoint and requires
 // an executable target component so the URL survives persistence and execution.
-func ValidateWorkflowInitSQLURL(jobType config.JobType, raw string, hasTarget, executable bool) error {
+func validateWorkflowInitSQLURL(jobType config.JobType, raw string, hasTarget, executable bool) error {
 	if raw == "" {
 		return nil
 	}
 	if jobType != config.JobDatabaseReset {
-		return fmt.Errorf("%w: initSqlUrl is only supported for database_reset jobType", bcode.ErrWorkflowConfig)
+		return fmt.Errorf("initSqlUrl is only supported for database_reset jobType")
 	}
 	if _, err := normalizeDatabaseResetInitSQLURL(raw, true); err != nil {
-		return fmt.Errorf("%w: initSqlUrl must be a non-empty absolute HTTP(S) URL", bcode.ErrWorkflowConfig)
+		return fmt.Errorf("initSqlUrl must be a non-empty absolute HTTP(S) URL")
 	}
 	if !executable {
-		return fmt.Errorf("%w: initSqlUrl cannot be set on a parent step with subSteps", bcode.ErrWorkflowConfig)
+		return fmt.Errorf("initSqlUrl cannot be set on a parent step with subSteps")
 	}
 	if !hasTarget {
-		return fmt.Errorf("%w: initSqlUrl requires a target component", bcode.ErrWorkflowConfig)
+		return fmt.Errorf("initSqlUrl requires a target component")
 	}
 	return nil
 }
 
-func validateWorkflowComponentsMatchProperties(name string, explicit []string, properties []string) error {
-	components := workflowComponentRefKeys(explicit)
-	if len(components) == 0 {
+type workflowComponentValidationRef struct {
+	name  string
+	field string
+}
+
+type workflowPropertiesValidationItem struct {
+	properties      apisv1.WorkflowProperties
+	propertiesField string
+	componentRefs   []workflowComponentValidationRef
+}
+
+func workflowPropertiesValidationItems(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, field string) ([]workflowPropertiesValidationItem, []apisv1.ValidationError) {
+	explicitField := field + ".components"
+	if !fromArray {
+		return []workflowPropertiesValidationItem{{
+			properties:      properties,
+			propertiesField: field + ".properties",
+			componentRefs:   workflowTargetComponentRefs(name, jobType, explicit, properties.Policies, explicitField, explicitField),
+		}}, nil
+	}
+	if len(propertiesList) == 0 {
+		return []workflowPropertiesValidationItem{{
+			propertiesField: field + ".properties",
+			componentRefs:   workflowTargetComponentRefs(name, jobType, explicit, nil, explicitField, explicitField),
+		}}, nil
+	}
+
+	items := make([]workflowPropertiesValidationItem, 0, len(propertiesList))
+	var errors []apisv1.ValidationError
+	seenComponents := make(map[string]struct{}, len(propertiesList))
+	for i, item := range propertiesList {
+		propertiesField := fmt.Sprintf("%s.properties[%d]", field, i)
+		policiesField := propertiesField + ".policies"
+		componentRefs := workflowComponentRefs(item.Policies, policiesField, nil)
+		if len(propertiesList) == 1 {
+			componentRefs = workflowTargetComponentRefs(name, jobType, explicit, item.Policies, explicitField, policiesField)
+		} else if len(componentRefs) == 0 {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   policiesField,
+				Code:    apisv1.ErrCodeMissingRequiredField,
+				Message: "properties.policies is required when multiple workflow properties are provided",
+			})
+			continue
+		} else {
+			var duplicateErrors []apisv1.ValidationError
+			componentRefs, duplicateErrors = rejectDuplicateWorkflowPropertyRefs(componentRefs, seenComponents)
+			errors = append(errors, duplicateErrors...)
+		}
+		items = append(items, workflowPropertiesValidationItem{
+			properties:      item,
+			propertiesField: propertiesField,
+			componentRefs:   componentRefs,
+		})
+	}
+	if len(propertiesList) > 1 {
+		errors = append(errors, validateExplicitComponentsMatchPropertyRefs(explicit, explicitField, seenComponents)...)
+	}
+	return items, errors
+}
+
+func workflowPropertiesComponentRefCount(items []workflowPropertiesValidationItem) int {
+	var count int
+	for _, item := range items {
+		count += len(item.componentRefs)
+	}
+	return count
+}
+
+func workflowTargetComponentRefs(name string, jobType config.JobType, explicit []string, policies []string, explicitField string, policiesField string) []workflowComponentValidationRef {
+	refs := workflowComponentRefs(explicit, explicitField, nil)
+	refs = workflowComponentRefs(policies, policiesField, refs)
+	if len(refs) > 0 || config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
+		return refs
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
 		return nil
 	}
-	propertyComponents := workflowComponentRefKeys(properties)
-	if len(components) != len(propertyComponents) {
-		return fmt.Errorf("%w: workflow step %q components must match properties policies when multiple properties are provided", bcode.ErrWorkflowConfig, name)
+	return []workflowComponentValidationRef{{name: name, field: explicitField + "[0]"}}
+}
+
+func workflowComponentRefs(values []string, field string, existing []workflowComponentValidationRef) []workflowComponentValidationRef {
+	seen := make(map[string]struct{}, len(values)+len(existing))
+	for _, ref := range existing {
+		seen[ref.name] = struct{}{}
 	}
-	seen := make(map[string]struct{}, len(propertyComponents))
-	for _, componentName := range propertyComponents {
-		seen[componentName] = struct{}{}
+	refs := append([]workflowComponentValidationRef{}, existing...)
+	for i, value := range values {
+		name := strings.ToLower(strings.TrimSpace(value))
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		refs = append(refs, workflowComponentValidationRef{name: name, field: fmt.Sprintf("%s[%d]", field, i)})
 	}
-	for _, componentName := range components {
-		if _, ok := seen[componentName]; !ok {
-			return fmt.Errorf("%w: workflow step %q components must match properties policies when multiple properties are provided", bcode.ErrWorkflowConfig, name)
+	return refs
+}
+
+func rejectDuplicateWorkflowPropertyRefs(componentRefs []workflowComponentValidationRef, seen map[string]struct{}) ([]workflowComponentValidationRef, []apisv1.ValidationError) {
+	var uniqueRefs []workflowComponentValidationRef
+	var errors []apisv1.ValidationError
+	for _, ref := range componentRefs {
+		if _, ok := seen[ref.name]; ok {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   ref.field,
+				Code:    apisv1.ErrCodeDuplicateComponent,
+				Message: fmt.Sprintf("component '%s' is referenced by multiple workflow properties entries", ref.name),
+			})
+			continue
+		}
+		seen[ref.name] = struct{}{}
+		uniqueRefs = append(uniqueRefs, ref)
+	}
+	return uniqueRefs, errors
+}
+
+func validateExplicitComponentsMatchPropertyRefs(explicit []string, explicitField string, propertyRefs map[string]struct{}) []apisv1.ValidationError {
+	componentRefs := workflowComponentRefs(explicit, explicitField, nil)
+	if len(componentRefs) == 0 {
+		return nil
+	}
+	mismatch := apisv1.ValidationError{
+		Field:   explicitField,
+		Code:    apisv1.ErrCodeInvalidWorkflowStepType,
+		Message: "components must match properties policies when multiple workflow properties are provided",
+	}
+	if len(componentRefs) != len(propertyRefs) {
+		return []apisv1.ValidationError{mismatch}
+	}
+	for _, ref := range componentRefs {
+		if _, ok := propertyRefs[ref.name]; !ok {
+			mismatch.Field = ref.field
+			return []apisv1.ValidationError{mismatch}
 		}
 	}
 	return nil
 }
 
-func validateLogArchiveUploadWorkflowProperties(jobType config.JobType, stepName string, policies []model.Policies) error {
-	if jobType != config.JobLogArchiveUpload {
-		return nil
-	}
-	if len(policies) == 0 {
-		return fmt.Errorf("%w: workflow step %q requires properties.path for jobType %q", bcode.ErrWorkflowConfig, stepName, jobType)
-	}
-	for _, policy := range policies {
-		if strings.TrimSpace(policy.Path) == "" {
-			return fmt.Errorf("%w: workflow step %q requires properties.path for jobType %q", bcode.ErrWorkflowConfig, stepName, jobType)
-		}
-	}
-	return nil
-}
-
-func validateLogArchiveUploadWorkflowComponents(jobType config.JobType, stepName string, componentNames []string, existing map[string]config.JobType) error {
+func validateLogArchiveUploadWorkflowStep(jobType config.JobType, item workflowPropertiesValidationItem, components map[string]config.JobType) []apisv1.ValidationError {
 	if config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
 		return nil
 	}
-	for _, name := range componentNames {
-		componentType, ok := existing[strings.ToLower(strings.TrimSpace(name))]
-		if !ok {
-			continue
-		}
-		if !config.ComponentTypeUsesPods(componentType) {
-			return fmt.Errorf("%w: workflow step %q component %q with type %q does not use pods for jobType %q", bcode.ErrWorkflowConfig, stepName, name, componentType, jobType)
-		}
+	var errors []apisv1.ValidationError
+	if strings.TrimSpace(item.properties.Path) == "" {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   item.propertiesField + ".path",
+			Code:    apisv1.ErrCodeMissingRequiredField,
+			Message: fmt.Sprintf("properties.path is required for workflow jobType: %s", jobType),
+		})
 	}
-	return nil
-}
-
-func validateWorkflowJobType(jobType config.JobType, stepName string) error {
-	if config.IsSupportedWorkflowJobType(jobType) {
-		return nil
-	}
-	return fmt.Errorf("%w: workflow step %q has unsupported jobType %q", bcode.ErrWorkflowConfig, stepName, jobType)
-}
-
-func ensureComponentsExist(names []string, existing map[string]config.JobType) error {
-	for _, name := range names {
-		lower := strings.ToLower(strings.TrimSpace(name))
-		if _, ok := existing[lower]; !ok {
-			return fmt.Errorf("%w: component %q not found", bcode.ErrWorkflowConfig, name)
+	for _, ref := range item.componentRefs {
+		componentType, ok := components[ref.name]
+		if ok && !config.ComponentTypeUsesPods(componentType) {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   ref.field,
+				Code:    apisv1.ErrCodeInvalidWorkflowStepType,
+				Message: fmt.Sprintf("component '%s' with type '%s' does not use pods for workflow jobType: %s", ref.name, componentType, jobType),
+			})
 		}
 	}
-	return nil
+	return errors
 }
 
-func validateApprovalWorkflowStep(step apisv1.CreateWorkflowStepRequest, stepComponents []string) error {
-	if len(stepComponents) > 0 || len(step.SubSteps) > 0 || step.HasWorkflowInitSQLURL() {
-		return fmt.Errorf("%w: approval step %q cannot contain components/properties/substeps", bcode.ErrWorkflowConfig, step.Name)
+func validateWorkflowApproval(approval *apisv1.WorkflowStepApproval, field string) []apisv1.ValidationError {
+	if approval == nil {
+		return []apisv1.ValidationError{{
+			Field:   field,
+			Code:    apisv1.ErrCodeInvalidApprovalConfig,
+			Message: "approval config is required for approval step",
+		}}
 	}
-	if step.Approval == nil || strings.TrimSpace(step.Approval.NotifyURL) == "" {
-		return fmt.Errorf("%w: approval step %q requires approval.notifyUrl", bcode.ErrWorkflowConfig, step.Name)
+	var errors []apisv1.ValidationError
+	notifyURL := strings.TrimSpace(approval.NotifyURL)
+	if notifyURL == "" {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   field + ".notifyUrl",
+			Code:    apisv1.ErrCodeMissingRequiredField,
+			Message: "approval notifyUrl is required",
+		})
+	} else if parsed, err := url.ParseRequestURI(notifyURL); err != nil || parsed.Host == "" {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   field + ".notifyUrl",
+			Code:    apisv1.ErrCodeInvalidApprovalConfig,
+			Message: fmt.Sprintf("invalid approval notifyUrl: %s", approval.NotifyURL),
+		})
+	} else if scheme := strings.ToLower(parsed.Scheme); scheme != "http" && scheme != "https" {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   field + ".notifyUrl",
+			Code:    apisv1.ErrCodeInvalidApprovalConfig,
+			Message: "approval notifyUrl must use http or https",
+		})
 	}
-	parsed, err := url.ParseRequestURI(strings.TrimSpace(step.Approval.NotifyURL))
-	if err != nil || parsed == nil || parsed.Host == "" {
-		return fmt.Errorf("%w: approval step %q notifyUrl is invalid", bcode.ErrWorkflowConfig, step.Name)
+	if method := strings.ToUpper(strings.TrimSpace(approval.Method)); method != "" && !validApprovalMethods[method] {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   field + ".method",
+			Code:    apisv1.ErrCodeInvalidApprovalConfig,
+			Message: "approval method must be one of GET/POST/PUT/DELETE",
+		})
 	}
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return fmt.Errorf("%w: approval step %q notifyUrl must use http or https", bcode.ErrWorkflowConfig, step.Name)
+	if approval.TimeoutSeconds < 0 {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   field + ".timeoutSeconds",
+			Code:    apisv1.ErrCodeInvalidApprovalConfig,
+			Message: "approval timeoutSeconds must be >= 0",
+		})
 	}
-	method := strings.ToUpper(strings.TrimSpace(step.Approval.Method))
-	if method != "" && method != "GET" && method != "POST" && method != "PUT" && method != "DELETE" {
-		return fmt.Errorf("%w: approval step %q method is invalid", bcode.ErrWorkflowConfig, step.Name)
-	}
-	if step.Approval.TimeoutSeconds < 0 {
-		return fmt.Errorf("%w: approval step %q timeoutSeconds must be >= 0", bcode.ErrWorkflowConfig, step.Name)
-	}
-	return nil
+	return errors
 }

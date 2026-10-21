@@ -103,7 +103,6 @@ const (
 	WaitingTasksQueryTimeout            = 5 * time.Second
 	TaskStateTransitionTimeout          = 5 * time.Second
 	QueueDispatchTimeout                = 5 * time.Second
-	DefaultJobTaskTimeout               = 20 * time.Minute //超时时间设置为20分钟
 	DefaultJobTTLSeconds          int32 = 3600             // 默认 1 小时后清理完成的 Job
 	DefaultCronJobSuccessfulLimit int32 = 3                // 默认保留成功的 CronJob 历史数
 	DefaultCronJobFailedLimit     int32 = 3                // 默认保留失败的 CronJob 历史数

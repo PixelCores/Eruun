@@ -238,11 +238,12 @@ func TestDelayResultPayloadAndDecode(t *testing.T) {
 	require.Nil(t, NewJobResultPayloadFromDelay(&jobinfo.DelayJobPayload{}, &batchv1.Job{}))
 
 	delayPayload := &jobinfo.DelayJobPayload{
-		TaskID:        "task-2",
-		JobType:       string(config.JobDeployScheduled),
-		Namespace:     "ns-1",
-		ExecutionKey:  "execution-2",
-		RunGeneration: 8,
+		TaskID:         "task-2",
+		JobType:        string(config.JobDeployScheduled),
+		Namespace:      "ns-1",
+		ExecutionKey:   "execution-2",
+		RunGeneration:  8,
+		TimeoutSeconds: 90,
 	}
 	delayJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -258,7 +259,8 @@ func TestDelayResultPayloadAndDecode(t *testing.T) {
 	require.Equal(t, "svc-b", resultPayload.ServiceName)
 	require.Equal(t, "execution-2", resultPayload.ExecutionKey)
 	require.Equal(t, uint64(8), resultPayload.RunGeneration)
-	require.Equal(t, int64(config.DefaultJobTaskTimeout.Seconds()), resultPayload.TimeoutSeconds)
+	require.Equal(t, int64(90), resultPayload.TimeoutSeconds)
+
 }
 
 func TestJobResultExecutionIdentityMatchesStampedKubernetesJob(t *testing.T) {

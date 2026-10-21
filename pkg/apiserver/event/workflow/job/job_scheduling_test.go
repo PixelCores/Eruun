@@ -112,7 +112,7 @@ func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T
 		Name: desired.Name, Namespace: desired.Namespace, TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID,
 		ExecutionKey: "cancelled-execution", RunGeneration: 1, OwnerRunGeneration: 1,
 		OwnerStatus: config.StatusRunning, RunToken: owner.RunToken, WorkerID: owner.WorkerID,
-		JobType: string(config.JobDeployInstant), JobInfo: desired,
+		JobType: string(config.JobDeployInstant), JobInfo: desired, Timeout: 60,
 	}
 	cleanupErr := errors.New("kubernetes API unavailable")
 	deleteAttempts := 0

@@ -13,7 +13,7 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-func TestJobRetryPolicyWriteValidation(t *testing.T) {
+func TestJobRetryPolicyValidation(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		kind      config.JobType
@@ -23,24 +23,29 @@ func TestJobRetryPolicyWriteValidation(t *testing.T) {
 	}{
 		{"instant", config.InstantJob, 0, "stop", true},
 		{"scheduled", config.ScheduledJob, 0, "stop", false},
+		{"webservice", config.ServerJob, 0, "stop", false},
 		{"delayed", config.InstantJob, 1, "stop", false},
 		{"bad action", config.InstantJob, 0, "invalid", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			props := apisv1.Properties{StartTime: tt.startTime, JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: tt.onOOM}}
-			err := normalizeJobFailurePolicyForWrite(tt.kind, &props, "component[0].properties.failurePolicy")
+			errors := validateJobPolicies(tt.kind, props, "component[0].properties")
 			if tt.valid {
-				require.NoError(t, err)
-			} else {
-				require.ErrorContains(t, err, "jobRetryPolicy")
+				require.Empty(t, errors)
+				return
 			}
+			require.Len(t, errors, 1)
+			require.Equal(t, "component[0].properties.jobRetryPolicy", errors[0].Field)
+			require.Equal(t, apisv1.ErrCodeInvalidJobFailurePolicy, errors[0].Code)
 		})
 	}
 	_, err := normalizeVersionUpdateJobFailurePolicies([]apisv1.ComponentUpdateSpec{{Name: "job", Action: "add", ComponentType: config.ScheduledJob,
 		Properties: &apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}, nil)
 	require.ErrorContains(t, err, "jobRetryPolicy")
-	err = validateNoNestedJobFailurePoliciesForWrite(apisv1.Traits{Init: []spec.InitTraitSpec{{Properties: apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}}, "component[0].traits")
-	require.ErrorContains(t, err, "properties.jobRetryPolicy")
+	errors := ValidateTemplateOverrides([]apisv1.CreateComponentRequest{{Template: &apisv1.TemplateRef{ID: "tmpl"},
+		Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{Properties: apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}}}})
+	require.Len(t, errors, 1)
+	require.Equal(t, "component[0].traits.init[0].properties.jobRetryPolicy", errors[0].Field)
 }
 
 func TestJobRetryPolicyTemplateOverride(t *testing.T) {

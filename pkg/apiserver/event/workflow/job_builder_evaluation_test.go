@@ -58,7 +58,7 @@ func TestWorkflowEvaluationJobsHaveIndependentExecutionsAndRecoverSnapshots(t *t
 		components:  []*model.ApplicationComponent{{Name: "benchmark", AppID: "app", Namespace: "space-ns", ComponentType: config.InstantJob, Properties: properties, Traits: traits}},
 	}}
 	parent := &model.WorkflowQueue{AppID: "app", WorkflowID: "wf", WorkspaceID: "space", TaskID: "parent", RunGeneration: 1}
-	cfg := &config.Config{Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig(), Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
 	executions, err := GenerateJobTasks(ctx, parent, store, 3600, cfg)
 	require.NoError(t, err)
 	require.Len(t, executions, 2)
@@ -124,7 +124,7 @@ func TestStandaloneJobStagesCompileToExecutionsAndRestoreEvaluations(t *testing.
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: "stages-task", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob, JobSpec: string(raw), RunGeneration: 1}
 	store := &evaluationWorkflowStore{}
-	cfg := &config.Config{Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig(), Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
 	executions, err := GenerateJobTasks(ctx, parent, store, 3600, cfg)
 	require.NoError(t, err)
 	require.Len(t, executions, 3)

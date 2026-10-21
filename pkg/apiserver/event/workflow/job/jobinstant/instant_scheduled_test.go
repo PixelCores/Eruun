@@ -162,6 +162,7 @@ func TestInstantJobCtlRunCompletesFromOwnedSucceededPodFallback(t *testing.T) {
 	client := fake.NewSimpleClientset(jobtest.SucceededPodForJob(jobObj, "instant-job-pod-complete-abc", jobObj.UID))
 	ackCount := 0
 	jobTask := &model.JobTask{
+		Timeout:   60,
 		Name:      jobObj.Name,
 		Namespace: jobObj.Namespace,
 		JobType:   string(config.JobDeployInstant),
@@ -181,6 +182,7 @@ func TestInstantJobCtlHelpers(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := &jobtest.JobInfoStore{}
 	jobTask := &model.JobTask{
+		Timeout:   60,
 		Name:      "instant-job",
 		TaskID:    "task-1",
 		Namespace: "default",

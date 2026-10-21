@@ -58,7 +58,7 @@ func validateTaskDispatch(t TaskDispatch) error {
 
 // Dispatcher scans waiting tasks and publishes dispatch messages.
 func (w *Workflow) Dispatcher(ctx context.Context) {
-	ticker := time.NewTicker(w.dispatchPollInterval())
+	ticker := time.NewTicker(w.Cfg.Workflow.DispatchPollInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -144,8 +144,8 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 	}()
 
 	// Get config values with defaults
-	backoffMin := w.workerBackoffMin()
-	backoffMax := w.workerBackoffMax()
+	backoffMin := workflowconfig.DefaultWorkerBackoffMin
+	backoffMax := workflowconfig.DefaultWorkerBackoffMax
 
 	klog.Infof("worker starting: stream=%s group=%s consumer=%s",
 		w.dispatchTopic(), group, consumer)
@@ -161,7 +161,7 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 		defer stopped()
 	}
 
-	staleTicker := time.NewTicker(w.workerStaleInterval())
+	staleTicker := time.NewTicker(w.Cfg.Workflow.WorkerStaleInterval)
 	defer staleTicker.Stop()
 
 	currentDelay := backoffMin
@@ -174,7 +174,7 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 			klog.Info("worker shutting down due to context cancellation")
 			return
 		case <-staleTicker.C:
-			mags, err := w.Queue.AutoClaim(consumerCtx, group, consumer, w.workerAutoClaimMinIdle(), w.workerAutoClaimCount())
+			mags, err := w.Queue.AutoClaim(consumerCtx, group, consumer, w.Cfg.Workflow.WorkerAutoClaimMinIdle, w.Cfg.Workflow.WorkerAutoClaimCount)
 			if err != nil {
 				claimFailures++
 				klog.Warningf("auto-claim error (consecutive: %d): %v", claimFailures, err)
@@ -194,7 +194,7 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 			}
 			w.ackDispatchMessages(consumerCtx, group, consumer, acknowledgements)
 		default:
-			mags, err := w.Queue.ReadGroup(consumerCtx, group, consumer, w.workerReadCount(), w.workerReadBlock())
+			mags, err := w.Queue.ReadGroup(consumerCtx, group, consumer, w.Cfg.Workflow.WorkerReadCount, w.Cfg.Workflow.WorkerReadBlock)
 			if err != nil {
 				readFailures++
 				klog.Warningf("read group error (consecutive: %d): %v", readFailures, err)
@@ -229,7 +229,7 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 
 func (w *Workflow) claimAndProcessTask(ctx context.Context, task *model.WorkflowQueue, processor func(context.Context, *model.WorkflowQueue) error) {
 	var queuedTask *model.WorkflowQueue
-	queuedTask, claimed, err := w.WorkflowService.ClaimTaskForDispatch(ctx, task, w.workflowLeaseDuration())
+	queuedTask, claimed, err := w.WorkflowService.ClaimTaskForDispatch(ctx, task, w.Cfg.Workflow.LeaseDuration)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return
@@ -351,7 +351,7 @@ func (w *Workflow) processDispatchMessage(ctx context.Context, workerRun *workfl
 		return true, td.TaskID
 	}
 	claimedTask, claimed, claimErr := repository.ClaimWorkflowTaskForExecution(
-		ctx, w.Store, td.TaskID, td.RunGeneration, td.RunToken, w.workerIdentity(), w.workflowLeaseDuration(),
+		ctx, w.Store, td.TaskID, td.RunGeneration, td.RunToken, w.workerIdentity(), w.Cfg.Workflow.LeaseDuration,
 	)
 	if claimErr != nil {
 		if isContextCancellationError(claimErr) {
@@ -363,7 +363,7 @@ func (w *Workflow) processDispatchMessage(ctx context.Context, workerRun *workfl
 	if !claimed {
 		return true, td.TaskID
 	}
-	if err := w.runClaimedWorkflowTask(ctx, workerRun, claimedTask, 1); err != nil {
+	if err := w.runClaimedWorkflowTask(ctx, workerRun, claimedTask); err != nil {
 		if isContextCancellationError(err) {
 			return false, td.TaskID
 		}

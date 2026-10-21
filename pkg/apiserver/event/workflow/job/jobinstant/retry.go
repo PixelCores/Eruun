@@ -260,7 +260,7 @@ func (c *InstantJobCtl) newRetryCheckpoint(ctx context.Context, desired *batchv1
 	}
 	timeout := c.Job.Timeout
 	if timeout <= 0 {
-		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
+		return nil, fmt.Errorf("job %s timeout is not set", c.Job.Name)
 	}
 	cp := &jobinfo.InstantJobRetryCheckpoint{
 		Kind: "instant_job_retry", Version: 1, Attempt: 1,

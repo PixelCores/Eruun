@@ -1031,7 +1031,7 @@ func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
 				}}}
 			},
 			labels:      shareLabels,
-			errContains: "must not contain reserved label",
+			errContains: "is reserved and cannot be overridden",
 		},
 		{
 			name: "sidecar ingress",
@@ -1042,7 +1042,7 @@ func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
 				}}}
 			},
 			labels:      shareLabels,
-			errContains: "must not contain reserved label",
+			errContains: "is reserved and cannot be overridden",
 		},
 	}
 
