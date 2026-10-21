@@ -458,7 +458,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 
 	timeout := payload.TimeoutSeconds
 	if timeout <= 0 {
-		return fmt.Errorf("result payload for job %s/%s has no timeout", namespace, payload.Name)
+		return fmt.Errorf("%w: result payload for job %s/%s has no timeout", ErrResultDispatchNoRetry, namespace, payload.Name)
 	}
 	record, recordErr := findJobInfoForResult(ctx, store, payload)
 	if recordErr != nil {
