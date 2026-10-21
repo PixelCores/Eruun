@@ -94,14 +94,6 @@ func (m *mockWorkflowRepo) FindByID(ctx context.Context, workflowID string) (*mo
 	return wf, nil
 }
 
-func (m *mockWorkflowRepo) Create(ctx context.Context, workflow *model.Workflow) error {
-	return m.store.Add(ctx, workflow)
-}
-
-func (m *mockWorkflowRepo) Update(ctx context.Context, workflow *model.Workflow) error {
-	return m.store.Put(ctx, workflow)
-}
-
 func (m *mockWorkflowRepo) FindByAppID(ctx context.Context, appID string) ([]*model.Workflow, error) {
 	var result []*model.Workflow
 	for _, wf := range m.store.workflows {

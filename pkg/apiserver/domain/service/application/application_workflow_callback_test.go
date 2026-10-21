@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -239,4 +240,35 @@ func TestUpdateApplicationWorkflowRejectsInvalidCallbackMethod(t *testing.T) {
 	_, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, bcode.ErrWorkflowConfig))
+}
+
+func TestUpdateApplicationWorkflowRollsBackStepsWhenCallbackClearFails(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.skipNilCallbackOnPut = true
+	store.workflowCASErr = errors.New("clear callback failed")
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "DemoApp", Project: "proj-1"}
+	store.components["nginx"] = &model.ApplicationComponent{Name: "nginx", AppID: "app-1"}
+	oldCallback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Success: "https://example.com/old"})
+	require.NoError(t, err)
+	oldSteps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{Steps: []*model.WorkflowStep{{
+		Name: "old", WorkflowType: config.JobDeploy, Mode: config.WorkflowModeStepByStep,
+	}}})
+	require.NoError(t, err)
+	store.workflows["wf-1"] = &model.Workflow{
+		ID: "wf-1", Name: "callback-flow", AppID: "app-1", Namespace: config.DefaultNamespace,
+		WorkflowType: config.WorkflowTaskTypeWorkflow, Steps: oldSteps, Callback: oldCallback,
+	}
+
+	_, err = newMockServiceWithStore(store).UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
+		WorkflowID: "wf-1",
+		Callback:   &apisv1.WorkflowCallback{},
+		Workflow:   []apisv1.CreateWorkflowStepRequest{{Name: "deploy-nginx", WorkflowType: config.JobDeploy, Components: []string{"nginx"}}},
+	})
+
+	require.ErrorContains(t, err, "clear callback failed")
+	stored := store.workflows["wf-1"]
+	require.NotNil(t, stored.Callback, "the callback must stay because the update failed")
+	steps := decodeWorkflowSteps(t, stored.Steps)
+	require.Len(t, steps.Steps, 1)
+	require.Equal(t, "old", steps.Steps[0].Name, "steps must roll back with the failed callback clear")
 }
