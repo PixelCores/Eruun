@@ -13,7 +13,7 @@
 
 2. **Worker 认领 ownership**
    - Worker 只接受版本 2 dispatch，并以 `taskId + runGeneration + runToken` 对 `queued -> running` 执行 CAS。
-   - 认领成功后写入 `worker_id/heartbeat_at/lease_expires_at`；重复或旧消息无法再次认领。
+   - 认领成功后写入 `worker_id/lease_expires_at`；重复或旧消息无法再次认领。
    - 工作流进度、终态、审批检查点、Job 结果和心跳写入都必须携带完整 ownership 条件，缺失字段时 fail-closed。
 
 3. **租约恢复**

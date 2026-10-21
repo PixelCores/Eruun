@@ -64,7 +64,7 @@ func TestRenewCancelledWorkflowTaskLeaseUsesDatabaseTimeAndExactOwner(t *testing
 		"status": config.StatusCancelled, "run_generation": uint64(7),
 		"run_token": "token-7", "worker_id": "worker-7",
 	}, store.casConditions)
-	require.Equal(t, now, store.casUpdates["heartbeat_at"])
+	require.NotContains(t, store.casUpdates, "heartbeat_at")
 	require.Equal(t, now.Add(30*time.Second), store.casUpdates["lease_expires_at"])
 }
 
@@ -79,7 +79,7 @@ func TestRenewWorkflowTaskLeaseUsesFullOwnershipFence(t *testing.T) {
 	require.Equal(t, uint64(7), store.casConditions["run_generation"])
 	require.Equal(t, "token-7", store.casConditions["run_token"])
 	require.Equal(t, "worker-a", store.casConditions["worker_id"])
-	require.Equal(t, now, store.casUpdates["heartbeat_at"])
+	require.NotContains(t, store.casUpdates, "heartbeat_at")
 	require.Equal(t, now.Add(30*time.Second), store.casUpdates["lease_expires_at"])
 }
 
@@ -208,7 +208,6 @@ func TestRecoverExpiredCancelledWorkflowTasksConvergesChildrenAndClearsOwner(t *
 	require.NoError(t, store.Get(ctx, latestOwner))
 	require.Empty(t, latestOwner.RunToken)
 	require.Empty(t, latestOwner.WorkerID)
-	require.Nil(t, latestOwner.HeartbeatAt)
 	require.Nil(t, latestOwner.LeaseExpiresAt)
 	require.Equal(t, "terminal callback pending: manual cancel", latestOwner.SchedulingReason)
 	require.NoError(t, store.Get(ctx, active))

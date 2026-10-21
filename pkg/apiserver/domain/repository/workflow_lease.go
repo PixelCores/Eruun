@@ -44,7 +44,6 @@ func ClaimWorkflowTaskForDispatch(ctx context.Context, store datastore.DataStore
 		"run_generation":    task.RunGeneration + 1,
 		"run_token":         token,
 		"worker_id":         "",
-		"heartbeat_at":      nil,
 		"lease_expires_at":  expiresAt,
 		"dispatch_attempts": task.DispatchAttempts + 1,
 		"scheduling_reason": "waiting task selected",
@@ -62,7 +61,6 @@ func ClaimWorkflowTaskForDispatch(ctx context.Context, store datastore.DataStore
 	claimed.RunGeneration++
 	claimed.RunToken = token
 	claimed.WorkerID = ""
-	claimed.HeartbeatAt = nil
 	claimed.LeaseExpiresAt = &expiresAt
 	claimed.DispatchAttempts++
 	claimed.SchedulingReason = "waiting task selected"
@@ -93,7 +91,6 @@ func ClaimWorkflowTaskForExecution(ctx context.Context, store datastore.DataStor
 	updates := map[string]interface{}{
 		"status":            config.StatusRunning,
 		"worker_id":         workerID,
-		"heartbeat_at":      now,
 		"lease_expires_at":  expiresAt,
 		"scheduling_reason": "worker claimed dispatch",
 	}
@@ -134,7 +131,6 @@ func RenewWorkflowTaskLease(ctx context.Context, store datastore.DataStore, task
 		"run_token":      token,
 		"worker_id":      workerID,
 	}, map[string]interface{}{
-		"heartbeat_at":     now,
 		"lease_expires_at": now.Add(leaseDuration),
 	})
 }
@@ -162,7 +158,6 @@ func RenewCancelledWorkflowTaskLease(ctx context.Context, store datastore.DataSt
 		"run_token":      token,
 		"worker_id":      workerID,
 	}, map[string]interface{}{
-		"heartbeat_at":     now,
 		"lease_expires_at": now.Add(leaseDuration),
 	})
 }
@@ -276,7 +271,6 @@ func ExpireApprovalDeadlines(ctx context.Context, store datastore.DataStore, lim
 			"pending_approval_step": "",
 			"run_token":             "",
 			"worker_id":             "",
-			"heartbeat_at":          nil,
 			"lease_expires_at":      nil,
 			"scheduling_reason":     "approval deadline exceeded",
 		})
@@ -381,7 +375,6 @@ func ReleaseWorkflowDispatchClaim(ctx context.Context, store datastore.DataStore
 		"status":            config.StatusWaiting,
 		"run_token":         "",
 		"worker_id":         "",
-		"heartbeat_at":      nil,
 		"lease_expires_at":  nil,
 		"scheduling_reason": reason,
 	})
@@ -443,7 +436,7 @@ func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore,
 			"run_token":        task.RunToken,
 			"lease_expires_at": *task.LeaseExpiresAt,
 		}, map[string]interface{}{
-			"status": config.StatusWaiting, "run_token": "", "worker_id": "", "heartbeat_at": nil,
+			"status": config.StatusWaiting, "run_token": "", "worker_id": "",
 			"lease_expires_at": nil, "scheduling_reason": "execution lease expired",
 		})
 		if updateErr != nil {
@@ -516,7 +509,7 @@ func RecoverExpiredCancelledWorkflowTasks(ctx context.Context, store datastore.D
 				return err
 			}
 			cleared, err := compareWorkflowTaskWithConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{
-				"run_token": "", "worker_id": "", "heartbeat_at": nil, "lease_expires_at": nil,
+				"run_token": "", "worker_id": "", "lease_expires_at": nil,
 			})
 			if err != nil {
 				return err

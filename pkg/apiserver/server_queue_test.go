@@ -279,7 +279,7 @@ func TestOnStartedSchedulerLeadingIgnoresQueueGroupErrorWhenContextCanceled(t *t
 }
 
 func TestBeginControllerRunStopsPreviousInformerRuntimeSynchronously(t *testing.T) {
-	manager := informer.NewManager(fake.NewSimpleClientset())
+	manager := informer.NewManager(fake.NewSimpleClientset(), "")
 	t.Cleanup(func() {
 		manager.Stop()
 		manager.GetWaiter().Close()

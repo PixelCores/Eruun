@@ -21,7 +21,8 @@ func TestManagerBoundsInitialCacheSync(t *testing.T) {
 		<-releaseList
 		return false, nil, nil
 	})
-	manager := NewManager(client, WithSyncTimeout(20*time.Millisecond))
+	manager := NewManager(client, "")
+	manager.syncTimeout = 20 * time.Millisecond
 	t.Cleanup(func() {
 		close(releaseList)
 		manager.Stop()
@@ -37,7 +38,7 @@ func TestManagerBoundsInitialCacheSync(t *testing.T) {
 }
 
 func TestManagerCanRestartAfterStop(t *testing.T) {
-	manager := NewManager(fake.NewSimpleClientset())
+	manager := NewManager(fake.NewSimpleClientset(), "")
 	waiter := manager.GetWaiter()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -65,7 +66,7 @@ func TestManagerCanRestartAfterStop(t *testing.T) {
 }
 
 func TestManagerRejectsPreviousGenerationHandlersAfterRestart(t *testing.T) {
-	manager := NewManager(fake.NewSimpleClientset())
+	manager := NewManager(fake.NewSimpleClientset(), "")
 	t.Cleanup(manager.Stop)
 	waiter := manager.GetWaiter()
 
@@ -95,7 +96,7 @@ func TestManagerRejectsPreviousGenerationHandlersAfterRestart(t *testing.T) {
 }
 
 func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
-	manager := NewManager(fake.NewSimpleClientset())
+	manager := NewManager(fake.NewSimpleClientset(), "")
 	waiter := manager.GetWaiter()
 	waiter.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {})
 	require.NoError(t, manager.Start(context.Background()))
@@ -149,7 +150,7 @@ func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
 }
 
 func TestManagerStopWaitsForCurrentGenerationStatusCallback(t *testing.T) {
-	manager := NewManager(fake.NewSimpleClientset())
+	manager := NewManager(fake.NewSimpleClientset(), "")
 	waiter := manager.GetWaiter()
 	releaseCallback := make(chan struct{})
 	var releaseOnce sync.Once
