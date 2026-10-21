@@ -25,8 +25,8 @@ flowchart TD
     DB --> Validate
     DSL --> Build[部署构建时解析]
     DB --> Build
-    Build --> Profiles[traits.Profiles 显式传入]
-    Profiles --> Pod[nodeSelector 与 tolerations]
+    Build --> Pool[*model.NodePool 显式传入]
+    Pool --> Pod[nodeSelector 与 tolerations]
     Pod --> Policy[PrepareTask 空间检查]
 ```
 
@@ -71,11 +71,11 @@ gRPC `AppSpecTraits.node_pool = 16`，JSON 名为 `nodePool`。已删除的字�
 
 ## 7. 部署时解析与渲染
 
-解析结果通过现有 `traits.Profiles{NodePool: pool}` 显式传给 `ApplyTraits` 与 `GenerateWebService`、`GenerateStoreService`、`GenerateInstantJob`、`GenerateScheduledCronJob`；不增加隐式查库或全局配置。
+解析结果以 `*model.NodePool` 显式传给 `ApplyTraits` 与 `GenerateWebService`、`GenerateStoreService`、`GenerateInstantJob`、`GenerateScheduledCronJob`；不增加隐式查库或全局配置。
 
-`event/workflow.buildJobsForComponent` 和 `jobs` command 构建路径按名字从 MySQL 获取 `*model.NodePool`，查不到或 datastore 不可用立即使构建失败。组件引用不为空，但 Profiles 未携带同名对象时，Trait 处理器返回错误，不能静默跳过。
+`event/workflow.buildJobsForComponent` 和 `jobs` command 构建路径按名字从 MySQL 获取 `*model.NodePool`，查不到或 datastore 不可用立即使构建失败。组件引用不为空，但未传入同名节点池时，Trait 处理器返回错误，不能静默跳过。
 
-仅生成对象身份、清理资源名、比较 StatefulSet 不可变字段、版本重启以及数据库重置时，可使用 `IdentityProfiles(component)`：其中只有节点池名字，不查库，不得用于部署。没有节点池引用的内部生成调用传空 Profiles。
+仅生成对象身份、清理资源名、比较 StatefulSet 不可变字段、版本重启以及数据库重置时，可使用 `IdentityNodePool(component)`：其中只有节点池名字，不查库，不得用于部署。没有节点池引用的内部生成调用传空 Profiles。
 
 渲染把 nodeSelector 与 tolerations 合并进 Pod 模板，`podspec_compare` 将 tolerations 纳入变更比较。真实渲染结果继续经过 `PrepareTask`，空间策略将 token 自动挂载设为 false。
 

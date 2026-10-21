@@ -118,7 +118,7 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	if err != nil {
 		return nil, err
 	}
-	result, err := GenerateWebService(component, &properties, workflowtraits.IdentityProfiles(component))
+	result, err := GenerateWebService(component, &properties, workflowtraits.IdentityNodePool(component))
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	restartedAt string,
 	patch []byte,
 ) (*versionRestartWaitTarget, error) {
-	result, err := GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
+	result, err := GenerateStoreService(component, workflowtraits.IdentityNodePool(component))
 	if err != nil {
 		return nil, err
 	}

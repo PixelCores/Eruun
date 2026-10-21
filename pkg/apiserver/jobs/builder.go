@@ -25,7 +25,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	traitprocessors "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 var errEvaluationPolicyUnavailable = errors.New("evaluation timeout policy unavailable")
@@ -133,17 +132,17 @@ func BuildTask(ctx context.Context, store datastore.DataStore, task *model.Workf
 			if err := spec.DecodeJobJSON(step.Spec, &command); err != nil {
 				return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
 			}
-			profiles := traitprocessors.Profiles{}
+			var nodePool *model.NodePool
 			if step.Traits.NodePool != "" {
-				profiles.NodePool = &model.NodePool{Name: step.Traits.NodePool}
+				nodePool = &model.NodePool{Name: step.Traits.NodePool}
 				if store == nil {
 					return nil, fmt.Errorf("resolve nodePool %q: datastore is unavailable", step.Traits.NodePool)
 				}
-				if err := store.Get(ctx, profiles.NodePool); err != nil {
+				if err := store.Get(ctx, nodePool); err != nil {
 					return nil, fmt.Errorf("stage %q step %q: resolve nodePool %q: %w", stage.Name, step.Name, step.Traits.NodePool, err)
 				}
 			}
-			workload, err := buildCommandJob(job.Name, namespace, command, step.Traits, profiles)
+			workload, err := buildCommandJob(job.Name, namespace, command, step.Traits, nodePool)
 			if err != nil {
 				return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
 			}
@@ -237,7 +236,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	workload, err := buildCommandJob(job.Name, job.Namespace, spec.CommandJobSpec{Image: cfg.Jobs.RunnerImage, Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: evaluation.TimeoutSeconds}, spec.Traits{
 		Resources: info.Traits.Resources, Envs: info.Traits.Envs, EnvFrom: info.Traits.EnvFrom,
 		Storage: info.Traits.Storage, SecurityPolicy: info.Traits.SecurityPolicy,
-	}, traitprocessors.Profiles{})
+	}, nil)
 	if err != nil {
 		return err
 	}

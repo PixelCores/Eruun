@@ -26,7 +26,7 @@ func (profileValidationStore) Get(_ context.Context, entity datastore.Entity) er
 	return datastore.ErrRecordNotExist
 }
 
-func TestTryApplicationResolvesProfiles(t *testing.T) {
+func TestTryApplicationResolvesNodePool(t *testing.T) {
 	nodes, err := repository.NewNodePoolRepositoryWithStore(profileValidationStore{})
 	require.NoError(t, err)
 	service := NewValidationService(nil, nil, nil, nil, nodes)

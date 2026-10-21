@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
-	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
@@ -219,7 +218,7 @@ func TestGenerateOneTimeJob(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result, err := GenerateOneTimeJob(component, props, "", time.Now().Unix()+60, workflowtraits.Profiles{})
+	result, err := GenerateOneTimeJob(component, props, "", time.Now().Unix()+60, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

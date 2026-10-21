@@ -99,7 +99,7 @@ func TestConvertComponentModelsToDTOIngressMatchesRenderedBackend(t *testing.T) 
 			workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 				Containers: []corev1.Container{{Name: "backend", Image: "nginx:1"}},
 			}}}}
-			objects, err := traits.ApplyTraits(component, workload, traits.Profiles{})
+			objects, err := traits.ApplyTraits(component, workload, nil)
 			if tt.ambiguous {
 				require.Equal(t, tt.wantName, summary.Routes[0].ServiceName)
 				require.Equal(t, tt.wantPort, summary.Routes[0].ServicePort)

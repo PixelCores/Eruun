@@ -510,7 +510,7 @@ func insertValuesByColumn(t *testing.T, statement string, vars []interface{}) ma
 	return values
 }
 
-func TestMigrateSchemaPreservesSchedulingProfilesAndSettings(t *testing.T) {
+func TestMigrateSchemaPreservesNodePoolsAndSettings(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	conn, err := db.DB()

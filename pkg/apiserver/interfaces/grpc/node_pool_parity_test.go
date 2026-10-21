@@ -28,7 +28,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func TestSchedulingProfileHTTPAndGRPCParity(t *testing.T) {
+func TestNodePoolHTTPAndGRPCParity(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "parity.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	conn, err := db.DB()
@@ -188,7 +188,7 @@ func TestSchedulingProfileHTTPAndGRPCParity(t *testing.T) {
 	}
 }
 
-func TestSchedulingProfileRPCRegistrationAndNilRequests(t *testing.T) {
+func TestNodePoolRPCRegistrationAndNilRequests(t *testing.T) {
 	server := NewServer(nil, nil, &AdministrationServer{}, &JobsServer{}, &ApplicationsServer{}, nil)
 	defer server.Stop()
 	services := server.GetServiceInfo()

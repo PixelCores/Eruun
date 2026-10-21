@@ -227,7 +227,7 @@ func (c *DeployStatefulSetJobCtl) timeout() int64 {
 	return c.Job.Timeout
 }
 
-func GenerateStoreService(component *model.ApplicationComponent, profiles traitsPlu.Profiles) (*jobexec.GenerateServiceResult, error) {
+func GenerateStoreService(component *model.ApplicationComponent, nodePool *model.NodePool) (*jobexec.GenerateServiceResult, error) {
 	// 如果命名空间为空，则使用默认的命名空间
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
@@ -302,7 +302,7 @@ func GenerateStoreService(component *model.ApplicationComponent, profiles traits
 		},
 	}
 
-	additionalObjects, err := traitsPlu.ApplyTraits(component, statefulSet, profiles)
+	additionalObjects, err := traitsPlu.ApplyTraits(component, statefulSet, nodePool)
 	if err != nil {
 		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}

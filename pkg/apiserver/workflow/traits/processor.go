@@ -28,7 +28,7 @@ type TraitContext struct {
 	Workload  runtime.Object
 
 	// Ingress defaults, including nested ingress, use the outer component services.
-	profiles        Profiles
+	nodePool        *model.NodePool
 	componentTraits *spec.Traits
 }
 
@@ -60,7 +60,7 @@ type TraitResult struct {
 
 // ApplyTraits is the public entrypoint. It dispatches traits to processors,
 // aggregates their outputs, and applies changes onto the workload.
-func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object, profiles Profiles) ([]client.Object, error) {
+func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object, nodePool *model.NodePool) ([]client.Object, error) {
 	if component.Traits == nil {
 		klog.V(4).Infof("Component %s has no traits to apply.", component.Name)
 		return nil, nil
@@ -81,7 +81,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object,
 	}
 
 	// Start the recursive application of traits, with no exclusions at the top level.
-	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, componentTraits: &traits, profiles: profiles}, &traits, false)
+	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, componentTraits: &traits, nodePool: nodePool}, &traits, false)
 	if err != nil {
 		return nil, err
 	}
@@ -130,10 +130,10 @@ func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (
 		if nested {
 			return nil, fmt.Errorf("nodePool only supports component-level traits")
 		}
-		if ctx.profiles.NodePool == nil || ctx.profiles.NodePool.Name != traits.NodePool {
+		if ctx.nodePool == nil || ctx.nodePool.Name != traits.NodePool {
 			return nil, fmt.Errorf("nodePool %q was not resolved for deployment", traits.NodePool)
 		}
-		pool := ctx.profiles.NodePool
+		pool := ctx.nodePool
 		if err := collect(&TraitResult{NodeSelector: utils.CopyStringMap(pool.NodeSelector), Tolerations: append([]corev1.Toleration(nil), pool.Tolerations...)}, nil); err != nil {
 			return nil, err
 		}

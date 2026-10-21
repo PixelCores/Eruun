@@ -188,7 +188,7 @@ func TestAuthFailsClosedWithoutDependencies(t *testing.T) {
 	require.Equal(t, 503, rec.Code)
 }
 
-func TestSchedulingProfileRouteAuthorization(t *testing.T) {
+func TestNodePoolRouteAuthorization(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	conn, err := db.DB()

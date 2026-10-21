@@ -71,7 +71,7 @@ func validateTraits(traits spec.Traits, field string, componentType config.JobTy
 		errors = append(errors, ValidateResourcesTraitSpec(*traits.Resources, field+".resources")...)
 	}
 	if !nested {
-		errors = append(errors, ValidateNestedProfiles(traits, field)...)
+		errors = append(errors, ValidateNestedNodePool(traits, field)...)
 	}
 	return append(errors, ValidateRolloutTrait(componentType, traits.Rollout, field+".rollout", nested)...)
 }

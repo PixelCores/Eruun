@@ -45,9 +45,9 @@ func TestNodePoolValidation(t *testing.T) {
 	}
 }
 
-func TestSchedulingProfileNames(t *testing.T) {
+func TestNodePoolNames(t *testing.T) {
 	for _, name := range []string{"a", "gpu-a100", strings.Repeat("a", 63)} {
-		require.NoError(t, ValidateSchedulingProfileName(name))
+		require.NoError(t, ValidateNodePoolName(name))
 	}
 	for _, name := range []string{"", "Upper", "has.dot", "-bad", "bad-", strings.Repeat("a", 64), " padded "} {
 		require.ErrorContains(t, ValidateNodePool(name, map[string]string{"pool": "cpu"}, nil), "name")

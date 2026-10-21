@@ -50,7 +50,7 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 	if component == nil {
 		return cleanupResourceRef{}, fmt.Errorf("required StatefulSet deletion component is nil")
 	}
-	result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
+	result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityNodePool(component))
 	if err != nil {
 		return cleanupResourceRef{}, err
 	}
