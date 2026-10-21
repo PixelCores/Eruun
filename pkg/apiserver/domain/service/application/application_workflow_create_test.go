@@ -126,9 +126,9 @@ func TestCreateApplicationsRejectsLogArchiveWorkflowForNonPodComponent(t *testin
 			WorkflowType: config.JobLogArchiveUpload,
 			Components:   []string{"config"},
 			Mode:         string(config.WorkflowModeStepByStep),
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Path: "/var/log/api",
-			},
+			}},
 		}},
 	})
 
@@ -716,9 +716,9 @@ func TestCreateApplicationsPreservesWorkflowComponentReferenceCasing(t *testing.
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{" Web ", "WEB"},
-			Properties: apisv1.WorkflowProperties{
+			Properties: []apisv1.WorkflowProperties{{
 				Policies: []string{" web "},
-			},
+			}},
 			Mode: string(config.WorkflowModeStepByStep),
 		}},
 	})

@@ -84,13 +84,10 @@ type CreateWorkflowStepRequest struct {
 	StepType        config.WorkflowStepType        `json:"stepType,omitempty"`
 	WorkflowType    config.JobType                 `json:"jobType,omitempty"`
 	Approval        *WorkflowStepApproval          `json:"approval,omitempty"`
-	Properties      WorkflowProperties             `json:"properties,omitempty"`
+	Properties      []WorkflowProperties           `json:"properties,omitempty"`
 	Components      []string                       `json:"components,omitempty"`
 	Mode            string                         `json:"mode,omitempty"`
 	SubSteps        []CreateWorkflowSubStepRequest `json:"subSteps,omitempty"`
-
-	propertiesList      []WorkflowProperties
-	propertiesFromArray bool
 }
 
 type WorkflowStepApproval struct {

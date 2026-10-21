@@ -33,7 +33,7 @@ func TestConvertDatabaseResetWorkflowSpecKeepsInitSQLURL(t *testing.T) {
 	var submitted apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal(raw, &submitted))
 	require.Len(t, submitted.Workflow, 1)
-	require.Len(t, submitted.Workflow[0].WorkflowPropertiesList(), 1)
+	require.Len(t, submitted.Workflow[0].Properties, 1)
 }
 
 func TestConvertComponentModelToDTOStatusDefault(t *testing.T) {
