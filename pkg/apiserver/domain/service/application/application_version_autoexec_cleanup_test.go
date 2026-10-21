@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 
+	"testing"
+	"time"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -15,8 +18,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
-	"testing"
-	"time"
 )
 
 func TestUpdateVersionAutoExecRejectsMissingRemoveComponent(t *testing.T) {

@@ -1,13 +1,14 @@
 package application
 
 import (
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"strings"
-	"testing"
-	"time"
 )
 
 func newStatefulSetPVCFullRebuildRetryFixture(t *testing.T) (*inMemoryAppStore, *applicationsServiceImpl, apisv1.UpdateVersionRequest) {

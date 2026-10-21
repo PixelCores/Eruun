@@ -1,16 +1,12 @@
 package jobdeploy
 
 import (
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
 func generatedResourceIdentity(component *model.ApplicationComponent) (string, string) {
 	name := component.Name
 	namespace := component.Namespace
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	return name, namespace
 }
 

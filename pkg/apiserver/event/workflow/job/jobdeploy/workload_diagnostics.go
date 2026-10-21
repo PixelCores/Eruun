@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
@@ -78,9 +77,6 @@ func collectWorkloadFailureDiagnosticsWithTimeout(ctx context.Context, client ku
 }
 
 func collectWorkloadFailureDiagnostics(ctx context.Context, client kubernetes.Interface, task *model.JobTask, kind, namespace, name, componentName string, cause error) string {
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	var appID string
 	if task != nil {
 		appID = task.AppID

@@ -32,7 +32,7 @@ func TestStreamComponentLogsRequestOptions(t *testing.T) {
 			t.Run(string(phase)+"/container="+container, func(t *testing.T) {
 				store := newInMemoryAppStore()
 				require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
-					AppID: "app-1", Name: "api", Namespace: " ",
+					AppID: "app-1", Name: "api", Namespace: config.DefaultNamespace,
 				}))
 				pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{
 					{Name: "sidecar"}, {Name: "api"},

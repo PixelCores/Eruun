@@ -33,9 +33,6 @@ func ShouldForceCleanupSharedWorkload(ctx context.Context, kubeClient kubernetes
 	}
 
 	ns := strings.TrimSpace(namespace)
-	if ns == "" {
-		ns = config.DefaultNamespace
-	}
 	labelSet := labels.Set{
 		domainspec.LabelAppID:         appID,
 		domainspec.LabelComponentName: componentName,

@@ -227,13 +227,7 @@ func validateStatefulSetIdentityTransition(componentName string, current, desire
 		return nil
 	}
 	currentNamespace := strings.TrimSpace(current.Namespace)
-	if currentNamespace == "" {
-		currentNamespace = config.DefaultNamespace
-	}
 	desiredNamespace := strings.TrimSpace(desired.Namespace)
-	if desiredNamespace == "" {
-		desiredNamespace = config.DefaultNamespace
-	}
 	currentName := strings.TrimSpace(current.Name)
 	desiredName := strings.TrimSpace(desired.Name)
 	if currentNamespace == desiredNamespace && currentName == desiredName {

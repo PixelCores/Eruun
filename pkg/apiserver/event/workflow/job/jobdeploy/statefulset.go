@@ -61,9 +61,6 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 		}
 		labels = statefulSet.Labels
 	}
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 
 	jobexec.CleanupNamespacedResources(ctx, spec.ResourceStatefulSet, c.Namespace, config.DelTimeOut, "statefulset", func(ctx context.Context, namespace, name string) error {
 		return c.Client.AppsV1().StatefulSets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
@@ -232,9 +229,6 @@ func (c *DeployStatefulSetJobCtl) timeout() int64 {
 
 func GenerateStoreService(component *model.ApplicationComponent, profiles traitsPlu.Profiles) (*jobexec.GenerateServiceResult, error) {
 	// 如果命名空间为空，则使用默认的命名空间
-	if component.Namespace == "" {
-		component.Namespace = config.DefaultNamespace
-	}
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 

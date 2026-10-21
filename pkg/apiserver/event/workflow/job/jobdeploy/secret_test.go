@@ -122,28 +122,6 @@ func TestGenerateSecret(t *testing.T) {
 			t.Errorf("Expected %v, but got %v", expected, actual)
 		}
 	})
-
-	// Test case 5: No namespace provided
-	t.Run("NoNamespace", func(t *testing.T) {
-		component := &model.ApplicationComponent{
-			Name:  "no-namespace-secret",
-			AppID: "test-app",
-			ID:    5,
-		}
-		properties := &model.Properties{
-			Secret: map[string]string{"key": "value"},
-		}
-		expected := &jobinfo.SecretInput{
-			Name:      "no-namespace-secret",
-			Namespace: config.DefaultNamespace,
-			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "5", spec.LabelComponentName: "no-namespace-secret"},
-			Data:      map[string]string{"key": "value"},
-		}
-		actual := GenerateSecret(component, properties)
-		if !reflect.DeepEqual(actual, expected) {
-			t.Errorf("Expected %v, but got %v", expected, actual)
-		}
-	})
 }
 
 func TestEqualSecretPayload(t *testing.T) {

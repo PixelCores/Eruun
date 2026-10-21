@@ -166,20 +166,19 @@ func TestCreateApplicationsNewApplicationDoesNotRequireScheduleLocker(t *testing
 	}
 }
 
-func TestCreateApplicationsRefreshNormalizesLegacyEmptyNamespaceInsideTransaction(t *testing.T) {
+func TestCreateApplicationsRefreshRejectsEmptyNamespaceWithoutWrites(t *testing.T) {
 	store := newCreateRefreshFenceStore()
 	store.apps["app-1"].Namespace = ""
-	store.components["mysql"].Namespace = ""
+	before := store.snapshot()
 	svc := newMockServiceWithStore(store)
 	req := createRefreshRequest("app-1", "2.0.0")
 	req.Namespace = ""
 
 	resp, err := svc.CreateApplications(context.Background(), req)
 
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.Equal(t, config.DefaultNamespace, store.apps["app-1"].Namespace)
-	require.Equal(t, config.DefaultNamespace, store.components["mysql"].Namespace)
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Equal(t, before, store.snapshot())
 }
 
 func TestCreateApplicationsRefreshUsesCanonicalApplicationScheduleLock(t *testing.T) {

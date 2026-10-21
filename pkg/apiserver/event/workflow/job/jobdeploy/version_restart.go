@@ -1,6 +1,7 @@
 package jobdeploy
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -128,7 +129,7 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	if !ok || deploy == nil {
 		return nil, fmt.Errorf("server component %s did not generate a Deployment", component.Name)
 	}
-	namespace := jobexec.DatabaseResetNamespaceOrDefault(deploy.Namespace, component.Namespace)
+	namespace := cmp.Or(deploy.Namespace, component.Namespace)
 	name := strings.TrimSpace(deploy.Name)
 	if name == "" {
 		name = naming.WebServiceName(component.Name, component.ResourceNameKey())
@@ -168,7 +169,7 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	if !ok || statefulSet == nil {
 		return nil, fmt.Errorf("store component %s did not generate a StatefulSet", component.Name)
 	}
-	namespace := jobexec.DatabaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
+	namespace := cmp.Or(statefulSet.Namespace, component.Namespace)
 	name := strings.TrimSpace(statefulSet.Name)
 	if name == "" {
 		name = naming.StoreServerName(component.Name, component.ResourceNameKey())
@@ -246,12 +247,9 @@ func (c *VersionRestartJobCtl) skip(reason string) {
 
 func normalizeVersionRestartComponent(component *model.ApplicationComponent) *model.ApplicationComponent {
 	if component == nil {
-		return &model.ApplicationComponent{Namespace: config.DefaultNamespace}
+		return &model.ApplicationComponent{}
 	}
 	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
 	return &cp
 }
 

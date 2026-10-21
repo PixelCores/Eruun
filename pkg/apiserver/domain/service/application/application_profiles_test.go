@@ -29,7 +29,8 @@ func TestApplicationWritesRejectMissingNodePool(t *testing.T) {
 			switch operation {
 			case "create":
 				_, err = service.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-					Name: "other", Components: []apisv1.CreateComponentRequest{{Name: "worker", ComponentType: config.ServerJob, Image: "nginx:1.27", Traits: traits}},
+					Namespace: config.DefaultNamespace,
+					Name:      "other", Components: []apisv1.CreateComponentRequest{{Name: "worker", ComponentType: config.ServerJob, Image: "nginx:1.27", Traits: traits}},
 				})
 			case "update":
 				_, err = service.UpdateVersion(context.Background(), app.ID, apisv1.UpdateVersionRequest{
@@ -37,7 +38,8 @@ func TestApplicationWritesRejectMissingNodePool(t *testing.T) {
 				})
 			case "template":
 				_, err = service.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-					Name: "clone", Components: []apisv1.CreateComponentRequest{{Name: "worker", Template: &apisv1.TemplateRef{ID: app.ID, Target: "api"}, Traits: traits}},
+					Namespace: config.DefaultNamespace,
+					Name:      "clone", Components: []apisv1.CreateComponentRequest{{Name: "worker", Template: &apisv1.TemplateRef{ID: app.ID, Target: "api"}, Traits: traits}},
 				})
 			}
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)

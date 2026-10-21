@@ -157,9 +157,6 @@ func (c *applicationsServiceImpl) shouldKeepCleaning(ctx context.Context, compon
 		return false
 	}
 	namespace := strings.TrimSpace(component.Namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	labelSet := labels.Set{
 		domainspec.LabelAppID:         appID,
 		domainspec.LabelComponentName: naming.BoundedLabelValue(name),
@@ -239,7 +236,7 @@ func (c *applicationsServiceImpl) sharedComponentHasAbnormalPods(ctx context.Con
 	if appID == "" || componentName == "" {
 		return false, "", fmt.Errorf("component identity is incomplete")
 	}
-	namespace := pickNamespace(strings.TrimSpace(component.Namespace), config.DefaultNamespace)
+	namespace := component.Namespace
 	labelSet := labels.Set{
 		domainspec.LabelAppID:         appID,
 		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
@@ -274,9 +271,6 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		return err
 	}
 	componentCopy := *component
-	if componentCopy.Namespace == "" {
-		componentCopy.Namespace = config.DefaultNamespace
-	}
 	componentPtr := &componentCopy
 
 	switch component.ComponentType {
@@ -390,7 +384,7 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 	if component == nil || reporter == nil {
 		return
 	}
-	ns := pickNamespace(component.Namespace, config.DefaultNamespace)
+	ns := component.Namespace
 	appID := strings.TrimSpace(component.AppID)
 	componentName := strings.TrimSpace(component.Name)
 	if appID == "" || componentName == "" {
@@ -423,7 +417,7 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 	if component == nil || reporter == nil {
 		return
 	}
-	ns := pickNamespace(component.Namespace, config.DefaultNamespace)
+	ns := component.Namespace
 	appID := strings.TrimSpace(component.AppID)
 	componentName := strings.TrimSpace(component.Name)
 	if appID == "" || componentName == "" {
@@ -561,9 +555,6 @@ func (c *applicationsServiceImpl) deleteIngress(ctx context.Context, namespace, 
 
 func (c *applicationsServiceImpl) deleteNamespaced(ctx context.Context, namespace string, fn func(context.Context, string) error) error {
 	ns := namespace
-	if ns == "" {
-		ns = config.DefaultNamespace
-	}
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 	defer cancel()
 	err := fn(opCtx, ns)
@@ -584,10 +575,7 @@ func pickNamespace(candidate, fallback string) string {
 	if candidate != "" {
 		return candidate
 	}
-	if fallback != "" {
-		return fallback
-	}
-	return config.DefaultNamespace
+	return fallback
 }
 
 func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *operationReporter) {

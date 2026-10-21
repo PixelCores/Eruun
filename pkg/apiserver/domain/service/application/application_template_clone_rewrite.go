@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -73,9 +72,6 @@ func buildTemplateRewriteMaps(plans []templateComponentPlan, targetNamespace, ba
 	}
 	targetServiceTargets := make(map[string]targetService)
 	targetNamespaceName := strings.TrimSpace(targetNamespace)
-	if targetNamespaceName == "" {
-		targetNamespaceName = config.DefaultNamespace
-	}
 	duplicatedTemplateComponents := duplicatedTemplateComponentNames(plans)
 	for planIndex, plan := range plans {
 		if plan.templateComp == nil {
@@ -86,9 +82,6 @@ func buildTemplateRewriteMaps(plans []templateComponentPlan, targetNamespace, ba
 			return fmt.Errorf("convert template component %s traits: %w", plan.templateComp.Name, err)
 		}
 		sourceNamespace := strings.TrimSpace(plan.templateComp.Namespace)
-		if sourceNamespace == "" {
-			sourceNamespace = config.DefaultNamespace
-		}
 		serviceTargets := make(map[string]int, len(traits.Service))
 		for serviceIndex, serviceTrait := range traits.Service {
 			oldServiceName := strings.TrimSpace(serviceTrait.Name)
@@ -346,13 +339,7 @@ func (m *templateRewriteMap) addText(oldValue, newValue string) error {
 
 func (m *templateRewriteMap) addServiceDNS(oldServiceName, newServiceName, sourceNamespace, targetNamespace string) error {
 	sourceNamespace = strings.TrimSpace(sourceNamespace)
-	if sourceNamespace == "" {
-		sourceNamespace = config.DefaultNamespace
-	}
 	targetNamespace = strings.TrimSpace(targetNamespace)
-	if targetNamespace == "" {
-		targetNamespace = config.DefaultNamespace
-	}
 	oldPrefixes := []string{
 		fmt.Sprintf("%s.%s", oldServiceName, sourceNamespace),
 		fmt.Sprintf("%s.%s.svc", oldServiceName, sourceNamespace),

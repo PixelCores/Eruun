@@ -132,7 +132,7 @@ func (c *CleanupResourcesJobCtl) deleteDeployment(ctx context.Context, namespace
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.AppsV1().Deployments(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *CleanupResourcesJobCtl) deleteStatefulSet(ctx context.Context, namespace, name string) error {
@@ -219,42 +219,42 @@ func (c *CleanupResourcesJobCtl) deleteJob(ctx context.Context, namespace, name 
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.BatchV1().Jobs(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.BatchV1().Jobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *CleanupResourcesJobCtl) deleteCronJob(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.BatchV1().CronJobs(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.BatchV1().CronJobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *CleanupResourcesJobCtl) deleteService(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.CoreV1().Services(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *CleanupResourcesJobCtl) deleteConfigMap(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.CoreV1().ConfigMaps(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.CoreV1().ConfigMaps(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *CleanupResourcesJobCtl) deleteSecret(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.CoreV1().Secrets(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *CleanupResourcesJobCtl) deleteIngress(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	return c.Client.NetworkingV1().Ingresses(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
+	return c.Client.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (s *cleanupResourceSet) record(kind domainspec.ResourceKind, namespace, name string, cluster bool, err error) {
@@ -262,7 +262,7 @@ func (s *cleanupResourceSet) record(kind domainspec.ResourceKind, namespace, nam
 	if name == "" {
 		return
 	}
-	ns := namespaceOrDefault(namespace)
+	ns := namespace
 	if cluster {
 		ns = ""
 	}
@@ -281,7 +281,7 @@ func newCleanupResourceRef(kind domainspec.ResourceKind, namespace, name string,
 	if name == "" {
 		return cleanupResourceRef{}, false
 	}
-	ns := namespaceOrDefault(namespace)
+	ns := namespace
 	if cluster {
 		ns = ""
 	}
@@ -325,14 +325,6 @@ func cleanupComponentUsesPods(componentType config.JobType) bool {
 	default:
 		return false
 	}
-}
-
-func namespaceOrDefault(namespace string) string {
-	namespace = strings.TrimSpace(namespace)
-	if namespace == "" {
-		return config.DefaultNamespace
-	}
-	return namespace
 }
 
 func pickNonEmpty(value, fallback string) string {

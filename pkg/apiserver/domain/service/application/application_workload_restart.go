@@ -81,7 +81,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	if len(restartedComponents) > 0 {
 		if err := c.markComponentsStatus(ctx, app.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {
 			markErr = fmt.Errorf("mark components restarting: %w", err)
-			statusTarget := formatResource("ComponentStatus", pickNamespace(app.Namespace, config.DefaultNamespace), app.ID)
+			statusTarget := formatResource("ComponentStatus", app.Namespace, app.ID)
 			reporter.failed = append(reporter.failed, operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)})
 		}
 	}
@@ -132,9 +132,6 @@ func (c *applicationsServiceImpl) restartNativeApplicationComponents(ctx context
 		switch component.ComponentType {
 		case config.ServerJob:
 			componentCopy := *component
-			if componentCopy.Namespace == "" {
-				componentCopy.Namespace = config.DefaultNamespace
-			}
 			deployNS, deployName := resolveDeploymentTarget(&componentCopy)
 			skipped, err := c.restartDeployment(ctx, deployNS, deployName, patch)
 			reporter.record("Deployment", deployNS, deployName, skipped, err)
@@ -143,9 +140,6 @@ func (c *applicationsServiceImpl) restartNativeApplicationComponents(ctx context
 			}
 		case config.StoreJob:
 			componentCopy := *component
-			if componentCopy.Namespace == "" {
-				componentCopy.Namespace = config.DefaultNamespace
-			}
 			statefulNS := componentCopy.Namespace
 			statefulName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			skipped, err := c.restartStatefulSet(ctx, statefulNS, statefulName, patch)
@@ -170,9 +164,6 @@ func recordRestartSkippedResource(component *model.ApplicationComponent, reporte
 		return
 	}
 	componentCopy := *component
-	if componentCopy.Namespace == "" {
-		componentCopy.Namespace = config.DefaultNamespace
-	}
 	switch component.ComponentType {
 	case config.ServerJob:
 		deployNS, deployName := resolveDeploymentTarget(&componentCopy)
@@ -203,7 +194,7 @@ func (c *applicationsServiceImpl) restartDeployment(ctx context.Context, namespa
 	if name == "" {
 		return true, nil
 	}
-	ns := pickNamespace(namespace, config.DefaultNamespace)
+	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationWorkloadRestartTimeout)
 	defer cancel()
 	_, err := c.KubeClient.AppsV1().Deployments(ns).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
@@ -220,7 +211,7 @@ func (c *applicationsServiceImpl) restartStatefulSet(ctx context.Context, namesp
 	if name == "" {
 		return true, nil
 	}
-	ns := pickNamespace(namespace, config.DefaultNamespace)
+	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationWorkloadRestartTimeout)
 	defer cancel()
 	_, err := c.KubeClient.AppsV1().StatefulSets(ns).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})

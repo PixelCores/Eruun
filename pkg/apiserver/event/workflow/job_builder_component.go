@@ -187,9 +187,6 @@ func buildCleanupJobsForComponent(
 		return buckets
 	}
 	namespace := component.Namespace
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	componentCopy := *component
 	componentCopy.Namespace = namespace
 	jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
@@ -252,9 +249,6 @@ func cloneLogArchiveUploadComponent(component *model.ApplicationComponent) *mode
 		return nil
 	}
 	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
 	return &cp
 }
 
@@ -317,9 +311,6 @@ func buildDatabaseResetJobs(
 	}
 
 	namespace := databaseComponents[0].Namespace
-	if strings.TrimSpace(namespace) == "" {
-		namespace = config.DefaultNamespace
-	}
 	resourceAppName := databaseComponents[0].ResourceNameKey()
 	jobTask := NewJobTask(databaseResetWorkflowName(), namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 	jobTask.JobType = string(config.JobDatabaseReset)
@@ -348,9 +339,6 @@ func cloneDatabaseResetComponent(component *model.ApplicationComponent) *model.A
 		return nil
 	}
 	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
 	return &cp
 }
 
@@ -383,10 +371,6 @@ func buildJobsForComponent(
 	}
 
 	namespace := component.Namespace
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-		component.Namespace = namespace
-	}
 
 	properties, err := jobexec.ParseProperties(component.Properties)
 	if err != nil {

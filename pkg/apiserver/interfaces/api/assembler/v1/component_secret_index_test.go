@@ -26,7 +26,7 @@ func TestConvertComponentModelsToDTOScopesAndOrdersCredentials(t *testing.T) {
 			Properties: mustJSONStruct(t, model.Properties{Secret: map[string]string{"a": "other namespace"}}),
 		},
 	}
-	for _, namespace := range []string{"", "team", "missing"} {
+	for _, namespace := range []string{"default", "team", "missing"} {
 		components = append(components, &model.ApplicationComponent{
 			Name: "api-" + namespace, Namespace: namespace, ComponentType: config.ServerJob,
 			Traits: mustJSONStruct(t, model.Traits{EnvFrom: []spec.EnvFromSourceSpec{{
@@ -40,7 +40,7 @@ func TestConvertComponentModelsToDTOScopesAndOrdersCredentials(t *testing.T) {
 	require.Equal(t, []apisv1.ComponentCredentialInfo{
 		{Source: "component.envFrom", SecretName: "db-secret", Key: "a", Value: "first", Resolved: true},
 		{Source: "component.envFrom", SecretName: "db-secret", Key: "z", Value: "last", Resolved: true},
-	}, requireComponentByName(t, dtos, "api-").Credentials)
+	}, requireComponentByName(t, dtos, "api-default").Credentials)
 	require.Equal(t, []apisv1.ComponentCredentialInfo{
 		{Source: "component.envFrom", SecretName: "db-secret", Key: "a", Value: "other namespace", Resolved: true},
 	}, requireComponentByName(t, dtos, "api-team").Credentials)

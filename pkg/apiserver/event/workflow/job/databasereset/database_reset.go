@@ -1,6 +1,7 @@
 package databasereset
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -233,7 +234,7 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 		if !ok || statefulSet == nil {
 			return nil, fmt.Errorf("store component %s did not generate a StatefulSet", component.Name)
 		}
-		namespace := jobexec.DatabaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
+		namespace := cmp.Or(statefulSet.Namespace, component.Namespace)
 		name := strings.TrimSpace(statefulSet.Name)
 		if name == "" {
 			name = naming.StoreServerName(component.Name, component.ResourceNameKey())
@@ -369,12 +370,9 @@ func (c *DatabaseResetJobCtl) restoreDatabaseReplicas(ctx context.Context, plan 
 
 func normalizeDatabaseResetComponent(component *model.ApplicationComponent) *model.ApplicationComponent {
 	if component == nil {
-		return &model.ApplicationComponent{Namespace: config.DefaultNamespace}
+		return &model.ApplicationComponent{}
 	}
 	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
 	return &cp
 }
 
@@ -388,7 +386,7 @@ func desiredDatabaseReplicas(component *model.ApplicationComponent) int32 {
 func (c *DatabaseResetJobCtl) collectPVCResetTargets(ctx context.Context, namespace string, statefulSet *appsv1.StatefulSet, additionalObjects []client.Object, desiredReplicas int32) ([]pvcResetTarget, error) {
 	targets := make(map[string]pvcResetTarget)
 	addTarget := func(target pvcResetTarget) {
-		target.namespace = jobexec.DatabaseResetNamespaceOrDefault(target.namespace, namespace)
+		target.namespace = cmp.Or(target.namespace, namespace)
 		target.name = strings.TrimSpace(target.name)
 		if target.name == "" {
 			return
@@ -438,7 +436,7 @@ func (c *DatabaseResetJobCtl) collectPVCResetTargets(ctx context.Context, namesp
 			continue
 		}
 		addTarget(pvcResetTarget{
-			namespace: jobexec.DatabaseResetNamespaceOrDefault(pvc.Namespace, namespace),
+			namespace: cmp.Or(pvc.Namespace, namespace),
 			name:      pvc.Name,
 			recreate:  true,
 		})

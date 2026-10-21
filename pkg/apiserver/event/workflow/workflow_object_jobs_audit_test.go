@@ -143,7 +143,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 	component := &model.ApplicationComponent{
 		Name:          "ApiKey",
 		AppID:         "App-Env",
-		Namespace:     "",
+		Namespace:     config.DefaultNamespace,
 		ComponentType: config.SecretJob,
 		Properties:    secretProps,
 	}

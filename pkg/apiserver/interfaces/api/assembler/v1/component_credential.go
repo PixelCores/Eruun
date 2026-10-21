@@ -2,11 +2,11 @@ package v1
 
 import (
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
@@ -117,14 +117,7 @@ func componentSecretKey(namespace, name string) string {
 	if name == "" {
 		return ""
 	}
-	return pickComponentNamespace(namespace) + "/" + name
-}
-
-func pickComponentNamespace(namespace string) string {
-	if namespace = strings.TrimSpace(namespace); namespace != "" {
-		return namespace
-	}
-	return config.DefaultNamespace
+	return strings.TrimSpace(namespace) + "/" + name
 }
 
 func copyStringMap(values map[string]string) map[string]string {

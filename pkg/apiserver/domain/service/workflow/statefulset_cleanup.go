@@ -437,9 +437,6 @@ func statefulSetCleanupIdentity(cleanupComponent model.VersionUpdateCleanupCompo
 		return "", err
 	}
 	namespace := strings.TrimSpace(statefulSet.Namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	name := strings.TrimSpace(statefulSet.Name)
 	if name == "" {
 		return "", fmt.Errorf("rendered StatefulSet name is empty")

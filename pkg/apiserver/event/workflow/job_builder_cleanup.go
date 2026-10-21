@@ -185,13 +185,8 @@ func persistedCleanupJobTask(cleanupRecord persistedCleanupJobInfo, task *model.
 		name = "cleanup-resources"
 	}
 
-	namespace := config.DefaultNamespace
-	resourceAppName := ""
-	if strings.TrimSpace(component.Namespace) == "" {
-		component.Namespace = namespace
-	}
-	namespace = component.Namespace
-	resourceAppName = component.ResourceNameKey()
+	namespace := component.Namespace
+	resourceAppName := component.ResourceNameKey()
 	if strings.TrimSpace(component.Name) != "" {
 		name = component.Name
 	}
@@ -351,7 +346,7 @@ func failedPersistedCleanupExecution(task *model.WorkflowQueue, defaultJobTimeou
 		appID = task.AppID
 		taskID = task.TaskID
 	}
-	jobTask := NewJobTask("cleanup-resources", config.DefaultNamespace, workflowID, projectID, appID, taskID, defaultJobTimeoutSeconds)
+	jobTask := NewJobTask("cleanup-resources", "", workflowID, projectID, appID, taskID, defaultJobTimeoutSeconds)
 	jobTask.JobType = string(config.JobCleanupResources)
 	jobTask.JobInfo = fmt.Sprintf("load persisted cleanup jobs: %v", err)
 	jobTask.Info = "cleanup resources: failed to load persisted cleanup jobs"
@@ -374,7 +369,7 @@ func failedWorkflowGenerationExecution(task *model.WorkflowQueue, defaultJobTime
 		appID = task.AppID
 		taskID = task.TaskID
 	}
-	jobTask := NewJobTask("workflow-generation", config.DefaultNamespace, workflowID, projectID, appID, taskID, defaultJobTimeoutSeconds)
+	jobTask := NewJobTask("workflow-generation", "", workflowID, projectID, appID, taskID, defaultJobTimeoutSeconds)
 	jobTask.JobType = string(config.JobCleanupResources)
 	jobTask.JobInfo = fmt.Sprintf("prepare workflow job tasks: %v", err)
 	jobTask.Info = "workflow generation failed"
