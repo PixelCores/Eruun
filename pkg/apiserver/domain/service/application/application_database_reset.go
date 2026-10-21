@@ -115,7 +115,6 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		WorkflowID:         workflow.ID,
 		TaskID:             task.TaskID,
 		DatabaseComponents: databaseComponents,
-		RestartComponents:  []string{},
 	}, nil
 }
 

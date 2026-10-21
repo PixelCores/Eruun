@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
@@ -147,9 +146,6 @@ func (app *applications) downloadLogArchive(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !validateLogArchiveDownloadRequest(c, req) {
-		return
-	}
 
 	archive, err := app.ApplicationService.DownloadLogArchive(c.Request.Context(), appID, *req)
 	if err != nil {
@@ -157,30 +153,6 @@ func (app *applications) downloadLogArchive(c *gin.Context) {
 		return
 	}
 	writeComponentArchiveStream(c, archive, appID, strings.TrimSpace(req.Components[0]), "log-archive")
-}
-
-func validateLogArchiveDownloadRequest(c *gin.Context, req *apis.LogArchiveDownloadRequest) bool {
-	if req == nil {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return false
-	}
-	if req.JobType != "" && req.JobType != config.JobLogArchiveUpload {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return false
-	}
-	if len(req.Components) != 1 {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return false
-	}
-	if strings.TrimSpace(req.Components[0]) == "" {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return false
-	}
-	if strings.TrimSpace(req.Path) == "" {
-		apiresponse.ReturnError(c, bcode.ErrComponentFilePathInvalid)
-		return false
-	}
-	return true
 }
 
 func (app *applications) deleteApplication(c *gin.Context) {

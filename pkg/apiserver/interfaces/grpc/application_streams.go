@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
@@ -195,15 +194,6 @@ func (s *ApplicationsServer) DownloadLogArchive(req *eruunv1.LogArchiveRPCReques
 	input, err := decodeTypedRequest[apis.LogArchiveDownloadRequest](req.Request)
 	if err != nil {
 		return rpcError(bcode.ErrApplicationConfig)
-	}
-	if input.JobType != "" && input.JobType != config.JobLogArchiveUpload {
-		return rpcError(bcode.ErrApplicationConfig)
-	}
-	if len(input.Components) != 1 || strings.TrimSpace(input.Components[0]) == "" {
-		return rpcError(bcode.ErrApplicationConfig)
-	}
-	if strings.TrimSpace(input.Path) == "" {
-		return rpcError(bcode.ErrComponentFilePathInvalid)
 	}
 	archive, err := s.Applications.DownloadLogArchive(stream.Context(), req.AppId, input)
 	if err != nil {

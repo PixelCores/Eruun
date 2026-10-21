@@ -33,12 +33,11 @@ Content-Type: application/json
   "appId": "app-123",
   "workflowId": "workflow-123",
   "taskId": "task-123",
-  "databaseComponents": ["mysql", "redis"],
-  "restartComponents": []
+  "databaseComponents": ["mysql", "redis"]
 }
 ```
 
-`restartComponents` 是为兼容现有调用方保留的响应字段，固定返回空数组。`database-reset` 不再收集或重启任何 `webservice`。
+`database-reset` 不收集也不重启任何 `webservice`，响应只列出被重置的数据库组件。
 
 ## Examples
 

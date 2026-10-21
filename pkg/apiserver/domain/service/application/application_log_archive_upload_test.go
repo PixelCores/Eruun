@@ -51,7 +51,6 @@ func TestDownloadLogArchiveReturnsComponentArchiveStream(t *testing.T) {
 	}
 
 	stream, err := svc.DownloadLogArchive(context.Background(), "app-1", apisv1.LogArchiveDownloadRequest{
-		JobType:    config.JobLogArchiveUpload,
 		Components: []string{"worker"},
 		Path:       "/data/logs/archive",
 		Container:  "worker",
@@ -105,12 +104,10 @@ func TestDownloadLogArchiveRejectsInvalidRequest(t *testing.T) {
 		appID      string
 		components []string
 		path       string
-		jobType    config.JobType
 		wantErr    error
 	}{
 		{name: "missing app id", components: []string{"api"}, path: "/data/logs", wantErr: bcode.ErrApplicationNotExist},
 		{name: "missing app", appID: "missing", components: []string{"api"}, path: "/data/logs", wantErr: bcode.ErrApplicationNotExist},
-		{name: "wrong job type", appID: "app-1", jobType: config.JobDeploy, components: []string{"api"}, path: "/data/logs", wantErr: bcode.ErrApplicationConfig},
 		{name: "missing component", appID: "app-1", path: "/data/logs", wantErr: bcode.ErrApplicationConfig},
 		{name: "multiple components", appID: "app-1", components: []string{"api", "worker"}, path: "/data/logs", wantErr: bcode.ErrApplicationConfig},
 		{name: "blank component", appID: "app-1", components: []string{" "}, path: "/data/logs", wantErr: bcode.ErrApplicationConfig},
@@ -135,7 +132,6 @@ func TestDownloadLogArchiveRejectsInvalidRequest(t *testing.T) {
 			svc.KubeConfig = &rest.Config{Host: "https://example.test"}
 
 			stream, err := svc.DownloadLogArchive(context.Background(), tt.appID, apisv1.LogArchiveDownloadRequest{
-				JobType:    tt.jobType,
 				Components: tt.components,
 				Path:       tt.path,
 			})

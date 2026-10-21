@@ -5164,7 +5164,6 @@ type AppDTODatabaseResetResponse struct {
 	WorkflowId         string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	TaskId             string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	DatabaseComponents []string               `protobuf:"bytes,4,rep,name=database_components,json=databaseComponents,proto3" json:"database_components,omitempty"`
-	RestartComponents  []string               `protobuf:"bytes,5,rep,name=restart_components,json=restartComponents,proto3" json:"restart_components,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -5223,13 +5222,6 @@ func (x *AppDTODatabaseResetResponse) GetTaskId() string {
 func (x *AppDTODatabaseResetResponse) GetDatabaseComponents() []string {
 	if x != nil {
 		return x.DatabaseComponents
-	}
-	return nil
-}
-
-func (x *AppDTODatabaseResetResponse) GetRestartComponents() []string {
-	if x != nil {
-		return x.RestartComponents
 	}
 	return nil
 }
@@ -6388,9 +6380,6 @@ func (x *AppDTOListWorkflowSchedulesResponse) GetSchedules() []*AppDTOWorkflowSc
 
 type AppDTOLogArchiveDownloadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	JobType       string                 `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"`
-	Mode          string                 `protobuf:"bytes,3,opt,name=mode,proto3" json:"mode,omitempty"`
 	Components    []string               `protobuf:"bytes,4,rep,name=components,proto3" json:"components,omitempty"`
 	Path          string                 `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"`
 	Container     string                 `protobuf:"bytes,6,opt,name=container,proto3" json:"container,omitempty"`
@@ -6426,27 +6415,6 @@ func (x *AppDTOLogArchiveDownloadRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AppDTOLogArchiveDownloadRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOLogArchiveDownloadRequest) Descriptor() ([]byte, []int) {
 	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{88}
-}
-
-func (x *AppDTOLogArchiveDownloadRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOLogArchiveDownloadRequest) GetJobType() string {
-	if x != nil {
-		return x.JobType
-	}
-	return ""
-}
-
-func (x *AppDTOLogArchiveDownloadRequest) GetMode() string {
-	if x != nil {
-		return x.Mode
-	}
-	return ""
 }
 
 func (x *AppDTOLogArchiveDownloadRequest) GetComponents() []string {
@@ -12184,14 +12152,13 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"components\x12$\n" +
 	"\vinit_sqlurl\x18\x02 \x01(\tH\x00R\n" +
 	"initSqlUrl\x88\x01\x01B\x0e\n" +
-	"\f_init_sqlurl\"\xce\x01\n" +
+	"\f_init_sqlurl\"\xb9\x01\n" +
 	"\x1bAppDTODatabaseResetResponse\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1f\n" +
 	"\vworkflow_id\x18\x02 \x01(\tR\n" +
 	"workflowId\x12\x17\n" +
 	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12/\n" +
-	"\x13database_components\x18\x04 \x03(\tR\x12databaseComponents\x12-\n" +
-	"\x12restart_components\x18\x05 \x03(\tR\x11restartComponents\"Y\n" +
+	"\x13database_components\x18\x04 \x03(\tR\x12databaseComponentsJ\x04\b\x05\x10\x06R\x12restart_components\"Y\n" +
 	"\x1eAppDTODeleteApplicationRequest\x12&\n" +
 	"\fwait_seconds\x18\x01 \x01(\x03H\x00R\vwaitSeconds\x88\x01\x01B\x0f\n" +
 	"\r_wait_seconds\"\xd0\x02\n" +
@@ -12288,16 +12255,13 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"&AppDTOListApplicationWorkflowsResponse\x12A\n" +
 	"\tworkflows\x18\x01 \x03(\v2#.eruun.v1.AppDTOApplicationWorkflowR\tworkflows\"e\n" +
 	"#AppDTOListWorkflowSchedulesResponse\x12>\n" +
-	"\tschedules\x18\x01 \x03(\v2 .eruun.v1.AppDTOWorkflowScheduleR\tschedules\"\xb6\x01\n" +
-	"\x1fAppDTOLogArchiveDownloadRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
-	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12\x12\n" +
-	"\x04mode\x18\x03 \x01(\tR\x04mode\x12\x1e\n" +
+	"\tschedules\x18\x01 \x03(\v2 .eruun.v1.AppDTOWorkflowScheduleR\tschedules\"\x9b\x01\n" +
+	"\x1fAppDTOLogArchiveDownloadRequest\x12\x1e\n" +
 	"\n" +
 	"components\x18\x04 \x03(\tR\n" +
 	"components\x12\x12\n" +
 	"\x04path\x18\x05 \x01(\tR\x04path\x12\x1c\n" +
-	"\tcontainer\x18\x06 \x01(\tR\tcontainer\"\xc8\x01\n" +
+	"\tcontainer\x18\x06 \x01(\tR\tcontainerJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\x04nameR\bjob_typeR\x04mode\"\xc8\x01\n" +
 	"\x10AppDTOPlanAction\x12\x14\n" +
 	"\x05order\x18\x01 \x01(\x05R\x05order\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x16\n" +
