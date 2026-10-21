@@ -16,7 +16,7 @@ func buildComponentServices(component *apisv1.ApplicationComponent) []apisv1.Com
 	if !componentDeploysService(component) {
 		return nil
 	}
-	namespace := pickComponentNamespace(component.Namespace)
+	namespace := component.Namespace
 	if len(component.Traits.Service) > 0 {
 		services := make([]apisv1.ComponentServiceInfo, 0, len(component.Traits.Service))
 		for _, trait := range component.Traits.Service {
@@ -223,5 +223,5 @@ func buildIngressResourceName(componentName, resourceAppName, explicitName strin
 }
 
 func pickIngressNamespace(componentNamespace, _ string) string {
-	return pickComponentNamespace(componentNamespace)
+	return componentNamespace
 }

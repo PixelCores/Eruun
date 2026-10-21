@@ -266,33 +266,6 @@ func TestConvertComponentModelToDTOUsesDeployedIngressIdentity(t *testing.T) {
 	require.Equal(t, "default", dto.Ingresses[0].Namespace)
 }
 
-func TestConvertComponentModelToDTOUsesDefaultNamespaceForBlankComponentIngress(t *testing.T) {
-	traitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
-		Ingress: []model.IngressTraitsSpec{
-			{
-				Namespace: "custom-ns",
-				Routes: []model.IngressRoutes{
-					{Host: "example.com", Path: "/"},
-				},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	component := &model.ApplicationComponent{
-		ID:            5,
-		AppID:         "app-1",
-		Name:          "gateway",
-		ComponentType: config.ServerJob,
-		Traits:        traitsJSON,
-	}
-
-	dto, err := ConvertComponentModelToDTO(component)
-	require.NoError(t, err)
-	require.Len(t, dto.Ingresses, 1)
-	require.Equal(t, config.DefaultNamespace, dto.Ingresses[0].Namespace)
-}
-
 func TestConvertComponentModelToDTOSkipsIngressForUnsupportedComponentTypes(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
 		Ingress: []model.IngressTraitsSpec{

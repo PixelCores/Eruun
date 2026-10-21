@@ -183,7 +183,7 @@ func (c *applicationsServiceImpl) resolveCreateApplicationReplacement(ctx contex
 	if strings.TrimSpace(req.Version) == "" {
 		req.Version = "1.0.0"
 	}
-	existing, err := c.findTemplateApplication(ctx, serviceNamespaceOrDefault(req.Namespace), req.Name, req.Version)
+	existing, err := c.findTemplateApplication(ctx, req.Namespace, req.Name, req.Version)
 	if err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return req, nil
@@ -265,9 +265,6 @@ func (c *applicationsServiceImpl) createApplications(
 			if currentApplication.ID != refreshAppID {
 				return bcode.ErrApplicationNotExist
 			}
-			if currentApplication.Namespace == "" {
-				currentApplication.Namespace = config.DefaultNamespace
-			}
 			if callbackSelection.setCallback {
 				currentApplication.Callback = callbackSelection.callback
 			}
@@ -325,9 +322,8 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 		if !ok {
 			return nil, nil, fmt.Errorf("application creation requires transactional datastore")
 		}
-		targetNamespace := serviceNamespaceOrDefault(req.Namespace)
 		if !templateEnabled {
-			if err := c.ensureStandardApplicationNameAvailable(ctx, targetNamespace, req.Name, ""); err != nil {
+			if err := c.ensureStandardApplicationNameAvailable(ctx, req.Namespace, req.Name, ""); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -344,7 +340,7 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 		)
 	}
 	if application.Namespace == "" {
-		application.Namespace = config.DefaultNamespace
+		return nil, nil, fmt.Errorf("%w: namespace is required", bcode.ErrApplicationConfig)
 	}
 	if scope, ok := access.FromContext(ctx); ok {
 		application.WorkspaceID = scope.WorkspaceID
@@ -656,9 +652,9 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 		if !application.TemplateEnabled && application.Name != req.Name {
 			return nil, fmt.Errorf("%w: application name is immutable", bcode.ErrApplicationConfig)
 		}
-		targetNamespace := serviceNamespaceOrDefault(application.Namespace)
+		targetNamespace := application.Namespace
 		if req.Namespace != "" {
-			targetNamespace = serviceNamespaceOrDefault(req.Namespace)
+			targetNamespace = req.Namespace
 		}
 		if err := ensureTemplateApplicationKeyAvailableInStore(ctx, store, targetNamespace, req.Name, req.Version, application.ID); err != nil {
 			return nil, err
@@ -667,9 +663,9 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 		if application.Name != req.Name {
 			return nil, fmt.Errorf("%w: application name is immutable", bcode.ErrApplicationConfig)
 		}
-		targetNamespace := serviceNamespaceOrDefault(application.Namespace)
+		targetNamespace := application.Namespace
 		if req.Namespace != "" {
-			targetNamespace = serviceNamespaceOrDefault(req.Namespace)
+			targetNamespace = req.Namespace
 		}
 		if err := ensureStandardApplicationNameAvailableInStore(ctx, store, targetNamespace, req.Name, application.ID); err != nil {
 			return nil, err
@@ -695,13 +691,12 @@ func ensureStandardApplicationNameAvailableInStore(ctx context.Context, store da
 	if store == nil {
 		return fmt.Errorf("datastore is not initialized")
 	}
-	namespace = serviceNamespaceOrDefault(namespace)
 	apps, err := repository.ListApplicationsByQuery(ctx, store, &model.Applications{Name: name}, datastore.ListOptions{})
 	if err != nil {
 		return err
 	}
 	for _, app := range apps {
-		if app == nil || app.TemplateEnabled || app.ID == currentAppID || serviceNamespaceOrDefault(app.Namespace) != namespace {
+		if app == nil || app.TemplateEnabled || app.ID == currentAppID || app.Namespace != namespace {
 			continue
 		}
 		return bcode.ErrApplicationExist
@@ -730,7 +725,6 @@ func findTemplateApplicationInStore(ctx context.Context, store datastore.DataSto
 	if name == "" || version == "" {
 		return nil, datastore.ErrRecordNotExist
 	}
-	namespace = serviceNamespaceOrDefault(namespace)
 	apps, err := repository.ListApplicationsByQuery(ctx, store, &model.Applications{
 		Name:            name,
 		Version:         version,
@@ -740,7 +734,7 @@ func findTemplateApplicationInStore(ctx context.Context, store datastore.DataSto
 		return nil, err
 	}
 	for _, app := range apps {
-		if app != nil && serviceNamespaceOrDefault(app.Namespace) == namespace {
+		if app != nil && app.Namespace == namespace {
 			return app, nil
 		}
 	}

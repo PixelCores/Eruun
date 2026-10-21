@@ -561,51 +561,6 @@ func TestListApplicationComponentsSkipsIngressForUnsupportedComponentTypes(t *te
 	}, apiComponent.ExternalLinks)
 }
 
-func TestListApplicationComponentsUsesDefaultNamespaceForBlankComponentIngress(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	apiTraitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Namespace: "custom-ns",
-				Routes: []spec.IngressRoutes{
-					{Host: "api.example.com", Path: "/"},
-				},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	appHandler := &applications{
-		ApplicationService: componentListApplicationService{
-			components: []*model.ApplicationComponent{
-				{
-					ID:            1,
-					AppID:         "app-4",
-					Name:          "api",
-					ComponentType: config.ServerJob,
-					Traits:        apiTraitsJSON,
-				},
-			},
-		},
-		WorkflowService: &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.GET("/applications/:appID/components", appHandler.listApplicationComponents)
-
-	req := httptest.NewRequest(http.MethodGet, "/applications/app-4/components", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusOK, resp.Code)
-
-	var payload apis.ListApplicationComponentsResponse
-	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
-	require.Len(t, payload.Components, 1)
-	require.Len(t, payload.Components[0].Ingresses, 1)
-	require.Equal(t, config.DefaultNamespace, payload.Components[0].Ingresses[0].Namespace)
-}
-
 func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &componentCacheSyncStore{

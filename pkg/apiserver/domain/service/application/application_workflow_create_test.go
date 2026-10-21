@@ -595,7 +595,8 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		Name: "phase-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "phase-app",
 		Components: []apisv1.CreateComponentRequest{
 			{Name: "cfg", ComponentType: config.ConfJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-config"}},
 			{Name: "sec", ComponentType: config.SecretJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-secret"}},
@@ -666,7 +667,8 @@ func TestCreateApplications_TemplateWithExplicitWorkflow_DoesNotRewrite(t *testi
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		Name: "explicit-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "explicit-app",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "tenant-store",
@@ -737,7 +739,8 @@ func TestCreateApplications_NonTemplateWithoutWorkflow_GeneratesPhasedDefaultWor
 	svc := newMockServiceWithStore(store)
 
 	req := apisv1.CreateApplicationsRequest{
-		Name: "phased-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "phased-app",
 		Components: []apisv1.CreateComponentRequest{
 			{Name: "config-a", ComponentType: config.ConfJob},
 			{Name: "init-sql", ComponentType: config.InstantJob, Image: "busybox:1.36"},

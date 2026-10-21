@@ -57,7 +57,7 @@ func validateApplicationResourceNames(ctx context.Context, appRepo repository.Ap
 		return fmt.Errorf("component repository is not initialized")
 	}
 
-	namespace := serviceNamespaceOrDefault(app.Namespace)
+	namespace := app.Namespace
 	seenResources := make(map[string]resolvedResourceRef)
 	seenComponentLabels := make(map[string]resolvedComponentLabelRef)
 	if app.TemplateEnabled {
@@ -69,7 +69,7 @@ func validateApplicationResourceNames(ctx context.Context, appRepo repository.Ap
 		return err
 	}
 	for _, existingApp := range apps {
-		if existingApp == nil || existingApp.TemplateEnabled || existingApp.ID == app.ID || serviceNamespaceOrDefault(existingApp.Namespace) != namespace {
+		if existingApp == nil || existingApp.TemplateEnabled || existingApp.ID == app.ID || existingApp.Namespace != namespace {
 			continue
 		}
 		existingComponents, err := componentRepo.FindByAppID(ctx, existingApp.ID)
@@ -113,7 +113,6 @@ func trackResolvedApplicationResources(
 	components []apisv1.CreateComponentRequest,
 	failOnDuplicate bool,
 ) error {
-	namespace = serviceNamespaceOrDefault(namespace)
 	for componentIndex, component := range components {
 		componentName := strings.TrimSpace(component.Name)
 		componentNamespace := namespace
@@ -202,7 +201,6 @@ func trackResolvedApplicationResources(
 }
 
 func trackResolvedResource(seen map[string]resolvedResourceRef, current resolvedResourceRef) error {
-	current.namespace = serviceNamespaceOrDefault(current.namespace)
 	current.name = strings.TrimSpace(current.name)
 	if current.name == "" {
 		return nil
@@ -244,7 +242,6 @@ func validateResolvedPVCResourceName(current resolvedPVCResourceName) error {
 }
 
 func seedResolvedResource(seen map[string]resolvedResourceRef, current resolvedResourceRef) {
-	current.namespace = serviceNamespaceOrDefault(current.namespace)
 	current.name = strings.TrimSpace(current.name)
 	if current.name == "" {
 		return

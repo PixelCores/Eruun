@@ -1,9 +1,6 @@
 package application
 
 import (
-	"strings"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -28,12 +25,4 @@ func setResourceAppNameForComponent(component *model.ApplicationComponent, resou
 		return
 	}
 	component.ResourceAppName = resourceAppName
-}
-
-func serviceNamespaceOrDefault(namespace string) string {
-	namespace = strings.TrimSpace(namespace)
-	if namespace == "" {
-		return config.DefaultNamespace
-	}
-	return namespace
 }

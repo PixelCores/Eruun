@@ -69,7 +69,7 @@ func TestResolveCreateApplicationReplacementByIDErrorContract(t *testing.T) {
 				application: tt.application,
 				err:         tt.repositoryErr,
 			}}
-			req := apisv1.CreateApplicationsRequest{ID: "app-1"}
+			req := apisv1.CreateApplicationsRequest{Namespace: config.DefaultNamespace, ID: "app-1"}
 
 			resolved, err := svc.resolveCreateApplicationReplacement(context.Background(), req)
 
@@ -83,6 +83,15 @@ func TestResolveCreateApplicationReplacementByIDErrorContract(t *testing.T) {
 	}
 }
 
+func TestCreateApplicationsRejectsEmptyNamespace(t *testing.T) {
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+
+	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Name: "demo"})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Empty(t, store.apps)
+}
+
 func TestCreateApplicationsRejectsDuplicateName(t *testing.T) {
 	store := newInMemoryAppStore()
 	existing := &model.Applications{
@@ -94,7 +103,8 @@ func TestCreateApplicationsRejectsDuplicateName(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		Name: "m2605081521cctqpk",
+		Namespace: config.DefaultNamespace,
+		Name:      "m2605081521cctqpk",
 	}
 
 	_, err := svc.CreateApplications(context.Background(), req)
@@ -107,7 +117,7 @@ func TestCreateApplicationsRejectsInvalidNameBeforeStoreWrite(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := newInMemoryAppStore()
 			svc := newMockServiceWithStore(store)
-			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Name: name})
+			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Namespace: config.DefaultNamespace, Name: name})
 			require.Nil(t, resp)
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 			require.Empty(t, store.apps)
@@ -117,7 +127,7 @@ func TestCreateApplicationsRejectsInvalidNameBeforeStoreWrite(t *testing.T) {
 
 	store := newInMemoryAppStore()
 	svc := newMockServiceWithStore(store)
-	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Name: "demo.app"})
+	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Namespace: config.DefaultNamespace, Name: "demo.app"})
 	require.NoError(t, err)
 	require.Equal(t, "demo.app", store.apps[resp.ID].Name)
 }
@@ -233,7 +243,8 @@ func TestCreateApplicationsRejectsGeneratedResourceNameCollisionWithinApp(t *tes
 	svc := newMockServiceWithStore(store)
 
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "game",
+		Namespace: config.DefaultNamespace,
+		Name:      "game",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
@@ -265,7 +276,8 @@ func TestCreateApplicationsAllowsStandalonePVCReuseWithinApp(t *testing.T) {
 	svc.KubeClient = fake.NewSimpleClientset()
 
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "game",
+		Namespace: config.DefaultNamespace,
+		Name:      "game",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
@@ -303,7 +315,8 @@ func TestCreateApplicationsAllowsSameComponentStandalonePVCReuseAcrossTraitScope
 	svc.KubeClient = fake.NewSimpleClientset()
 
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "game",
+		Namespace: config.DefaultNamespace,
+		Name:      "game",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
@@ -338,7 +351,8 @@ func TestCreateApplicationsRejectsInvalidStandalonePVCName(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "game",
+		Namespace: config.DefaultNamespace,
+		Name:      "game",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
@@ -359,7 +373,8 @@ func TestCreateApplicationsRejectsStorageSubPathAndSubPathExpr(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "game",
+		Namespace: config.DefaultNamespace,
+		Name:      "game",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
@@ -402,7 +417,8 @@ func TestCreateApplicationsRejectsGeneratedResourceNameCollisionAcrossApps(t *te
 
 	svc := newMockServiceWithStore(store)
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "foo-bar",
+		Namespace: config.DefaultNamespace,
+		Name:      "foo-bar",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "baz",
 			ComponentType: config.ServerJob,
@@ -444,7 +460,8 @@ func TestCreateApplicationsAllowsDuplicateSafeShareResourceNameCollisionAcrossAp
 			svc := newMockServiceWithStore(store)
 			svc.KubeClient = fake.NewSimpleClientset()
 			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-				Name: "beta",
+				Namespace: config.DefaultNamespace,
+				Name:      "beta",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:          "backend",
 					ComponentType: config.ServerJob,
@@ -488,7 +505,8 @@ func TestCreateApplicationsRejectsForceShareResourceNameCollisionAcrossApps(t *t
 
 	svc := newMockServiceWithStore(store)
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "beta",
+		Namespace: config.DefaultNamespace,
+		Name:      "beta",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
@@ -528,7 +546,8 @@ func TestCreateApplicationsAllowsStandalonePVCReuseAcrossApps(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = fake.NewSimpleClientset()
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "beta",
+		Namespace: config.DefaultNamespace,
+		Name:      "beta",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "worker",
 			ComponentType: config.ServerJob,
@@ -593,8 +612,9 @@ func TestCreateApplicationsRejectsRenamingExistingApplication(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		ID:   app.ID,
-		Name: "m2605081521renamed",
+		Namespace: config.DefaultNamespace,
+		ID:        app.ID,
+		Name:      "m2605081521renamed",
 	}
 
 	_, err := svc.CreateApplications(context.Background(), req)
@@ -608,7 +628,8 @@ func TestCreateApplications_RejectsReservedPropertiesLabels(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 
 	req := apisv1.CreateApplicationsRequest{
-		Name: "new-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "new-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
@@ -631,7 +652,8 @@ func TestCreateApplicationsAllowsEmptySecretValues(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 
 	req := apisv1.CreateApplicationsRequest{
-		Name: "new-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "new-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "app-secret",
 			ComponentType: config.SecretJob,
@@ -659,7 +681,8 @@ func TestCreateApplicationsKeepsBase64LookingSecretTextFromRequest(t *testing.T)
 	svc := newMockServiceWithStore(store)
 
 	req := apisv1.CreateApplicationsRequest{
-		Name: "imported-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "imported-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "app-secret",
 			ComponentType: config.SecretJob,
@@ -909,7 +932,8 @@ func TestCreateApplicationsRejectsInvalidExplicitServiceTraitName(t *testing.T) 
 	svc := newMockServiceWithStore(store)
 
 	req := apisv1.CreateApplicationsRequest{
-		Name: "new-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "new-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
@@ -966,7 +990,8 @@ func TestCreateApplicationsRejectsInvalidIngressNameAndHost(t *testing.T) {
 			svc := newMockServiceWithStore(store)
 
 			req := apisv1.CreateApplicationsRequest{
-				Name: "new-app",
+				Namespace: config.DefaultNamespace,
+				Name:      "new-app",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:          "backend",
 					ComponentType: config.ServerJob,
@@ -1054,7 +1079,8 @@ func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
 			svc := newMockServiceWithStore(store)
 
 			_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-				Name: "new-app",
+				Namespace: config.DefaultNamespace,
+				Name:      "new-app",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:          "backend",
 					ComponentType: config.ServerJob,
@@ -1070,7 +1096,8 @@ func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
 
 			// The same nested ingress with ordinary labels stays accepted.
 			_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-				Name: "new-app",
+				Namespace: config.DefaultNamespace,
+				Name:      "new-app",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:          "backend",
 					ComponentType: config.ServerJob,

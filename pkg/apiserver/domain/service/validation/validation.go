@@ -92,7 +92,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				Message: "template repositories are required to validate template components",
 			})
 		} else {
-			components, _, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Components, v.Cfg)
+			components, _, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, effectiveReq.Namespace, effectiveReq.Name, effectiveReq.Components, v.Cfg)
 			if err != nil {
 				componentsResolved = false
 				errors = append(errors, apisv1.ValidationError{

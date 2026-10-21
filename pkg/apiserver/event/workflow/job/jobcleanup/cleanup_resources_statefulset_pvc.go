@@ -408,7 +408,6 @@ func requiredStatefulSetPVCTargetFromCheckpoint(
 	templates []string,
 	checkpoint requiredStatefulSetPVCDeletionCheckpoint,
 ) (*requiredStatefulSetPVCDeletionTarget, error) {
-	checkpoint.Namespace = namespaceOrDefault(checkpoint.Namespace)
 	checkpoint.StatefulSetName = strings.TrimSpace(checkpoint.StatefulSetName)
 	checkpoint.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(checkpoint.Templates)
 	if checkpoint.Namespace != ref.namespace || checkpoint.StatefulSetName != ref.name || !equalStringSlices(checkpoint.Templates, templates) {
@@ -473,8 +472,6 @@ func marshalRequiredStatefulSetPVCDeletionCheckpoint(raw string, checkpoint requ
 }
 
 func requiredStatefulSetPVCCheckpointsEqual(a, b requiredStatefulSetPVCDeletionCheckpoint) bool {
-	a.Namespace = namespaceOrDefault(a.Namespace)
-	b.Namespace = namespaceOrDefault(b.Namespace)
 	a.StatefulSetName = strings.TrimSpace(a.StatefulSetName)
 	b.StatefulSetName = strings.TrimSpace(b.StatefulSetName)
 	a.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(a.Templates)

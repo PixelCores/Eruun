@@ -223,7 +223,6 @@ func requiredStatefulSetPodTargetFromCheckpoint(
 	ref cleanupResourceRef,
 	checkpoint requiredStatefulSetPodDeletionCheckpoint,
 ) (*requiredStatefulSetPodDeletionTarget, error) {
-	checkpoint.Namespace = namespaceOrDefault(checkpoint.Namespace)
 	checkpoint.StatefulSetName = strings.TrimSpace(checkpoint.StatefulSetName)
 	if checkpoint.Namespace != ref.namespace || checkpoint.StatefulSetName != ref.name {
 		return nil, k8serrors.NewConflict(
@@ -344,7 +343,7 @@ func requiredStatefulSetPodCheckpointIsSubset(
 	subset requiredStatefulSetPodDeletionCheckpoint,
 	superset requiredStatefulSetPodDeletionCheckpoint,
 ) bool {
-	if namespaceOrDefault(subset.Namespace) != namespaceOrDefault(superset.Namespace) ||
+	if subset.Namespace != superset.Namespace ||
 		strings.TrimSpace(subset.StatefulSetName) != strings.TrimSpace(superset.StatefulSetName) ||
 		subset.StatefulSetUID != superset.StatefulSetUID ||
 		subset.StatefulSetWasFound != superset.StatefulSetWasFound ||
@@ -436,7 +435,7 @@ func requiredStatefulSetCheckpointPodUIDs(checkpoint requiredStatefulSetPodDelet
 }
 
 func requiredStatefulSetPodCheckpointsEqual(a, b requiredStatefulSetPodDeletionCheckpoint) bool {
-	if namespaceOrDefault(a.Namespace) != namespaceOrDefault(b.Namespace) ||
+	if a.Namespace != b.Namespace ||
 		strings.TrimSpace(a.StatefulSetName) != strings.TrimSpace(b.StatefulSetName) ||
 		a.StatefulSetUID != b.StatefulSetUID ||
 		a.StatefulSetWasFound != b.StatefulSetWasFound ||

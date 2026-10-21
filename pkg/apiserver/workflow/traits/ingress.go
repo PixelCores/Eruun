@@ -2,14 +2,15 @@ package traits
 
 import (
 	"encoding/json"
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -53,8 +54,6 @@ func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.Ap
 
 	if component != nil && component.Namespace != "" {
 		traitSpec.Namespace = component.Namespace
-	} else if traitSpec.Namespace == "" {
-		traitSpec.Namespace = config.DefaultNamespace
 	}
 
 	if component == nil {

@@ -134,9 +134,6 @@ func (c *DeployIngressJobCtl) findReusableIngressName(ctx context.Context, desir
 		return "", fmt.Errorf("find reusable ingress: Kubernetes client and desired ingress are required")
 	}
 	ns := strings.TrimSpace(desired.Namespace)
-	if ns == "" {
-		ns = config.DefaultNamespace
-	}
 	list, err := c.Client.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return "", err

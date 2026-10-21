@@ -7,7 +7,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
@@ -23,9 +22,6 @@ func (c *applicationsServiceImpl) listComponentPods(
 		return &corev1.PodList{}, nil
 	}
 	namespace := strings.TrimSpace(component.Namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	return kube.ListPodsByLabels(ctx, c.KubeClient, namespace, labels.Set{
 		spec.LabelAppID:         appID,
 		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),

@@ -234,14 +234,14 @@ func resolveDeploymentTarget(component *model.ApplicationComponent) (string, str
 	if component == nil {
 		return "", ""
 	}
-	return pickNamespace(component.Namespace, config.DefaultNamespace), naming.WebServiceName(component.Name, component.ResourceNameKey())
+	return component.Namespace, naming.WebServiceName(component.Name, component.ResourceNameKey())
 }
 
 func (c *applicationsServiceImpl) scaleDeployment(ctx context.Context, namespace, name string, patch []byte) (bool, error) {
 	if name == "" {
 		return true, nil
 	}
-	ns := pickNamespace(namespace, config.DefaultNamespace)
+	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationWorkloadScaleTimeout)
 	defer cancel()
 	_, err := c.KubeClient.AppsV1().Deployments(ns).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})

@@ -26,7 +26,7 @@ func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository
 		if appRepo != nil && componentRepo != nil {
 			return validateApplicationResourceNames(ctx, appRepo, componentRepo, resourceApp, components)
 		}
-		return validateResolvedResourceNames(applicationResourceNameKey(resourceApp), ServiceNamespaceOrDefault(req.Namespace), components)
+		return validateResolvedResourceNames(applicationResourceNameKey(resourceApp), req.Namespace, components)
 	}
 	if resourceApp.Name == "" || resourceApp.Namespace == "" {
 		app, err := appRepo.FindByID(ctx, resourceApp.ID)
@@ -58,8 +58,4 @@ func ValidateWorkflowCallback(ctx context.Context, cfg *config.Config, provider 
 
 func LoadURLSecurityPolicy(ctx context.Context, provider *urlpolicy.Provider) (*spec.URLSecurityPolicySpec, error) {
 	return loadURLSecurityPolicy(ctx, provider)
-}
-
-func ServiceNamespaceOrDefault(namespace string) string {
-	return serviceNamespaceOrDefault(namespace)
 }

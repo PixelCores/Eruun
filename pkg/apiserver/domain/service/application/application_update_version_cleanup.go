@@ -407,9 +407,6 @@ func recordVersionUpdateCleanupJobs(
 			return err
 		}
 		namespace := strings.TrimSpace(comp.Namespace)
-		if namespace == "" {
-			namespace = config.DefaultNamespace
-		}
 		jobInfo := &model.JobInfo{
 			Type:         string(config.JobCleanupResources),
 			WorkflowID:   task.WorkflowID,

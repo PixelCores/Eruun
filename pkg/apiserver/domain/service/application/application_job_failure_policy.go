@@ -2,8 +2,9 @@ package application
 
 import (
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
+
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"

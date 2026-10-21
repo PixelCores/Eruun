@@ -655,7 +655,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 		namespace = jobObj.Namespace
 	}
 	if namespace == "" {
-		namespace = config.DefaultNamespace
+		return fmt.Errorf("delay job namespace is empty")
 	}
 	jobObj.Namespace = namespace
 	if jobObj.Name == "" {

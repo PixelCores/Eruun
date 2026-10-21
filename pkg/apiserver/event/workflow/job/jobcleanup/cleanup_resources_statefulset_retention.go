@@ -162,7 +162,6 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Conte
 	if ref.kind != domainspec.ResourceStatefulSet || strings.TrimSpace(ref.name) == "" {
 		return fmt.Errorf("invalid StatefulSet retention target %s", cleanupResourceDisplayName(ref))
 	}
-	ref.namespace = namespaceOrDefault(ref.namespace)
 	timeout := time.Duration(c.timeout()) * time.Second
 	if timeout <= 0 {
 		timeout = time.Duration(config.DeployTimeout) * time.Second

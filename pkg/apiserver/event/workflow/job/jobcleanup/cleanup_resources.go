@@ -171,9 +171,6 @@ func (c *CleanupResourcesJobCtl) run(ctx context.Context) error {
 		return err
 	}
 	componentCopy := *component
-	if strings.TrimSpace(componentCopy.Namespace) == "" {
-		componentCopy.Namespace = config.DefaultNamespace
-	}
 	component = &componentCopy
 	if err := c.ensureVersionUpdateCleanupTargetNotReused(ctx, component); err != nil {
 		return err

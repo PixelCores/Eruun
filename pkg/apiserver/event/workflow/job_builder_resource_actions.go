@@ -127,8 +127,5 @@ func cloneVersionRestartComponent(component *model.ApplicationComponent) *model.
 		return nil
 	}
 	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
 	return &cp
 }

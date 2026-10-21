@@ -159,9 +159,6 @@ func selectDatabaseResetComponents(requested []string, components []*model.Appli
 
 func buildDatabaseResetWorkflow(app *model.Applications, steps *model.JSONStruct) *model.Workflow {
 	namespace := app.Namespace
-	if strings.TrimSpace(namespace) == "" {
-		namespace = config.DefaultNamespace
-	}
 	return &model.Workflow{
 		ID:           utils.RandStringByNumLowercase(24),
 		Name:         fmt.Sprintf("%s-%s", databaseResetWorkflowName, utils.RandStringByNumLowercase(8)),

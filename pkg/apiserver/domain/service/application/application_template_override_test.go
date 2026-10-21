@@ -49,7 +49,8 @@ func TestCreateApplicationsFromTemplatePreservesEnvOverrideValuesDuringRewrite(t
 
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "cloned-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
@@ -117,7 +118,8 @@ func TestCreateApplicationsFromTemplatePreservesInitEnvOverrideValuesDuringRewri
 
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "cloned-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
@@ -217,7 +219,8 @@ func TestCreateApplicationsFromTemplateAppliesDefaultStorageClass(t *testing.T) 
 
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "cloned-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
@@ -293,7 +296,8 @@ func TestCreateApplicationsFromTemplatePreservesSecretTextOverrides(t *testing.T
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		Name: "cloned-from-template",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-from-template",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
@@ -401,7 +405,8 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideAsText(t *testi
 	svc := newMockServiceWithStore(store)
 	encodedOverride := base64.StdEncoding.EncodeToString([]byte("override-secret"))
 	req := apisv1.CreateApplicationsRequest{
-		Name: "clone-encoded-override",
+		Namespace: config.DefaultNamespace,
+		Name:      "clone-encoded-override",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
@@ -495,7 +500,8 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideOnPlaintextSecr
 	svc := newMockServiceWithStore(store)
 	encodedOverride := base64.StdEncoding.EncodeToString([]byte("override-secret"))
 	req := apisv1.CreateApplicationsRequest{
-		Name: "clone-plain-override",
+		Namespace: config.DefaultNamespace,
+		Name:      "clone-plain-override",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
@@ -594,7 +600,8 @@ func TestCreateApplicationsFromTemplateOverridesInitEnv(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		Name: "cloned-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
@@ -683,7 +690,8 @@ func TestCreateApplicationsFromTemplateOverridesInitEnvDefaultFirst(t *testing.T
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
-		Name: "cloned-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
@@ -772,7 +780,8 @@ func TestCreateApplicationsFromTemplateOverridesResources(t *testing.T) {
 
 			svc := newMockServiceWithStore(store)
 			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-				Name: "cloned-app",
+				Namespace: config.DefaultNamespace,
+				Name:      "cloned-app",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:          "new-mysql",
 					ComponentType: config.StoreJob,
@@ -815,7 +824,8 @@ func TestCreateApplicationsFromTemplateReplacesProfiles(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name: "cloned-app",
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,

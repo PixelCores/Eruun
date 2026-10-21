@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -189,9 +188,6 @@ func (c *applicationsServiceImpl) resolveComponentPodTarget(ctx context.Context,
 	}
 
 	namespace := strings.TrimSpace(component.Namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	pods, err := c.listComponentPods(ctx, appID, component)
 	if err != nil {
 		return nil, err

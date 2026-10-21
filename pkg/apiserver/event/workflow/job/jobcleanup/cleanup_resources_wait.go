@@ -101,7 +101,7 @@ func (c *CleanupResourcesJobCtl) componentPodsGone(ctx context.Context, componen
 	if selector == "" {
 		return true, nil
 	}
-	namespace := namespaceOrDefault(component.Namespace)
+	namespace := component.Namespace
 	list, err := c.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return false, err

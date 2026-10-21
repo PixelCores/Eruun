@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
@@ -176,9 +175,6 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 
 func (c *LogArchiveUploadJobCtl) resolveLogArchiveUploadTarget(ctx context.Context, component *model.ApplicationComponent, requestedContainer string) (*logArchiveUploadTarget, error) {
 	namespace := strings.TrimSpace(component.Namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
 	pods, err := kube.ListPodsByLabels(ctx, c.Client, namespace, labels.Set{
 		spec.LabelAppID:         component.AppID,
 		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
@@ -223,11 +219,8 @@ func (c *LogArchiveUploadJobCtl) resolveLogArchiveUploadTarget(ctx context.Conte
 
 func normalizeLogArchiveUploadComponent(component *model.ApplicationComponent) *model.ApplicationComponent {
 	if component == nil {
-		return &model.ApplicationComponent{Namespace: config.DefaultNamespace}
+		return &model.ApplicationComponent{}
 	}
 	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
 	return &cp
 }

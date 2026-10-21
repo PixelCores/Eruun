@@ -130,28 +130,6 @@ func TestGenerateConfigMap(t *testing.T) {
 			t.Errorf("Expected %v, but got %v", expected, actual)
 		}
 	})
-
-	// Test case 5: No namespace provided
-	t.Run("NoNamespace", func(t *testing.T) {
-		component := &model.ApplicationComponent{
-			Name:  "no-namespace-configmap",
-			AppID: "test-app",
-			ID:    5,
-		}
-		properties := &model.Properties{
-			Conf: map[string]string{"key": "value"},
-		}
-		expected := &jobinfo.ConfigMapInput{
-			Name:      "no-namespace-configmap",
-			Namespace: config.DefaultNamespace,
-			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "5", spec.LabelComponentName: "no-namespace-configmap"},
-			Data:      map[string]string{"key": "value"},
-		}
-		actual := GenerateConfigMap(component, properties)
-		if !reflect.DeepEqual(actual, expected) {
-			t.Errorf("Expected %v, but got %v", expected, actual)
-		}
-	})
 }
 
 func TestDeployConfigMapJobCtl_CreateAlreadyExists(t *testing.T) {

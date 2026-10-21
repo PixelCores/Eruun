@@ -19,7 +19,7 @@ func TestNativeRestartTargetsDoNotRequireRendering(t *testing.T) {
 	for _, kind := range []config.JobType{config.ServerJob, config.StoreJob} {
 		t.Run(string(kind), func(t *testing.T) {
 			component := &model.ApplicationComponent{
-				Name: "api", AppID: "app", ComponentType: kind,
+				Name: "api", AppID: "app", ComponentType: kind, Namespace: config.DefaultNamespace,
 				Properties: &model.JSONStruct{"ports": "invalid"},
 				Traits:     &model.JSONStruct{"sidecar": "invalid"},
 			}
