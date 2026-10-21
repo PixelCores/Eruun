@@ -1027,14 +1027,9 @@ func databaseResetTask(databaseComponents ...*model.ApplicationComponent) *model
 }
 
 func databaseResetTaskWithInitSQLURL(initSQLURL string, databaseComponents ...*model.ApplicationComponent) *model.JobTask {
-	var restartComponents []*model.ApplicationComponent
 	filteredDatabases := make([]*model.ApplicationComponent, 0, len(databaseComponents))
 	for _, component := range databaseComponents {
-		if component == nil {
-			continue
-		}
-		if component.ComponentType == config.ServerJob {
-			restartComponents = append(restartComponents, component)
+		if component == nil || component.ComponentType == config.ServerJob {
 			continue
 		}
 		filteredDatabases = append(filteredDatabases, component)
@@ -1050,7 +1045,6 @@ func databaseResetTaskWithInitSQLURL(initSQLURL string, databaseComponents ...*m
 		Timeout:    5,
 		JobInfo: &jobinfo.DatabaseResetJobInfo{
 			DatabaseComponents: filteredDatabases,
-			RestartComponents:  restartComponents,
 			InitSQLURL:         initSQLURL,
 			ExecutionKey:       "step:0/component:0",
 		},

@@ -10,11 +10,8 @@ import (
 
 type DatabaseResetJobInfo struct {
 	DatabaseComponents []*model.ApplicationComponent
-	// RestartComponents is retained for compatibility with legacy job payloads.
-	// Database reset execution intentionally ignores this field.
-	RestartComponents []*model.ApplicationComponent
-	InitSQLURL        string
-	ExecutionKey      string
+	InitSQLURL         string
+	ExecutionKey       string
 }
 
 const DatabaseResetReplicaCheckpointVersion = 2
