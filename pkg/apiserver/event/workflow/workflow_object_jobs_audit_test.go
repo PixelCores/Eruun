@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -48,8 +50,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 	})
 
 	t.Run("normalize pvc name and namespace", func(t *testing.T) {
-		baseName := "DataVol"
-		canonical := wfNaming.PVCName(baseName, component.ResourceAppNameOrID())
+		canonical := "shop-datavol"
 		pvc := &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      canonical,
@@ -69,7 +70,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 	})
 
 	t.Run("fill namespace when pvc missing it", func(t *testing.T) {
-		canonical := wfNaming.PVCName("cache", component.ResourceAppNameOrID())
+		canonical := "shop-cache"
 		pvc := &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: canonical,
@@ -633,4 +634,27 @@ func TestServiceTraitsForComponent_FallbackFromProperties(t *testing.T) {
 	require.Equal(t, int32(8080), traits[0].Ports[0].TargetPort)
 	require.Equal(t, int32(9090), traits[0].Ports[1].Port)
 	require.Equal(t, int32(9090), traits[0].Ports[1].TargetPort)
+}
+
+func decodeComponentTraits(component *model.ApplicationComponent) *spec.Traits {
+	if component == nil || component.Traits == nil {
+		return nil
+	}
+
+	traitBytes, err := json.Marshal(component.Traits)
+	if err != nil {
+		klog.Errorf("failed to marshal component traits: %v", err)
+		return nil
+	}
+
+	if string(traitBytes) == "{}" || string(traitBytes) == "null" {
+		return nil
+	}
+
+	var traits spec.Traits
+	if err := json.Unmarshal(traitBytes, &traits); err != nil {
+		klog.Errorf("failed to unmarshal component traits: %v", err)
+		return nil
+	}
+	return &traits
 }

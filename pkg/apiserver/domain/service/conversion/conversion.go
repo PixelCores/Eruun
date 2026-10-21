@@ -7,12 +7,11 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
-	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	v1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -35,7 +34,6 @@ type ValidationService interface {
 
 type conversionServiceImpl struct {
 	ValidationService         ValidationService   `inject:""`
-	Cfg                       *config.Config      `inject:""`
 	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
 }
 

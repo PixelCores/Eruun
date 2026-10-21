@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
 type inMemoryAppStore struct {
@@ -201,8 +198,4 @@ func mustJSONStruct(v interface{}) *model.JSONStruct {
 		panic(err)
 	}
 	return js
-}
-
-func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1.Traits, fieldPrefix string) error {
-	return applicationservice.ValidateComponentTraitsForWrite(componentType, traits, fieldPrefix)
 }

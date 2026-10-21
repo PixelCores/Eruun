@@ -503,3 +503,14 @@ func setTestPodAnnotations(pod *corev1.Pod, annotations map[string]string) *core
 	pod.Annotations = annotations
 	return pod
 }
+
+// ExtractWaitError 提取 WaitError
+func ExtractWaitError(err error) (*WaitError, bool) {
+	if err == nil {
+		return nil, false
+	}
+	if we, ok := err.(*WaitError); ok {
+		return we, true
+	}
+	return nil, false
+}

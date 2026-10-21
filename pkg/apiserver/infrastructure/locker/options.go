@@ -77,15 +77,6 @@ func WithTTL(ttl time.Duration) Option {
 	}
 }
 
-// WithRetryDelay sets the delay between retry attempts.
-func WithRetryDelay(delay time.Duration) Option {
-	return func(o *Options) {
-		if delay > 0 {
-			o.RetryDelay = delay
-		}
-	}
-}
-
 // WithRetryCount sets the maximum number of retry attempts.
 // Use -1 for infinite retries, 0 for no retries.
 func WithRetryCount(count int) Option {

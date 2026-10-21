@@ -5,7 +5,6 @@ import "strings"
 type JobRunPolicy string
 
 const (
-	DefaultRun                  JobRunPolicy = ""
 	JobRunPolicyRecreate        JobRunPolicy = "recreate"
 	JobRunPolicySkipIfCompleted JobRunPolicy = "skip_if_completed"
 )

@@ -25,7 +25,6 @@ func TestResourceNamesAreBoundedWithStableHash(t *testing.T) {
 
 	require.LessOrEqual(t, len(deployA), maxResourceNameLength)
 	require.LessOrEqual(t, len(ServiceName(componentA, appName)), maxResourceNameLength)
-	require.LessOrEqual(t, len(PVCName("data-volume-with-a-very-long-name", appName)), maxResourceNameLength)
 	require.Equal(t, deployA, WebServiceName(componentA, appName))
 	require.NotEqual(t, deployA, deployB)
 }

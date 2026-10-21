@@ -2228,7 +2228,6 @@ cache:
 // utils/bcode/002_workflow.go
 var (
     ErrWorkflowConfig                  = NewBcode(400, 20000, "workflow config does not comply with OAM specification")
-    ErrWorkflowExist                   = NewBcode(400, 20001, "workflow name is exist")
     ErrCreateWorkflow                  = NewBcode(400, 20002, "workflow create failure")
     ErrCreateComponents                = NewBcode(400, 20003, "workflow components create failure")
     ErrExecWorkflow                    = NewBcode(400, 20004, "workflow exec failure")

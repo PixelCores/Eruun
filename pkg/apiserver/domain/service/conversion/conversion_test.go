@@ -136,7 +136,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
@@ -233,7 +232,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -282,7 +280,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
@@ -533,7 +530,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
@@ -598,7 +594,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
@@ -654,7 +649,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
@@ -839,7 +833,6 @@ spec:
 `
 	svc := &conversionServiceImpl{
 		ValidationService: NewValidationService(),
-		Cfg:               &config.Config{AllowPrivateURLTargets: true},
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)

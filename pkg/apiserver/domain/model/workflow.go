@@ -17,7 +17,6 @@ type Workflow struct {
 	Disabled     bool                    `json:"disabled" gorm:"column:disabled"`             //是否关闭，创建时默认为false
 	ProjectID    string                  `json:"project_id" gorm:"type:varchar(64);column:project_id"`
 	AppID        string                  `json:"app_id" gorm:"type:varchar(64);column:app_id"`
-	UserID       string                  `json:"user_id" gorm:"type:varchar(64);column:user_id"`
 	Description  string                  `json:"description" gorm:"type:text;column:description"`
 	WorkflowType config.WorkflowTaskType `json:"workflow_type" gorm:"type:varchar(32);column:workflow_type"` //工作流类型
 	Status       config.Status           `json:"status" gorm:"type:varchar(32);column:status"`               //分为开启和关闭等状态

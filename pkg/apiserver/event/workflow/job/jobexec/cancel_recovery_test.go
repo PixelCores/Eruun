@@ -126,7 +126,7 @@ func TestCleanupRecoveredCancelledJobsDeletesOnlyExactExecution(t *testing.T) {
 	client := fake.NewSimpleClientset(job)
 	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
 
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err := CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
@@ -155,7 +155,7 @@ func TestCleanupRecoveredCancelledJobsDeletesExactRetryCheckpoint(t *testing.T) 
 	client := fake.NewSimpleClientset(live)
 	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: task.WorkspaceID, Namespace: task.Namespace}, record: &record}
 
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err := CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
@@ -183,7 +183,7 @@ func TestCleanupRecoveredCancelledJobsPreservesReplacementExecution(t *testing.T
 	client := fake.NewSimpleClientset(job)
 	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
 
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err := CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
@@ -219,13 +219,13 @@ func TestCleanupRecoveredCancelledJobsRetriesDeletionFailure(t *testing.T) {
 	})
 	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
 
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err := CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 	require.ErrorContains(t, err, "api unavailable")
 	require.Zero(t, cleaned)
 	require.Equal(t, cancelledJobCleanupPending, record.SchedulingReason)
 	require.Equal(t, workflowconfig.JobSchedulingAdmitted, record.SchedulingState)
 
-	cleaned, err = CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err = CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
 	require.Equal(t, CancelledJobCleanupComplete, record.SchedulingReason)
@@ -250,7 +250,7 @@ func TestCleanupRecoveredCancelledJobsDeletesExactCronJob(t *testing.T) {
 	client := fake.NewSimpleClientset(cron)
 	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
 
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err := CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
@@ -286,7 +286,7 @@ func TestCleanupRecoveredCancelledScheduledJobIgnoresReplacementJobAndDeletesExa
 	client := fake.NewSimpleClientset(replacement, cron)
 	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
 
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
+	cleaned, _, err := CleanupRecoveredCancelledJobsPage(context.Background(), client, store, 1, 100)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)

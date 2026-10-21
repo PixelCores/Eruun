@@ -1024,3 +1024,12 @@ func requireComponentByName(t *testing.T, components []*apisv1.ApplicationCompon
 	require.Failf(t, "component not found", "name=%s", name)
 	return nil
 }
+
+func ConvertComponentModelToDTO(component *model.ApplicationComponent) (*apisv1.ApplicationComponent, error) {
+	dto, err := convertComponentModelToDTOBase(component)
+	if err != nil || dto == nil {
+		return dto, err
+	}
+	enrichComponentResourceDetails(dto, nil)
+	return dto, nil
+}

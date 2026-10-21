@@ -772,8 +772,10 @@ func TestCreateApplicationsRoundTripsSecretTextFromComponentResponse(t *testing.
 	}
 	require.NotNil(t, secretComponent)
 
-	secretDTO, err := assembler.ConvertComponentModelToDTO(secretComponent)
+	secretDTOs, err := assembler.ConvertComponentModelsToDTO([]*model.ApplicationComponent{secretComponent})
 	require.NoError(t, err)
+	require.Len(t, secretDTOs, 1)
+	secretDTO := secretDTOs[0]
 	require.Equal(t, "c2VjcmV0LXB3ZA==", secretDTO.Properties.Secret["password"])
 	require.Equal(t, "//4=", secretDTO.Properties.Secret["cert"])
 

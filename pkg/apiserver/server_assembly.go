@@ -208,7 +208,7 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 	validationService := validation.NewValidationService(&s.cfg, s.urlSecurityPolicyProvider, appRepo, componentRepo, nodepoolRepository)
 
 	// domain - repository (注入 Repository，依赖 datastore)
-	repositories := append(repository.InitRepositoryBean(appRepo, componentRepo), programmingLanguageRepository, nodepoolRepository)
+	repositories := append(repository.InitRepositoryBean(s.dataStore, appRepo, componentRepo), programmingLanguageRepository, nodepoolRepository)
 	if err := s.beanContainer.Provides(repositories...); err != nil {
 		return fmt.Errorf("fail to provides the repository bean to the container: %w", err)
 	}
