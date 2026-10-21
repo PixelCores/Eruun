@@ -126,7 +126,7 @@ flowchart TB
 | volumes / mounts | PodTemplate、PVC 或 volumeClaimTemplate |
 | env / envFrom | 主容器、init container 或 sidecar |
 | resources / probes / securityContext | 容器字段 |
-| nodeSelector / ServiceAccount / rollout | Pod 或 workload 字段 |
+| nodePool / rollout | Pod 调度字段或 workload 发布策略 |
 | ingress 等 AdditionalObjects | 独立 Kubernetes 资源 Job |
 | service / share | Service 生成及资源调和/清理路径 |
 

@@ -169,7 +169,11 @@ clusterRoleRuleVerbs() {
       next
     }
     inClusterRole && matchingGroup && $1 == "resources:" {
-      matchingResource = (listValue($0) == targetResource)
+      resourceCount = split(listValue($0), resources, " ")
+      matchingResource = 0
+      for (i = 1; i <= resourceCount; i++) {
+        if (resources[i] == targetResource) matchingResource = 1
+      }
       next
     }
     inClusterRole && matchingGroup && matchingResource && $1 == "verbs:" {
@@ -256,6 +260,13 @@ assertEqual \
   "default ClusterRole name must remain stable"
 assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" agents.kruise.io sandboxes)" "get list watch create update patch delete" "runtime retains Sandbox lifecycle permissions"
 assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" agents.kruise.io checkpoints)" "get list watch create delete" "runtime retains Checkpoint lifecycle permissions"
+for rbac_manifest in "${default_manifest}" "${TEST_DIR}/../../eruun-stack.yaml"; do
+  for resource in clusterroles clusterrolebindings; do
+    assertEqual "$(clusterRoleRuleVerbs "${rbac_manifest}" rbac.authorization.k8s.io "${resource}")" "" "runtime must not manage ${resource}"
+  done
+  assertEqual "$(clusterRoleRuleVerbs "${rbac_manifest}" rbac.authorization.k8s.io roles)" "get list create update patch delete bind escalate" "workspace runner Roles retain create, bind and escalate"
+  assertEqual "$(clusterRoleRuleVerbs "${rbac_manifest}" rbac.authorization.k8s.io rolebindings)" "get list create update patch delete" "workspace runner RoleBindings retain lifecycle permissions"
+done
 assertEqual "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${default_manifest}")" "eruun-eruun-runtime" "all capabilities use the runtime ServiceAccount"
 assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" eruun-eruun-eruun-system "" serviceaccounts resourceNames)" "eruun-runner" "workspace impersonation remains restricted to runner ServiceAccounts"
 grep -Fq 'resourceNames: ["eruun-eruun"]' "${default_manifest}" || fail "leader route updates must name the business Service"

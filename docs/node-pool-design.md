@@ -102,8 +102,8 @@ gRPC `AppSpecTraits.node_pool = 16`，JSON 名为 `nodePool`。已删除的字�
 | PR 1 配置 | 删除 RBAC 配置模型、仓储、服务、HTTP/gRPC 接口、装配和 35010–35012 错误码；已存在的旧表不做迁移清理 |
 | YAML 转换 | nodeSelector/tolerations 只提示选择 nodePool；RBAC 对象只提示空间工作负载不使用 Kubernetes API 凭据，删除映射与 ServiceAccount 关联 |
 | gRPC | 删除组件 RBAC 消息与配置服务，保留旧字段号，新增 node_pool |
-| 后续 PR 3 | 删除 nodeSelector/rbacPolicies 历史系统设置；Helm 收回 clusterroles 授权 |
-| 保留 | nodePool 模型与接口、空间开通的 eruun-runner 身份、全部空间安全检查；deploy/Helm 本轮不改 |
+| PR 3 | 删除 nodeSelector/rbacPolicies 历史系统设置；幂等清理三类废弃设置存量记录；Helm 和 stack 收回集群级 RBAC 管理授权 |
+| 保留 | nodePool 模型与接口、空间开通的 eruun-runner 身份、全部空间安全检查；空间开通的 Role/RoleBinding 授权（含 bind、escalate） |
 
 ## 10. 验证与失败语义
 
@@ -117,5 +117,5 @@ gRPC `AppSpecTraits.node_pool = 16`，JSON 名为 `nodePool`。已删除的字�
 | --- | --- | --- |
 | 1 | 节点池模型、仓储、管理员和成员 HTTP/gRPC、错误码；移除旧 Profile 导入并删表的启动迁移 | — |
 | 2 | DSL 切换到 nodePool，写入和部署解析、tolerations 渲染比较；删除整条组件 RBAC 能力及 PR 1 的 RBAC 配置；YAML 只给警告；更新文档和示例 | PR 1 |
-| 3 | 删除 nodeSelector/rbacPolicies 系统设置；Helm 收回 clusterroles 授权，保留开通空间所需 roles/rolebindings | PR 2 |
+| 3（已实现） | 删除 nodeSelector/rbacPolicies 系统设置；在 AutoMigrate 后幂等删除 aliyunCloud、nodeSelector、rbacPolicies 存量记录（aliyunCloud 含凭据），不改其他设置或内部迁移标记；Helm 与 stack 收回 clusterroles/clusterrolebindings 授权，保留空间开通所需 roles/rolebindings（含 bind、escalate） | PR 2 |
 | Console | 节点池管理和组件下拉选择，移除组件 RBAC 编辑器 | API 契约 |

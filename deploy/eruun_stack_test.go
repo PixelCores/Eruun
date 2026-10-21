@@ -265,9 +265,10 @@ func assertUnifiedRuntimePermissions(t *testing.T, clusterRoles map[string]map[s
 	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "", "secrets"))
 	require.Equal(t, []string{"create"}, verbsFor(runtimeRole, "", "pods/exec"))
 	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "apps", "deployments"))
-	for _, resource := range []string{"roles", "clusterroles"} {
-		require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete", "bind", "escalate"}, verbsFor(runtimeRole, "rbac.authorization.k8s.io", resource))
-	}
+	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete", "bind", "escalate"}, verbsFor(runtimeRole, "rbac.authorization.k8s.io", "roles"))
+	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "rbac.authorization.k8s.io", "rolebindings"))
+	require.Empty(t, verbsFor(runtimeRole, "rbac.authorization.k8s.io", "clusterroles"))
+	require.Empty(t, verbsFor(runtimeRole, "rbac.authorization.k8s.io", "clusterrolebindings"))
 	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "agents.kruise.io", "sandboxes"))
 	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "delete"}, verbsFor(runtimeRole, "agents.kruise.io", "checkpoints"))
 }

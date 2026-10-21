@@ -1,8 +1,0 @@
-{
-  "type": "nodeSelector",
-  "value": {
-    "nodeSelector": {
-      "node.kubernetes.io/test": "on"
-    }
-  }
-}

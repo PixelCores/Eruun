@@ -26,13 +26,6 @@ var builtinSystemSettingCodecs = map[string]systemSettingCodec{
 		accept:    isJSONObject,
 		normalize: workflowconfig.NormalizeJobSchedulerPolicyValue,
 	},
-	model.SystemSettingTypeNodeSelector: {
-		normalize: normalizeRawSystemSettingValue,
-	},
-	model.SystemSettingTypeRBACPolicies: {
-		accept:    isJSONArray,
-		normalize: normalizeRawSystemSettingValue,
-	},
 	model.SystemSettingTypeURLSecurityPolicy: {
 		accept:    isJSONObject,
 		normalize: normalizeURLSecurityPolicySettingValue,
@@ -197,10 +190,6 @@ func normalizeAndValidateSettingValue(settingType string, value json.RawMessage)
 	return normalized, nil
 }
 
-func normalizeRawSystemSettingValue(value json.RawMessage) (json.RawMessage, error) {
-	return json.RawMessage(value), nil
-}
-
 func normalizeURLSecurityPolicySettingValue(value json.RawMessage) (json.RawMessage, error) {
 	var cfg spec.URLSecurityPolicySpec
 	if err := json.Unmarshal(value, &cfg); err != nil {
@@ -214,11 +203,6 @@ func normalizeURLSecurityPolicySettingValue(value json.RawMessage) (json.RawMess
 
 func isJSONObject(decoded interface{}) bool {
 	_, ok := decoded.(map[string]interface{})
-	return ok
-}
-
-func isJSONArray(decoded interface{}) bool {
-	_, ok := decoded.([]interface{})
 	return ok
 }
 

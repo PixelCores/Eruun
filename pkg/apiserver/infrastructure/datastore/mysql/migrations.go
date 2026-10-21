@@ -21,6 +21,27 @@ const (
 	incompleteSchemaMigrationJSON = `{"completed":false}`
 )
 
+// 这些设置类型已经从代码中删除；它们的存量值没有读取方，而且 aliyunCloud 含有凭据。
+var removedSystemSettingTypes = []string{"aliyunCloud", "nodeSelector", "rbacPolicies"}
+
+func deleteRemovedSystemSettings(ctx context.Context, db *gorm.DB) error {
+	hasTable, err := schemaTableExists(ctx, db, (&model.SystemSetting{}).TableName())
+	if err != nil {
+		return fmt.Errorf("inspect system settings table: %w", err)
+	}
+	if !hasTable {
+		return nil
+	}
+	result := db.WithContext(ctx).Where("type IN ?", removedSystemSettingTypes).Delete(&model.SystemSetting{})
+	if result.Error != nil {
+		return fmt.Errorf("delete removed system settings: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		klog.InfoS("deleted removed system settings", "rows", result.RowsAffected)
+	}
+	return nil
+}
+
 type schemaMigrationState struct {
 	Completed bool `json:"completed"`
 }

@@ -4,12 +4,10 @@
 
 ## 数据与接口
 
-`eruun_system_setting` 使用 `type` 唯一键和 JSON `value`。当前支持五种配置：
+`eruun_system_setting` 使用 `type` 唯一键和 JSON `value`。当前支持三种配置：
 
 | type | value 契约 |
 | --- | --- |
-| `nodeSelector` | 调度 nodeSelector、affinity、tolerations 对象或 profile 数组 |
-| `rbacPolicies` | 历史系统设置，继续保留接口但运行时不读取；组件不提供 Kubernetes RBAC 能力 |
 | `urlSecurityPolicy` | 服务端出站 URL 私网白名单，见 [URL 安全策略](url-security-policy.md) |
 | `podRestartMonitor` | `{enabled,windowSeconds,threshold}`，默认 true、1800、3 |
 | `workflow_scheduler` | 全局 Job 准入、评测时长和创建速率策略，见下文；不可删除 |
@@ -29,7 +27,7 @@ curl --fail "$SERVER/api/v1/settings/urlSecurityPolicy" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-运行时只自动补齐 `urlSecurityPolicy`、`podRestartMonitor` 和 `workflow_scheduler` 默认记录。`scripts/init-system-setting.sql` 可幂等补齐其余设置，保留现有值。前端字段和保存交互见 [设置页接入](settings-page-api.md)。
+运行时自动补齐这三种配置的默认记录，保留现有值。节点池由 `/api/v1/admin/node-pools` 管理，组件通过 `traits.nodePool` 引用，见[设置页节点池接口](settings-page-api.md#节点池)。组件不提供 Kubernetes RBAC 配置。启动 schema 迁移会删除已废弃的云凭据、调度选择和组件 RBAC 系统设置存量记录，保留其他配置与内部迁移标记。前端字段和保存交互见 [设置页接入](settings-page-api.md)。
 
 旧认证设置类型、JWT 角色映射及动态 authz 路由接口已移除；新接入必须使用统一账号和空间 API。
 

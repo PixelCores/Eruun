@@ -81,15 +81,15 @@ func TestSystemSettingService_CreateAndGet(t *testing.T) {
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
 	ctx := context.Background()
 
-	value := json.RawMessage(`{"nodeSelector":{"node.kubernetes.io/test":"on"}}`)
+	value := json.RawMessage(`{"allowedHostPatterns":["*.svc.cluster.local"]}`)
 	created, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{
-		Type:  model.SystemSettingTypeNodeSelector,
+		Type:  model.SystemSettingTypeURLSecurityPolicy,
 		Value: value,
 	})
 	require.NoError(t, err)
-	require.Equal(t, model.SystemSettingTypeNodeSelector, created.Type)
+	require.Equal(t, model.SystemSettingTypeURLSecurityPolicy, created.Type)
 
-	got, err := svc.Get(ctx, model.SystemSettingTypeNodeSelector)
+	got, err := svc.Get(ctx, model.SystemSettingTypeURLSecurityPolicy)
 	require.NoError(t, err)
 	require.JSONEq(t, string(value), string(got.Value))
 }
@@ -111,7 +111,7 @@ func TestSystemSettingServiceMapsWrappedRepositoryErrors(t *testing.T) {
 				repo.lookupErr, repo.createErr, repo.deleteErr = repoErr, repoErr, repoErr
 				svc := &systemSettingServiceImpl{SettingRepo: repo}
 				ctx := context.Background()
-				settingType := model.SystemSettingTypeNodeSelector
+				settingType := model.SystemSettingTypeURLSecurityPolicy
 				var err error
 				switch operation {
 				case "create":
@@ -131,8 +131,8 @@ func TestSystemSettingServiceMapsWrappedRepositoryErrors(t *testing.T) {
 
 func TestSystemSettingServiceListHidesInternalRows(t *testing.T) {
 	repo := newMockSystemSettingRepo()
-	repo.items[model.SystemSettingTypeNodeSelector] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeNodeSelector,
+	repo.items[model.SystemSettingTypeURLSecurityPolicy] = &model.SystemSetting{
+		Type:  model.SystemSettingTypeURLSecurityPolicy,
 		Value: json.RawMessage(`{}`),
 	}
 	repo.items["migration.application-management-mode.v1"] = &model.SystemSetting{
@@ -144,7 +144,7 @@ func TestSystemSettingServiceListHidesInternalRows(t *testing.T) {
 	items, err := svc.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	require.Equal(t, model.SystemSettingTypeNodeSelector, items[0].Type)
+	require.Equal(t, model.SystemSettingTypeURLSecurityPolicy, items[0].Type)
 }
 
 func TestSystemSettingService_Validation(t *testing.T) {
@@ -155,10 +155,10 @@ func TestSystemSettingService_Validation(t *testing.T) {
 	_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: "", Value: json.RawMessage(`{}`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
 
-	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeNodeSelector, Value: json.RawMessage(`"text"`)})
+	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeURLSecurityPolicy, Value: json.RawMessage(`"text"`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
 
-	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeRBACPolicies, Value: json.RawMessage(`{"serviceAccount":"sa"}`)})
+	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeURLSecurityPolicy, Value: json.RawMessage(`[]`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
 
 	validURLSecurityPolicy := buildValidURLSecurityPolicySettingValue(t)
@@ -210,6 +210,22 @@ func TestSystemSettingServiceRejectsUnsupportedType(t *testing.T) {
 	require.ErrorIs(t, svc.Delete(ctx, "unsupported"), bcode.ErrSystemSettingTypeInvalid)
 }
 
+func TestSystemSettingServiceRejectsRemovedTypes(t *testing.T) {
+	// Removed types must be rejected before persistence, even with valid JSON.
+	svc := &systemSettingServiceImpl{}
+	ctx := context.Background()
+	for _, settingType := range []string{"nodeSelector", "rbacPolicies"} {
+		t.Run(settingType, func(t *testing.T) {
+			_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: settingType, Value: json.RawMessage(`{}`)})
+			require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
+			_, err = svc.Get(ctx, settingType)
+			require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
+			_, err = svc.Update(ctx, settingType, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
+			require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
+		})
+	}
+}
+
 func buildValidURLSecurityPolicySettingValue(t *testing.T) json.RawMessage {
 	t.Helper()
 	payload := map[string]interface{}{
@@ -232,6 +248,6 @@ func TestSystemSettingService_UpdateNotFound(t *testing.T) {
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
 	ctx := context.Background()
 
-	_, err := svc.Update(ctx, model.SystemSettingTypeNodeSelector, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
+	_, err := svc.Update(ctx, model.SystemSettingTypeURLSecurityPolicy, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingNotFound)
 }

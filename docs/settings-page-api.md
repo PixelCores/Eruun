@@ -6,7 +6,8 @@
 
 ## Summary
 
-- 设置页 v1 管理 `eruun_system_setting` 的四种 `type`：`nodeSelector`、`rbacPolicies`、`urlSecurityPolicy`、`podRestartMonitor`。
+- 设置页 v1 管理 `eruun_system_setting` 的三种 `type`：`urlSecurityPolicy`、`podRestartMonitor`、`workflow_scheduler`。
+- 节点池通过[节点池](#节点池)一节的 `/api/v1/admin/node-pools` 接口管理，组件通过 `traits.nodePool` 引用。
 - 页面初始化使用 `GET /api/v1/settings`，按 `settings[].type` 分发到对应 UI 模块。
 - 单模块刷新使用 `GET /api/v1/settings/{type}`；已有记录保存使用 `PUT /api/v1/settings/{type}`；缺失记录只在确认 404 后使用 `POST /api/v1/settings` 创建。
 - `projectName`、`defaultNamespace`、默认资源限制不是当前 system setting 类型；如果前端需要这些值，只能作为前端本地偏好；namespace 由选中的空间确定，不能提交到 `/api/v1/settings`。
@@ -15,10 +16,9 @@
 
 | 页面模块 | setting type | 主要表单字段 | 建议交互 |
 | --- | --- | --- | --- |
-| Scheduling | `nodeSelector` | `nodeSelector`、`affinity`、`tolerations` | Key/value + JSON 编辑；用于维护集群调度选择配置 |
-| Access Control | `rbacPolicies` | policy 数组、`serviceAccount`、RBAC rules | 数组编辑；适合表格 + JSON 兜底编辑 |
 | Security Policy | `urlSecurityPolicy` | `allowPrivateByDefault`、`allowedHostPatterns`、`allowedCIDRs` | 可编辑；用于出站 URL 私网访问策略 |
 | Runtime Monitoring | `podRestartMonitor` | `enabled`、`windowSeconds`、`threshold` | 可编辑；用于 Pod 重启阈值监控 |
+| Job Scheduler | `workflow_scheduler` | 全局/空间并发、优先级、评测时长和资源创建预算 | 见[系统设置](system-setting.md#job-全局调度)；不可删除 |
 
 ## Common API Flow
 
@@ -79,71 +79,11 @@ DELETE /api/v1/settings/{type}
 
 保存策略：
 
-- `urlSecurityPolicy`、`podRestartMonitor` 启动时会自动补齐默认记录，通常直接 `PUT`。
-- `nodeSelector`、`rbacPolicies` 可由初始化 SQL 补齐；前端遇到 404 时再 `POST` 创建。
+- `urlSecurityPolicy`、`podRestartMonitor`、`workflow_scheduler` 启动时会自动补齐默认记录，通常直接 `PUT`；`workflow_scheduler` 不可删除。
 - `POST` 请求体必须是 `{"type":"...","value":...}`；`PUT` 请求体必须是 `{"value":...}`，不要在 `PUT` 里重复提交 `type`。
 - 保存失败时展示后端错误，不要在前端伪造成功状态。
 
 ## Module Contracts
-
-### Scheduling: `nodeSelector`
-
-表单建议：
-
-- `nodeSelector`: key/value map，例如 `node.kubernetes.io/workload=gpu`
-- `affinity`: JSON object
-- `tolerations`: JSON array
-
-保存示例：
-
-```http
-PUT /api/v1/settings/nodeSelector
-Content-Type: application/json
-
-{
-  "value": {
-    "nodeSelector": {
-      "node.kubernetes.io/workload": "gpu"
-    },
-    "affinity": {},
-    "tolerations": []
-  }
-}
-```
-
-### Access Control: `rbacPolicies`
-
-表单建议：
-
-- policy list
-- `serviceAccount`
-- `rules[].apiGroups`
-- `rules[].resources`
-- `rules[].verbs`
-
-`value` 必须是 JSON array。
-
-保存示例：
-
-```http
-PUT /api/v1/settings/rbacPolicies
-Content-Type: application/json
-
-{
-  "value": [
-    {
-      "serviceAccount": "default",
-      "rules": [
-        {
-          "apiGroups": [""],
-          "resources": ["pods"],
-          "verbs": ["get", "list"]
-        }
-      ]
-    }
-  ]
-}
-```
 
 ### Security Policy: `urlSecurityPolicy`
 
@@ -208,7 +148,7 @@ Content-Type: application/json
 
 ## Test Plan
 
-- 页面加载时 `GET /api/v1/settings` 能按四种已实现 `type` 填充对应模块。
+- 页面加载时 `GET /api/v1/settings` 能按三种已实现 `type` 填充对应模块。
 - 每个模块只保存自己的 `type`，不覆盖其他 setting。
 - 所有保存请求都匹配 DTO：create 使用 `type + value`，update 只使用 `value`。
 - 文档和前端配置中不把任何未实现 setting type 描述为可用配置。
@@ -221,7 +161,7 @@ Content-Type: application/json
 
 ## 节点池
 
-节点池由系统管理员统一维护，对全部空间提供名字和描述。配置存储在 MySQL 的 `eruun_node_pools` 表，以 `name` 为主键，不使用缓存。组件通过 `traits.nodePool` 引用，写入时校验存在，部署时从 MySQL 解析。现有 `nodeSelector`、`rbacPolicies` 系统设置接口继续保留原有行为。
+节点池由系统管理员统一维护，对全部空间提供名字和描述。配置存储在 MySQL 的 `eruun_node_pools` 表，以 `name` 为主键，不使用缓存。组件通过 `traits.nodePool` 引用，写入时校验存在，部署时从 MySQL 解析。调度配置通过本节接口维护，不再作为系统设置管理；组件不提供 Kubernetes RBAC 配置。
 
 ### 管理员接口
 
