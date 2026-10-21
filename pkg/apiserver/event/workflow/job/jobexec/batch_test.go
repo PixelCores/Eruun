@@ -273,12 +273,8 @@ func TestWaitBatchJobUsesTaskTargetAndTimeout(t *testing.T) {
 		wantTimeout time.Duration
 	}{
 		{
-			name: "task defaults", wantTarget: "task-namespace/jobs/task-name",
-			wantTimeout: config.DefaultJobTaskTimeout,
-		},
-		{
-			name: "empty job info and negative timeout", jobInfo: &batchv1.Job{}, timeout: -1,
-			wantTarget: "task-namespace/jobs/task-name", wantTimeout: config.DefaultJobTaskTimeout,
+			name: "task target", jobInfo: &batchv1.Job{}, timeout: 30,
+			wantTarget: "task-namespace/jobs/task-name", wantTimeout: 30 * time.Second,
 		},
 		{
 			name: "job info namespace", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "job-namespace"}},
@@ -290,7 +286,7 @@ func TestWaitBatchJobUsesTaskTargetAndTimeout(t *testing.T) {
 		},
 		{
 			name: "job info target", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "job-namespace", Name: "job-name"}},
-			wantTarget: "job-namespace/jobs/job-name", wantTimeout: config.DefaultJobTaskTimeout,
+			timeout: 20, wantTarget: "job-namespace/jobs/job-name", wantTimeout: 20 * time.Second,
 		},
 	}
 	for _, test := range tests {
@@ -328,6 +324,19 @@ func TestWaitBatchJobUsesTaskTargetAndTimeout(t *testing.T) {
 			require.False(t, deadline.Before(started.Add(test.wantTimeout)))
 			require.False(t, deadline.After(finished.Add(test.wantTimeout)))
 		})
+	}
+}
+
+func TestWaitBatchJobRejectsMissingTimeout(t *testing.T) {
+	for _, timeout := range []int64{0, -1} {
+		base := DeployNamespacedResourceJobBase{
+			Namespace: "task-namespace",
+			Client:    fake.NewSimpleClientset(),
+			Job:       &model.JobTask{Name: "task-name", Namespace: "task-namespace", Timeout: timeout},
+		}
+		status, _, err := base.WaitBatchJob(context.Background())
+		require.ErrorContains(t, err, "timeout is not set")
+		require.Equal(t, config.StatusFailed, status)
 	}
 }
 

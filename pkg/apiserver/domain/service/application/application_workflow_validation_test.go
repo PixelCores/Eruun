@@ -25,7 +25,7 @@ func TestWorkflowWritesValidateModeAndStepNames(t *testing.T) {
 		{name: "invalid mode", mode: "parallel", wantError: "invalid workflow mode"},
 		{name: "mode is case sensitive", mode: "dag", wantError: "invalid workflow mode"},
 		{name: "duplicate step names", duplicate: true, wantError: "duplicate workflow step name"},
-		{name: "invalid step type", stepType: "unknown", wantError: "invalid stepType"},
+		{name: "invalid step type", stepType: "unknown", wantError: "invalid workflow step type"},
 	} {
 		for _, operation := range []string{"create", "update"} {
 			t.Run(operation+"/"+tc.name, func(t *testing.T) {

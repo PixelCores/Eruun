@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -125,6 +126,27 @@ func TestEvaluationResourceCleanupReportsListAndIdentityFailures(t *testing.T) {
 			require.ErrorIs(t, svc.cleanupVersionUpdateRemovedComponent(context.Background(), component), failure)
 			_, err := client.BatchV1().Jobs(item.Namespace).Get(context.Background(), item.Name, metav1.GetOptions{})
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestComponentCleanupReportsLabelListFailuresWithoutNameFallback(t *testing.T) {
+	for _, resource := range []string{"services", "ingresses"} {
+		t.Run(resource, func(t *testing.T) {
+			props := mustJSONStruct(&model.Properties{Ports: []model.Ports{{Port: 8080}}})
+			component := &model.ApplicationComponent{
+				Name: "web", AppID: "app-web", Namespace: "tenant-a", ComponentType: config.ServerJob, Image: "nginx", Properties: props,
+			}
+			serviceName := naming.ServiceName(component.Name, component.ResourceNameKey())
+			client := fake.NewSimpleClientset(&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: component.Namespace}})
+			failure := errors.New("list unavailable")
+			client.PrependReactor("list", resource, func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, failure
+			})
+			svc := &applicationsServiceImpl{KubeClient: client}
+			require.ErrorIs(t, svc.cleanupVersionUpdateRemovedComponent(context.Background(), component), failure)
+			_, err := client.CoreV1().Services(component.Namespace).Get(context.Background(), serviceName, metav1.GetOptions{})
+			require.NoError(t, err, "unlabeled Service must not be deleted by its generated name")
 		})
 	}
 }

@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testJobTimeoutSeconds int64 = 1200
+
 func TestDefaultJobTimeoutUsesBoundedWholeSeconds(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		duration time.Duration
 		want     int64
 	}{
-		{"unset", 0, 1200},
-		{"negative", -time.Second, 1200},
 		{"subsecond", 500 * time.Millisecond, 1},
 		{"fractional", 1500 * time.Millisecond, 2},
 		{"exact", time.Minute, 60},
@@ -31,10 +31,5 @@ func TestDefaultJobTimeoutUsesBoundedWholeSeconds(t *testing.T) {
 			task := NewJobTask("job", "namespace", "workflow", "project", "app", "task", seconds)
 			require.Equal(t, tt.want, task.Timeout)
 		})
-	}
-	require.Equal(t, int64(1200), resolveDefaultJobTimeout(nil))
-	for _, seconds := range []int64{0, -1} {
-		task := NewJobTask("job", "namespace", "workflow", "project", "app", "task", seconds)
-		require.Equal(t, int64(1200), task.Timeout)
 	}
 }

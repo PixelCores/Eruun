@@ -53,7 +53,7 @@ func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.
 				Container: "worker",
 			},
 		},
-	}, componentMap, task, int64(config.DefaultJobTaskTimeout.Seconds()))
+	}, componentMap, task, testJobTimeoutSeconds)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestGenerateJobTasksRejectsLogArchiveUploadNonPodComponent(t *testing.T) {
 		AppID:      "app-1",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	requireWorkflowGenerationFailed(t, executions, "does not use pods")
 }
 
@@ -144,7 +144,7 @@ func TestGenerateJobTasksPreservesLogArchivePathForNameBasedStep(t *testing.T) {
 		AppID:      "app-1",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, testJobTimeoutSeconds)
 	require.Len(t, executions, 1)
 	require.Equal(t, "api", executions[0].Name)
 	jobs := flattenJobBuckets(executions[0].Jobs)

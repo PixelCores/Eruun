@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func newTestWorkflowController(t *testing.T, task *model.WorkflowQueue, client kubernetes.Interface, store datastore.DataStore) *WorkflowCtl {
@@ -42,7 +43,7 @@ func newTestWorkflowController(t *testing.T, task *model.WorkflowQueue, client k
 		client,
 		nil,
 		store,
-		&config.Config{AllowPrivateURLTargets: true},
+		&config.Config{AllowPrivateURLTargets: true, Workflow: workflowconfig.DefaultRuntimeConfig()},
 		nil, nil,
 		&spec.URLSecurityPolicySpec{AllowPrivateByDefault: true},
 	)

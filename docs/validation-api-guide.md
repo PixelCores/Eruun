@@ -11,6 +11,8 @@
 1. **Try Application API** - 验证应用创建请求
 2. **Try Workflow API** - 验证工作流更新请求
 
+Try 与写入接口使用同一套组件、Trait 和工作流步骤规则：`POST /api/v1/applications`、`PUT /api/v1/applications/:appID/workflow` 和版本更新的 Trait 校验与 Try 调用相同的实现，Try 能拒绝的请求，写入接口同样拒绝且不保存。区别只在返回形式：Try 返回全部错误及其字段路径；写入接口返回第一条错误，消息中带同样的字段路径。写入接口的业务码为：组件或 init 容器 `properties` 下的错误返回 `10004`，其余组件与 Trait 错误返回 `10000`，工作流步骤错误返回 `20000`。
+
 ## API 端点
 
 ### 1. Try Application API

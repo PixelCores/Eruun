@@ -222,7 +222,7 @@ func (c *applicationsServiceImpl) createApplications(
 		application.Callback = callbackSelection.callback
 	}
 
-	if err := validateTemplateRequestJobFailurePolicyOverrides(req.Components); err != nil {
+	if err := componentValidationError(ValidateTemplateOverrides(req.Components)); err != nil {
 		return nil, err
 	}
 
@@ -761,25 +761,15 @@ func (c *applicationsServiceImpl) findTemplateApplication(ctx context.Context, n
 
 func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateComponentRequest) ([]*model.ApplicationComponent, error) {
 	components := make([]*model.ApplicationComponent, 0, len(reqComponents))
+	names := make(map[string]bool, len(reqComponents))
 	for idx, reqComponent := range reqComponents {
+		if err := componentValidationError(ValidateComponent(reqComponent, fmt.Sprintf("component[%d]", idx), names)); err != nil {
+			return nil, err
+		}
 		if err := spec.NormalizeComponentEvaluation(string(reqComponent.ComponentType), reqComponent.Image, reqComponent.Properties, &reqComponent.Traits); err != nil {
 			return nil, fmt.Errorf("%w: component[%d]: %v", bcode.ErrApplicationConfig, idx, err)
 		}
-		if (reqComponent.ComponentType == config.ServerJob ||
-			reqComponent.ComponentType == config.StoreJob ||
-			(reqComponent.ComponentType == config.InstantJob && reqComponent.Traits.Evaluation == nil) ||
-			reqComponent.ComponentType == config.ScheduledJob) && reqComponent.Image == "" {
-			return nil, bcode.ErrComponentNotImageSet
-		}
-		if reserved := spec.ReservedComponentLabelsIn(reqComponent.Properties.Labels); len(reserved) > 0 {
-			return nil, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, reqComponent.Name, strings.Join(reserved, ","))
-		}
-		if err := normalizeJobFailurePolicyForWrite(reqComponent.ComponentType, &reqComponent.Properties, fmt.Sprintf("component[%d].properties.failurePolicy", idx)); err != nil {
-			return nil, err
-		}
-		if err := validateComponentTraitsForWrite(reqComponent.ComponentType, reqComponent.Traits, fmt.Sprintf("component[%d].traits", idx)); err != nil {
-			return nil, err
-		}
+		normalizeJobFailurePolicy(&reqComponent.Properties)
 
 		reqComponent.Namespace = namespace
 		if reqComponent.ComponentType == config.SecretJob {
@@ -817,102 +807,13 @@ func copyStringMap(source map[string]string) map[string]string {
 	return copied
 }
 
-func validateExplicitServiceTraitNames(traits apisv1.Traits, fieldPrefix string) error {
-	for i, serviceTrait := range traits.Service {
-		serviceName := strings.TrimSpace(serviceTrait.Name)
-		if serviceName == "" {
-			continue
-		}
-		field := fmt.Sprintf("%s.service[%d].name", fieldPrefix, i)
-		validationErrors := traitvalidation.ValidateKubeResourceName(serviceName, field)
-		if len(validationErrors) == 0 {
-			continue
-		}
-		return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, validationErrors[0].Message)
-	}
-	return nil
-}
-
+// validateComponentTraitsForWrite checks a trait patch for an existing
+// component with the same rules as Try and application creation.
 func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1.Traits, fieldPrefix string) error {
-	if errors := traitvalidation.ValidateNestedProfiles(traits, fieldPrefix); len(errors) > 0 {
-		return fmt.Errorf("%w: %s: %s", bcode.ErrApplicationConfig, errors[0].Field, errors[0].Message)
-	}
 	if err := spec.NormalizeComponentEvaluation(string(componentType), "", spec.Properties{}, &traits); err != nil {
 		return fmt.Errorf("%w: %s: %v", bcode.ErrApplicationConfig, fieldPrefix, err)
 	}
-	if err := validateIngressTraitsForWrite(traits, fieldPrefix); err != nil {
-		return err
-	}
-	for i, service := range traits.Service {
-		if errors := traitvalidation.ValidateServiceTraitSpec(service, fmt.Sprintf("%s.service[%d]", fieldPrefix, i)); len(errors) > 0 {
-			return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-		}
-	}
-	if errors := traitvalidation.ValidateIngressBackendServiceReferences(traits, fieldPrefix); len(errors) > 0 {
-		return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-	}
-	if errors := traitvalidation.ValidateResourcesInTraits(traits, fieldPrefix); len(errors) > 0 {
-		return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-	}
-	if errors := traitvalidation.ValidateStorageSubPathConflictsInTraits(traits, fieldPrefix); len(errors) > 0 {
-		return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-	}
-	if err := validateExplicitServiceTraitNames(traits, fieldPrefix); err != nil {
-		return err
-	}
-	if errors := traitvalidation.ValidateRolloutTrait(componentType, traits.Rollout, fmt.Sprintf("%s.rollout", fieldPrefix), false); len(errors) > 0 {
-		return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-	}
-	if err := validateNoNestedRolloutTraitsForWrite(traits, fieldPrefix); err != nil {
-		return err
-	}
-	if err := validateNoNestedJobFailurePoliciesForWrite(traits, fieldPrefix); err != nil {
-		return err
-	}
-	return nil
-}
-
-// validateIngressTraitsForWrite applies Try's ingress rules to every ingress the
-// trait processor renders, including ones declared inside init or sidecar traits.
-func validateIngressTraitsForWrite(traits apisv1.Traits, fieldPrefix string) error {
-	for i, ingress := range traits.Ingress {
-		if errors := traitvalidation.ValidateIngressTraitSpec(ingress, fmt.Sprintf("%s.ingress[%d]", fieldPrefix, i)); len(errors) > 0 {
-			return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-		}
-	}
-	for i, initTrait := range traits.Init {
-		if err := validateIngressTraitsForWrite(initTrait.Traits, fmt.Sprintf("%s.init[%d].traits", fieldPrefix, i)); err != nil {
-			return err
-		}
-	}
-	for i, sidecar := range traits.Sidecar {
-		if err := validateIngressTraitsForWrite(sidecar.Traits, fmt.Sprintf("%s.sidecar[%d].traits", fieldPrefix, i)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateNoNestedRolloutTraitsForWrite(traits apisv1.Traits, fieldPrefix string) error {
-	for i, initTrait := range traits.Init {
-		nestedField := fmt.Sprintf("%s.init[%d].traits", fieldPrefix, i)
-		if initTrait.Traits.Rollout != nil {
-			return fmt.Errorf("%w: rollout is a workload-level trait and only supports component-level traits", bcode.ErrApplicationConfig)
-		}
-		if err := validateNoNestedRolloutTraitsForWrite(initTrait.Traits, nestedField); err != nil {
-			return err
-		}
-	}
-	for i, sidecar := range traits.Sidecar {
-		nestedField := fmt.Sprintf("%s.sidecar[%d].traits", fieldPrefix, i)
-		if sidecar.Traits.Rollout != nil {
-			return fmt.Errorf("%w: rollout is a workload-level trait and only supports component-level traits", bcode.ErrApplicationConfig)
-		}
-		if err := validateNoNestedRolloutTraitsForWrite(sidecar.Traits, nestedField); err != nil {
-			return err
-		}
-	}
-	return nil
+	return componentValidationError(traitvalidation.ValidateTraits(traits, fieldPrefix, componentType))
 }
 
 func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {

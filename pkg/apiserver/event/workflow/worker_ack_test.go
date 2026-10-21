@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -236,7 +237,7 @@ func newWorkflowForAckTests(t testing.TB) *Workflow {
 		Store:                     store,
 		WorkflowService:           &stubWorkflowService{store: store},
 		Queue:                     nil,
-		Cfg:                       &config.Config{},
+		Cfg:                       &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()},
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 }
@@ -727,7 +728,7 @@ func TestProcessDispatchMessageSkipsUserCancelledTask(t *testing.T) {
 		Store:           store,
 		WorkflowService: svc,
 		Queue:           nil,
-		Cfg:             &config.Config{},
+		Cfg:             &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()},
 	}
 	payload := mustTestTaskDispatch(t)
 

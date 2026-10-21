@@ -52,7 +52,10 @@ func TestCleanupApplicationResourcesDeletesWorkload(t *testing.T) {
 	serviceName := naming.ServiceName(component.Name, app.Name)
 	clientset := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: "default"}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: "default", Labels: map[string]string{
+			spec.LabelAppID:         app.ID,
+			spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		}}},
 	)
 
 	svc := &applicationsServiceImpl{
@@ -312,7 +315,10 @@ func TestCleanupApplicationResourcesSkipsSharedComponent(t *testing.T) {
 	serviceName := naming.ServiceName(component.Name, component.ResourceNameKey())
 	clientset := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: "default"}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: "default", Labels: map[string]string{
+			spec.LabelAppID:         app.ID,
+			spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		}}},
 	)
 
 	svc := &applicationsServiceImpl{
@@ -443,7 +449,10 @@ func TestCleanupApplicationResourcesDoesNotSkipSharedForce(t *testing.T) {
 	serviceName := naming.ServiceName(component.Name, component.ResourceNameKey())
 	clientset := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: "default"}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: serviceName, Namespace: "default", Labels: map[string]string{
+			spec.LabelAppID:         app.ID,
+			spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		}}},
 	)
 
 	svc := &applicationsServiceImpl{

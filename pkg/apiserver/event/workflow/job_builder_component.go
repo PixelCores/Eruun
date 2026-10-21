@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -31,9 +30,6 @@ import (
 )
 
 func NewJobTask(name, namespace, workflowID, projectID, appID, taskID string, timeoutSeconds int64, resourceAppName ...string) *model.JobTask {
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = int64(config.DefaultJobTaskTimeout / time.Second)
-	}
 	jobTask := &model.JobTask{
 		Name:       name,
 		Namespace:  namespace,

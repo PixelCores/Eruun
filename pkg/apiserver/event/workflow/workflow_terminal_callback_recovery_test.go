@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type terminalCallbackStarvationStore struct {
@@ -112,7 +113,7 @@ func TestTerminalCallbackRecoveryDoesNotStarveTasksBehindActiveChildren(t *testi
 			SchedulingReason: wf.TerminalCallbackPendingReason("manual cancel"),
 		})
 	}
-	cfg := &config.Config{}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()}
 	cfg.Workflow.LeaseReaperInterval = time.Millisecond
 	runtime := &Workflow{Store: store, Cfg: cfg}
 	ctx, cancel := context.WithCancel(context.Background())

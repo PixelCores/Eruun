@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 
@@ -69,9 +68,6 @@ func Run(s *options.ServerRunOptions) error {
 		defer stop()
 		return migrateSchema(migrationCtx, *s.GenericServerRunOptions)
 	}
-	// The server is not terminal, there is no color default.
-	// Force set to false, this is useful for the dry-run API.
-	color.NoColor = false
 	if err := api.InitRuntime(); err != nil {
 		return fmt.Errorf("init api runtime: %w", err)
 	}

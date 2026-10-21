@@ -4,20 +4,15 @@ package spec
 type ResourceKind string
 
 const (
-	ResourceDeployment         ResourceKind = "deployment"
-	ResourceStatefulSet        ResourceKind = "statefulset"
-	ResourceService            ResourceKind = "service"
-	ResourcePVC                ResourceKind = "pvc"
-	ResourceConfigMap          ResourceKind = "configmap"
-	ResourceSecret             ResourceKind = "secret"
-	ResourceIngress            ResourceKind = "ingress"
-	ResourceJob                ResourceKind = "job"
-	ResourceCronJob            ResourceKind = "cronjob"
-	ResourceServiceAccount     ResourceKind = "serviceaccount"
-	ResourceRole               ResourceKind = "role"
-	ResourceRoleBinding        ResourceKind = "rolebinding"
-	ResourceClusterRole        ResourceKind = "clusterrole"
-	ResourceClusterRoleBinding ResourceKind = "clusterrolebinding"
+	ResourceDeployment  ResourceKind = "deployment"
+	ResourceStatefulSet ResourceKind = "statefulset"
+	ResourceService     ResourceKind = "service"
+	ResourcePVC         ResourceKind = "pvc"
+	ResourceConfigMap   ResourceKind = "configmap"
+	ResourceSecret      ResourceKind = "secret"
+	ResourceIngress     ResourceKind = "ingress"
+	ResourceJob         ResourceKind = "job"
+	ResourceCronJob     ResourceKind = "cronjob"
 )
 
 type KubeKind string

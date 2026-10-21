@@ -35,7 +35,6 @@ type WorkflowStep struct {
 	SchedulingClass string                  `json:"schedulingClass,omitempty"`
 	Name            string                  `json:"name"`
 	StepType        config.WorkflowStepType `json:"stepType,omitempty"`
-	Level           int                     `json:"level,omitempty"`
 	WorkflowType    config.JobType          `json:"workflowType,omitempty"`
 	Mode            config.WorkflowMode     `json:"mode,omitempty"`
 	Approval        *WorkflowStepApproval   `json:"approval,omitempty"`

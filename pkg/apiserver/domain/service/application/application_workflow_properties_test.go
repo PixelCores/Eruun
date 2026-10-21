@@ -87,7 +87,7 @@ func TestUpdateApplicationWorkflowValidatesComponentsForEmptyPropertiesArray(t *
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.Error(t, err)
 	require.Nil(t, resp)
-	require.Contains(t, err.Error(), `component "web" not found`)
+	require.Contains(t, err.Error(), "component 'web' not found in application")
 }
 
 func TestUpdateApplicationWorkflowAcceptsReadResponsePropertiesArray(t *testing.T) {
@@ -273,7 +273,7 @@ func TestUpdateApplicationWorkflowRejectsAmbiguousPropertiesArray(t *testing.T) 
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.Error(t, err)
 	require.Nil(t, resp)
-	require.Contains(t, err.Error(), "properties entries require policies")
+	require.Contains(t, err.Error(), "properties.policies is required when multiple workflow properties are provided")
 }
 
 func TestUpdateApplicationWorkflowRejectsDuplicatePropertiesArrayPolicies(t *testing.T) {
@@ -310,7 +310,7 @@ func TestUpdateApplicationWorkflowRejectsDuplicatePropertiesArrayPolicies(t *tes
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.Error(t, err)
 	require.Nil(t, resp)
-	require.Contains(t, err.Error(), "duplicate policy")
+	require.Contains(t, err.Error(), "referenced by multiple workflow properties entries")
 }
 
 func TestUpdateApplicationWorkflowRejectsDuplicateSubStepPropertiesArrayPolicies(t *testing.T) {
@@ -353,7 +353,7 @@ func TestUpdateApplicationWorkflowRejectsDuplicateSubStepPropertiesArrayPolicies
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.Error(t, err)
 	require.Nil(t, resp)
-	require.Contains(t, err.Error(), "duplicate policy")
+	require.Contains(t, err.Error(), "referenced by multiple workflow properties entries")
 }
 
 func TestUpdateApplicationWorkflowRejectsSubStepComponentsMismatchForPropertiesArray(t *testing.T) {

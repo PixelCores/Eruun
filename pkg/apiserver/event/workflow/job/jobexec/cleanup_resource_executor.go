@@ -10,7 +10,6 @@ import (
 )
 
 type deleteNamespacedFunc func(context.Context, string, string) error
-type deleteClusterFunc func(context.Context, string) error
 
 // cleanupNamespacedResources deletes created namespaced resources tracked in the cleanup context.
 func CleanupNamespacedResources(ctx context.Context, kind domainspec.ResourceKind, namespaceFallback string, timeout time.Duration, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
@@ -39,29 +38,6 @@ func CleanupNamespacedResources(ctx context.Context, kind domainspec.ResourceKin
 		}
 		if successSuffix != "" {
 			klog.Infof("deleted %s %s/%s %s", resourceLabel, ns, ref.Name, successSuffix)
-		}
-	}
-}
-
-// cleanupClusterResources deletes created cluster-scoped resources tracked in the cleanup context.
-func cleanupClusterResources(ctx context.Context, kind domainspec.ResourceKind, timeout time.Duration, resourceLabel string, deleteFn deleteClusterFunc, isNotFound func(error) bool) {
-	if deleteFn == nil {
-		return
-	}
-	refs := ResourcesForCleanup(ctx, kind)
-	if len(refs) == 0 {
-		return
-	}
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	for _, ref := range refs {
-		if !ref.Created {
-			continue
-		}
-		if err := deleteFn(cleanupCtx, ref.Name); err != nil {
-			if isNotFound == nil || !isNotFound(err) {
-				klog.Errorf("failed to delete %s %s during cleanup: %v", resourceLabel, ref.Name, err)
-			}
 		}
 	}
 }

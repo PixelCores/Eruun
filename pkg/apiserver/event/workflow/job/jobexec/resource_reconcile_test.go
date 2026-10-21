@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 type fakeResource struct {
@@ -143,69 +139,5 @@ func TestUpdateResourceWithRetry(t *testing.T) {
 	}
 	if updateCalls != 1 {
 		t.Fatalf("update calls = %d, want 1", updateCalls)
-	}
-}
-
-func TestResolveSharedResourceAccess_ReconcileSharedBypassesDefaultGuard(t *testing.T) {
-	t.Parallel()
-
-	listCalled := false
-	unlock, skipped, err := ResolveSharedResourceAccess(context.Background(), SharedResourceAccessOptions{
-		Labels: map[string]string{
-			domainspec.LabelShareName:     "ops",
-			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
-		},
-		Kind:            domainspec.ResourceServiceAccount,
-		LockProvider:    nil,
-		ReconcileShared: true,
-		ListFn: func(context.Context, metav1.ListOptions) (int, error) {
-			listCalled = true
-			return 0, errors.New("shared list should not be called")
-		},
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if skipped {
-		t.Fatal("expected shared RBAC resource to reconcile")
-	}
-	if unlock != nil {
-		t.Fatal("expected shared RBAC resource not to acquire a lock")
-	}
-	if listCalled {
-		t.Fatal("expected shared RBAC resource not to execute the shared list")
-	}
-}
-
-func TestResolveSharedResourceAccess_ReconcileSharedStillSkipsIgnore(t *testing.T) {
-	t.Parallel()
-
-	listCalled := false
-	unlock, skipped, err := ResolveSharedResourceAccess(context.Background(), SharedResourceAccessOptions{
-		Labels: map[string]string{
-			domainspec.LabelShareName:     "ops",
-			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
-		},
-		Kind:            domainspec.ResourceServiceAccount,
-		LockProvider:    nil,
-		ReconcileShared: true,
-		ListFn: func(context.Context, metav1.ListOptions) (int, error) {
-			listCalled = true
-			return 0, errors.New("shared list should not be called")
-		},
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !skipped {
-		t.Fatal("expected shared ignore resource to be skipped")
-	}
-	if unlock != nil {
-		t.Fatal("expected shared ignore resource not to acquire a lock")
-	}
-	if listCalled {
-		t.Fatal("expected shared ignore resource not to execute the shared list")
 	}
 }

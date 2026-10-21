@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestWorkflowTaskPersistenceFieldsEqualRequiresOwnedExecution(t *testing.T) {
@@ -85,7 +86,7 @@ func TestWorkflowTaskHeartbeatCancelsWithLeaseFailureCause(t *testing.T) {
 		},
 		compareAndSwapWithConditionsErr: errors.New("datastore unavailable"),
 	}
-	cfg := &config.Config{}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()}
 	cfg.Workflow.HeartbeatInterval = time.Millisecond
 	cfg.Workflow.LeaseDuration = time.Second
 	workflow := &Workflow{Store: store, Cfg: cfg}
@@ -122,7 +123,7 @@ func TestWorkflowTaskHeartbeatTreatsOwnedUserCancellationAsOrdinaryCancellation(
 			task.CancelSource = config.CancelSourceUser
 		},
 	}
-	cfg := &config.Config{}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()}
 	cfg.Workflow.HeartbeatInterval = time.Millisecond
 	cfg.Workflow.LeaseDuration = time.Second
 	workflow := &Workflow{Store: store, Cfg: cfg}
@@ -160,7 +161,7 @@ func TestWorkflowTaskHeartbeatStopsWithoutCancellingOwnedTerminalExecution(t *te
 			task.Status = config.StatusCompleted
 		},
 	}
-	cfg := &config.Config{}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()}
 	cfg.Workflow.HeartbeatInterval = time.Millisecond
 	cfg.Workflow.LeaseDuration = time.Second
 	workflow := &Workflow{Store: store, Cfg: cfg}
@@ -193,7 +194,7 @@ func TestWorkflowTaskHeartbeatReportsOwnershipChangeAfterRenewalMiss(t *testing.
 			task.WorkerID = "worker-b"
 		},
 	}
-	cfg := &config.Config{}
+	cfg := &config.Config{Workflow: workflowconfig.DefaultRuntimeConfig()}
 	cfg.Workflow.HeartbeatInterval = time.Millisecond
 	cfg.Workflow.LeaseDuration = time.Second
 	workflow := &Workflow{Store: store, Cfg: cfg}

@@ -86,9 +86,7 @@ func (r *workflowWorkerRun) wait() error {
 
 func (w *Workflow) workerConcurrencyLimiter() *semaphore.Weighted {
 	w.workerLimiterOnce.Do(func() {
-		if max := w.maxWorkflowConcurrency(); max > 0 {
-			w.workflowLimiter = semaphore.NewWeighted(max)
-		}
+		w.workflowLimiter = semaphore.NewWeighted(int64(w.Cfg.Workflow.MaxConcurrentWorkflows))
 	})
 	return w.workflowLimiter
 }
@@ -137,7 +135,7 @@ func (w *Workflow) StartScheduler(ctx context.Context, ready func()) {
 
 func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 	run := func() {
-		ticker := time.NewTicker(w.workflowLeaseReaperInterval())
+		ticker := time.NewTicker(w.Cfg.Workflow.LeaseReaperInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -146,18 +144,14 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 			case <-ticker.C:
 			}
 			reaperCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
-			limit := workflowconfig.DefaultWorkflowLeaseReaperBatchSize
-			if w.Cfg != nil && w.Cfg.Workflow.LeaseReaperBatchSize > 0 {
-				limit = w.Cfg.Workflow.LeaseReaperBatchSize
-			}
-			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store, limit)
+			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store, w.Cfg.Workflow.LeaseReaperBatchSize)
 			cancel()
 			if err != nil {
 				klog.ErrorS(err, "recover expired workflow execution leases")
 			} else if recovered > 0 {
 				klog.InfoS("recovered expired workflow execution leases", "count", recovered)
 			}
-			w.expireApprovalDeadlines(ctx, limit)
+			w.expireApprovalDeadlines(ctx, w.Cfg.Workflow.LeaseReaperBatchSize)
 		}
 	}
 	if wg == nil {
@@ -195,7 +189,7 @@ func (w *Workflow) expireApprovalDeadlines(ctx context.Context, limit int) {
 
 func (w *Workflow) startCancelledWorkflowRecovery(ctx context.Context, wg *sync.WaitGroup) {
 	run := func() {
-		ticker := time.NewTicker(w.workflowLeaseReaperInterval())
+		ticker := time.NewTicker(w.Cfg.Workflow.LeaseReaperInterval)
 		defer ticker.Stop()
 		cleanupPage := 1
 		for {
@@ -252,7 +246,7 @@ func (w *Workflow) startTerminalCallbackRecovery(ctx context.Context, wg *sync.W
 		maxActive = 8
 	)
 	run := func() {
-		ticker := time.NewTicker(w.workflowLeaseReaperInterval())
+		ticker := time.NewTicker(w.Cfg.Workflow.LeaseReaperInterval)
 		defer ticker.Stop()
 		results := make(chan terminalCallbackRecoveryResult, maxActive)
 		active := make(map[string]struct{}, maxActive)
@@ -350,7 +344,7 @@ func (w *Workflow) startScheduleDispatcher(ctx context.Context, wg *sync.WaitGro
 }
 
 func (w *Workflow) workflowScheduleDispatcher(ctx context.Context) {
-	ticker := time.NewTicker(w.dispatchPollInterval())
+	ticker := time.NewTicker(w.Cfg.Workflow.DispatchPollInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -492,12 +486,8 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 	return true, nil
 }
 
-func (w *Workflow) runClaimedWorkflowTask(ctx context.Context, workerRun *workflowWorkerRun, task *model.WorkflowQueue, concurrency int) error {
-	sequentialConcurrency := concurrency
-	if w.Cfg != nil && w.Cfg.Workflow.SequentialMaxConcurrency > 0 {
-		sequentialConcurrency = w.Cfg.Workflow.SequentialMaxConcurrency
-	}
-	started, err := w.runWorkflowTask(ctx, workerRun, task, sequentialConcurrency)
+func (w *Workflow) runClaimedWorkflowTask(ctx context.Context, workerRun *workflowWorkerRun, task *model.WorkflowQueue) error {
+	started, err := w.runWorkflowTask(ctx, workerRun, task, w.Cfg.Workflow.SequentialMaxConcurrency)
 	if err != nil {
 		return err
 	}
@@ -521,7 +511,7 @@ func (w *Workflow) startWorkflowTaskHeartbeat(ctx context.Context, cancel contex
 	go func() {
 		defer close(done)
 		defer w.runtimeStats.heartbeats.Add(-1)
-		ticker := time.NewTicker(w.workflowHeartbeatInterval())
+		ticker := time.NewTicker(w.Cfg.Workflow.HeartbeatInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -537,7 +527,7 @@ func (w *Workflow) startWorkflowTaskHeartbeat(ctx context.Context, cancel contex
 			renewCtx, renewCancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
 			started := time.Now()
 			renewed, err := repository.RenewWorkflowTaskLease(
-				renewCtx, w.Store, taskID, runGeneration, runToken, workerID, w.workflowLeaseDuration(),
+				renewCtx, w.Store, taskID, runGeneration, runToken, workerID, w.Cfg.Workflow.LeaseDuration,
 			)
 			renewCancel()
 			w.runtimeStats.renewAttempts.Add(1)
@@ -688,8 +678,8 @@ func sameWorkflowTaskOwnership(expected, recovered *model.WorkflowQueue) bool {
 }
 
 func (w *Workflow) waitForWorkflowTaskPersistenceRecovery(ctx context.Context, taskID string) (*model.WorkflowQueue, error) {
-	minBackoff := w.workerBackoffMin()
-	maxBackoff := w.workerBackoffMax()
+	minBackoff := workflowconfig.DefaultWorkerBackoffMin
+	maxBackoff := workflowconfig.DefaultWorkerBackoffMax
 	delay := minBackoff
 	for {
 		reloadCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
@@ -766,11 +756,4 @@ func (w *Workflow) markTaskRunStartFailure(ctx context.Context, task *model.Work
 	if err := workflowservice.TerminalizePrecreatedVersionUpdateCleanupJobs(persistCtx, w.Store, task.TaskID, config.StatusFailed, reason); err != nil {
 		klog.Errorf("terminalize cleanup jobs for failed workflow task %s before run: %v", task.TaskID, err)
 	}
-}
-
-func (w *Workflow) maxWorkflowConcurrency() int64 {
-	if w.Cfg != nil && w.Cfg.Workflow.MaxConcurrentWorkflows > 0 {
-		return int64(w.Cfg.Workflow.MaxConcurrentWorkflows)
-	}
-	return int64(workflowconfig.DefaultMaxConcurrentWorkflows)
 }

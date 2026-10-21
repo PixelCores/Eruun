@@ -458,7 +458,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 
 	timeout := payload.TimeoutSeconds
 	if timeout <= 0 {
-		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
+		return fmt.Errorf("result payload for job %s/%s has no timeout", namespace, payload.Name)
 	}
 	record, recordErr := findJobInfoForResult(ctx, store, payload)
 	if recordErr != nil {
@@ -814,10 +814,6 @@ func NewJobResultPayloadFromDelay(payload *jobinfo.DelayJobPayload, jobObj *batc
 	if serviceName == "" {
 		serviceName = jobinfo.ComponentNameFromJobInfo(jobObj)
 	}
-	timeout := payload.TimeoutSeconds
-	if timeout <= 0 {
-		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
-	}
 	return &JobResultPayload{
 		TaskID:         payload.TaskID,
 		ExecutionKey:   payload.ExecutionKey,
@@ -826,7 +822,7 @@ func NewJobResultPayloadFromDelay(payload *jobinfo.DelayJobPayload, jobObj *batc
 		Namespace:      namespace,
 		Name:           name,
 		ServiceName:    serviceName,
-		TimeoutSeconds: timeout,
+		TimeoutSeconds: payload.TimeoutSeconds,
 	}
 }
 

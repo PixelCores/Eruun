@@ -41,7 +41,7 @@ type RuntimeStats struct {
 func (w *Workflow) RuntimeStats() RuntimeStats {
 	s := &w.runtimeStats
 	return RuntimeStats{
-		ConcurrencyLimit: w.maxWorkflowConcurrency(),
+		ConcurrencyLimit: int64(w.Cfg.Workflow.MaxConcurrentWorkflows),
 		Controllers:      s.controllers.Load(), WaitingForSlot: s.waiting.Load(),
 		Heartbeats: s.heartbeats.Load(), SlotAcquisitions: s.slotAcquisitions.Load(),
 		SlotWaitSeconds: float64(s.slotWaitNanos.Load()) / float64(time.Second),

@@ -537,7 +537,7 @@ func TestApprovalTimeoutCallbackSentOnceByLeader(t *testing.T) {
 
 	runtime := &Workflow{
 		Store:                     store,
-		Cfg:                       &config.Config{AllowPrivateURLTargets: true},
+		Cfg:                       &config.Config{AllowPrivateURLTargets: true, Workflow: workflowconfig.DefaultRuntimeConfig()},
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 	runtime.expireApprovalDeadlines(context.Background(), 10)

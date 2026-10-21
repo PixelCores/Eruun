@@ -1099,23 +1099,6 @@ func servicePortsFromService(ports []corev1.ServicePort) []spec.ServicePortTrait
 	return result
 }
 
-func ensureShareLabels(labels map[string]string, name string) map[string]string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return labels
-	}
-	if labels == nil {
-		labels = make(map[string]string, 2)
-	}
-	if strings.TrimSpace(labels[spec.LabelShareName]) == "" {
-		labels[spec.LabelShareName] = name
-	}
-	if strings.TrimSpace(labels[spec.LabelShareStrategy]) == "" {
-		labels[spec.LabelShareStrategy] = string(spec.ShareStrategyDefault)
-	}
-	return labels
-}
-
 func buildShareTrait(primaryLabels, fallbackLabels map[string]string) (*spec.ShareTraitSpec, []string) {
 	strategy := strings.TrimSpace(primaryLabels[spec.LabelShareStrategy])
 	if strategy == "" && len(fallbackLabels) > 0 {

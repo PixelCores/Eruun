@@ -611,7 +611,7 @@ func (b *DeployNamespacedResourceJobBase) CreateBatchJob(ctx context.Context, jo
 func (b *DeployNamespacedResourceJobBase) WaitBatchJob(ctx context.Context) (config.Status, string, error) {
 	timeout := b.Job.Timeout
 	if timeout <= 0 {
-		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
+		return config.StatusFailed, "", fmt.Errorf("job %s timeout is not set", b.Job.Name)
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()

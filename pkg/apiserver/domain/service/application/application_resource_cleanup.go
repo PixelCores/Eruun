@@ -349,7 +349,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		c.deleteScheduledJobForComponent(ctx, componentPtr, &props, reporter)
 	}
 
-	c.deleteServiceForComponent(ctx, componentPtr, &props, reporter)
+	c.deleteServiceForComponent(ctx, componentPtr, reporter)
 	c.deleteIngressForComponent(ctx, componentPtr, reporter)
 	return nil
 }
@@ -386,56 +386,37 @@ func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.C
 	}
 }
 
-func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
-	if component == nil || reporter == nil {
+func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
+	if component == nil || reporter == nil || c.KubeClient == nil {
 		return
 	}
 	ns := pickNamespace(component.Namespace, config.DefaultNamespace)
-
-	if c.KubeClient != nil {
-		appID := strings.TrimSpace(component.AppID)
-		componentName := strings.TrimSpace(component.Name)
-		if appID != "" && componentName != "" {
-			labelSet := labels.Set{
-				domainspec.LabelAppID:         appID,
-				domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
-			}
-			opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
-			serviceList, err := c.KubeClient.CoreV1().Services(ns).List(opCtx, metav1.ListOptions{
-				LabelSelector: labelSet.AsSelector().String(),
-			})
-			cancel()
-			if err != nil {
-				klog.Errorf("list services by labels failed appID=%s component=%s namespace=%s: %v", appID, componentName, ns, err)
-			} else {
-				if len(serviceList.Items) > 0 {
-					for i := range serviceList.Items {
-						svcName := strings.TrimSpace(serviceList.Items[i].Name)
-						if svcName == "" {
-							continue
-						}
-						reporter.record("Service", ns, svcName, c.deleteService(ctx, ns, svcName))
-					}
-					return
-				}
-				klog.V(3).Infof("no labeled services found for cleanup appID=%s component=%s namespace=%s", appID, componentName, ns)
-			}
-		}
-	}
-
-	// Backward compatibility: fall back to legacy default service naming cleanup.
-	if props == nil || len(props.Ports) == 0 {
+	appID := strings.TrimSpace(component.AppID)
+	componentName := strings.TrimSpace(component.Name)
+	if appID == "" || componentName == "" {
 		return
 	}
-	svc := jobdeploy.GenerateService(component, props)
-	name := naming.ServiceName(component.Name, component.ResourceNameKey())
-	if svc != nil && svc.Name != "" {
-		name = svc.Name
-		if svc.Namespace != "" {
-			ns = svc.Namespace
-		}
+
+	labelSet := labels.Set{
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
 	}
-	reporter.record("Service", ns, name, c.deleteService(ctx, ns, name))
+	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
+	serviceList, err := c.KubeClient.CoreV1().Services(ns).List(opCtx, metav1.ListOptions{
+		LabelSelector: labelSet.AsSelector().String(),
+	})
+	cancel()
+	if err != nil {
+		reporter.record("Service", ns, componentName, fmt.Errorf("list services: %w", err))
+		return
+	}
+	for i := range serviceList.Items {
+		svcName := strings.TrimSpace(serviceList.Items[i].Name)
+		if svcName == "" {
+			continue
+		}
+		reporter.record("Service", ns, svcName, c.deleteService(ctx, ns, svcName))
+	}
 }
 
 func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
@@ -459,11 +440,7 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 	})
 	cancel()
 	if err != nil {
-		klog.Errorf("list ingresses by labels failed appID=%s component=%s namespace=%s: %v", appID, componentName, ns, err)
-		return
-	}
-	if len(ingressList.Items) == 0 {
-		klog.V(3).Infof("no labeled ingresses found for cleanup appID=%s component=%s namespace=%s", appID, componentName, ns)
+		reporter.record("Ingress", ns, componentName, fmt.Errorf("list ingresses: %w", err))
 		return
 	}
 	for i := range ingressList.Items {

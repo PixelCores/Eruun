@@ -225,6 +225,7 @@ func TestScheduledJobCtlHelpers(t *testing.T) {
 		},
 	}
 	jobTask := &model.JobTask{
+		Timeout:   60,
 		Name:      "scheduled-job",
 		TaskID:    "task-2",
 		Namespace: "default",
