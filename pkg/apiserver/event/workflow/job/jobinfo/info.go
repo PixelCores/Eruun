@@ -427,7 +427,7 @@ func VersionUpdateCleanupRequiresStatefulSetDeletion(raw string) bool {
 
 func VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(raw string) []string {
 	marker, marked := parseVersionUpdateCleanupInternalInfo(raw)
-	if !marked || marker.Version != model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion || !marker.RequireStatefulSetDeletion || len(marker.StatefulSetPVCTemplatesToDelete) == 0 {
+	if !marked || !marker.RequireStatefulSetDeletion || len(marker.StatefulSetPVCTemplatesToDelete) == 0 {
 		return nil
 	}
 	return model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)
@@ -450,27 +450,16 @@ func ValidateVersionUpdateCleanupInternalInfo(raw string, component *model.Appli
 	if !marked {
 		return nil
 	}
-	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)
-	switch marker.Version {
-	case 0:
-		if len(templates) > 0 {
-			return fmt.Errorf("version update cleanup PVC deletion marker is missing version")
-		}
+	if len(model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)) == 0 {
 		return nil
-	case model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion:
-		if !marker.RequireStatefulSetDeletion {
-			return fmt.Errorf("version update cleanup PVC deletion requires StatefulSet deletion")
-		}
-		if component == nil || component.ComponentType != config.StoreJob {
-			return fmt.Errorf("version update cleanup PVC deletion is only valid for store components")
-		}
-		if len(templates) == 0 {
-			return fmt.Errorf("version update cleanup PVC deletion templates are empty")
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported version update cleanup job info version %d", marker.Version)
 	}
+	if !marker.RequireStatefulSetDeletion {
+		return fmt.Errorf("version update cleanup PVC deletion requires StatefulSet deletion")
+	}
+	if component == nil || component.ComponentType != config.StoreJob {
+		return fmt.Errorf("version update cleanup PVC deletion is only valid for store components")
+	}
+	return nil
 }
 
 func LoadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobType, serviceName string) ([]*model.JobInfo, error) {

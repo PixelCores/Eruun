@@ -27,6 +27,16 @@ type dispatchCleanupFenceStore struct {
 	claimHook   func()
 }
 
+// statefulSetCleanupKind selects a cleanup fixture by its content: plain
+// removal, StatefulSet recreation, or recreation plus VCT PVC deletion.
+type statefulSetCleanupKind int
+
+const (
+	noStatefulSetCleanup statefulSetCleanupKind = iota
+	statefulSetRecreation
+	statefulSetPVCDeletion
+)
+
 func (s *dispatchCleanupFenceStore) List(ctx context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
 	if task, ok := query.(*model.WorkflowQueue); ok && task.Status == config.StatusWaiting {
 		return []datastore.Entity{s.taskSnapshot()}, nil
@@ -50,7 +60,7 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 	for _, tc := range []struct {
 		name             string
 		pending          bool
-		migration        int
+		migration        statefulSetCleanupKind
 		immediate        bool
 		cron             bool
 		job              bool
@@ -64,8 +74,8 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 	}{
 		{name: "delayed ordinary task fails for unfinished cleanup", pending: true, wantFailed: true},
 		{name: "delayed task without cleanup dispatches", wantDispatch: true},
-		{name: "v2 migration resolves failed cleanup", pending: true, migration: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, wantDispatch: true},
-		{name: "v3 migration resolves failed cleanup", pending: true, migration: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, wantDispatch: true},
+		{name: "v2 migration resolves failed cleanup", pending: true, migration: statefulSetRecreation, wantDispatch: true},
+		{name: "v3 migration resolves failed cleanup", pending: true, migration: statefulSetPVCDeletion, wantDispatch: true},
 		{name: "delayed claim uses application lock", pending: true, lockHeld: true},
 		{name: "immediate task needs no application lock", immediate: true, pending: true, lockHeld: true, wantDispatch: true},
 		{name: "cron task needs no application lock", immediate: true, cron: true, pending: true, lockHeld: true, wantDispatch: true},
@@ -106,7 +116,7 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 			if tc.pending {
 				// A terminal migration with no cleanup job is still unfinished; a
 				// failed start must not let ordinary deployment pass the fence.
-				store.pendingTask = &model.WorkflowQueue{TaskID: "failed-migration", AppID: task.AppID, Status: config.StatusFailed, CleanupInfo: dispatchCleanupInfo(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion)}
+				store.pendingTask = &model.WorkflowQueue{TaskID: "failed-migration", AppID: task.AppID, Status: config.StatusFailed, CleanupInfo: dispatchCleanupInfo(t, statefulSetRecreation)}
 			}
 			lockProvider := locker.NewMemoryLocker("dispatch-fence-test")
 			t.Cleanup(func() { require.NoError(t, lockProvider.Close()) })
@@ -207,16 +217,16 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 	}
 }
 
-func dispatchCleanupInfo(t *testing.T, version int) string {
+func dispatchCleanupInfo(t *testing.T, version statefulSetCleanupKind) string {
 	t.Helper()
 	component := model.VersionUpdateCleanupComponent{
 		Component:       &model.ApplicationComponent{ID: 1, AppID: "app-1", Name: "db", Namespace: "default", ComponentType: config.StoreJob},
 		ResourceAppName: "app", RequireStatefulSetDeletion: true,
 	}
-	if version == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+	if version == statefulSetPVCDeletion {
 		component.StatefulSetPVCTemplatesToDelete = []string{"data"}
 	}
-	data, err := json.Marshal(model.VersionUpdateCleanupInfo{Source: config.JobInfoSourceVersionUpdateRemove, Version: version, Components: []model.VersionUpdateCleanupComponent{component}})
+	data, err := json.Marshal(model.VersionUpdateCleanupInfo{Source: config.JobInfoSourceVersionUpdateRemove, Components: []model.VersionUpdateCleanupComponent{component}})
 	require.NoError(t, err)
 	return string(data)
 }

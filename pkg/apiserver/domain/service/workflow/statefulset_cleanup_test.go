@@ -15,10 +15,20 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+// statefulSetCleanupKind selects a cleanup fixture by its content: plain
+// removal, StatefulSet recreation, or recreation plus VCT PVC deletion.
+type statefulSetCleanupKind int
+
+const (
+	noStatefulSetCleanup statefulSetCleanupKind = iota
+	statefulSetRecreation
+	statefulSetPVCDeletion
+)
+
 func TestExecWorkflowTaskForAppBlocksPendingStatefulSetCleanup(t *testing.T) {
-	for _, cleanupVersion := range []int{
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+	for _, cleanupVersion := range []statefulSetCleanupKind{
+		statefulSetRecreation,
+		statefulSetPVCDeletion,
 	} {
 		t.Run(fmt.Sprintf("v%d", cleanupVersion), func(t *testing.T) {
 			store, workflow := newStatefulSetCleanupFenceStore(t, cleanupVersion, config.StatusFailed)
@@ -40,14 +50,14 @@ func TestLoadPendingStatefulSetCleanupsRequiresStoreAndAppID(t *testing.T) {
 	_, err := LoadPendingStatefulSetCleanups(context.Background(), nil, "app-1")
 	require.ErrorContains(t, err, "datastore is required")
 
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, config.StatusFailed)
 	_, err = LoadPendingStatefulSetCleanups(context.Background(), store, " ")
 	require.ErrorContains(t, err, "application id is required")
 }
 
 func TestStatefulSetCleanupFenceRequiresAV3ResumeForPendingPVCTemplates(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
-	v2Store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, config.StatusFailed)
+	v2Store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 	prependStatefulSetCleanupFenceAttempt(store, v2Store, "migration-2")
 
 	err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -56,8 +66,8 @@ func TestStatefulSetCleanupFenceRequiresAV3ResumeForPendingPVCTemplates(t *testi
 }
 
 func TestStatefulSetCleanupFenceClearsAfterSuccessfulV3Resume(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
-	resumeStore, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusCompleted)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, config.StatusFailed)
+	resumeStore, _ := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, config.StatusCompleted)
 	setStatefulSetCleanupFenceResolution(t, resumeStore.tasks[0], "migration-1")
 	prependStatefulSetCleanupFenceAttempt(store, resumeStore, "migration-2")
 
@@ -79,7 +89,7 @@ func TestStatefulSetCleanupFenceTracksMixedV2V3Components(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 	require.Empty(t, store.queues)
 
-	resumeStore, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+	resumeStore, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 	prependStatefulSetCleanupFenceAttempt(store, resumeStore, "migration-2")
 	err = EnsureNoPendingStatefulSetCleanup(context.Background(), store, workflow.AppID)
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
@@ -112,15 +122,15 @@ func TestStatefulSetCleanupFenceUsesExplicitCausalityInsteadOfCreateTime(t *test
 	}
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+			store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 			store.tasks[0].CreateTime = tt.times[0]
 
-			failedRetry, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+			failedRetry, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 			failedRetry.tasks[0].CreateTime = tt.times[1]
 			setStatefulSetCleanupFenceResolution(t, failedRetry.tasks[0], "migration-1")
 			prependStatefulSetCleanupFenceAttempt(store, failedRetry, "migration-2")
 
-			successfulRetry, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+			successfulRetry, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 			successfulRetry.tasks[0].CreateTime = tt.times[2]
 			setStatefulSetCleanupFenceResolution(t, successfulRetry.tasks[0], "migration-1", "migration-2")
 			prependStatefulSetCleanupFenceAttempt(store, successfulRetry, "migration-3")
@@ -128,7 +138,7 @@ func TestStatefulSetCleanupFenceUsesExplicitCausalityInsteadOfCreateTime(t *test
 
 			require.NoError(t, EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1"))
 
-			independentFailure, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+			independentFailure, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 			independentFailure.tasks[0].CreateTime = tt.times[3]
 			prependStatefulSetCleanupFenceAttempt(store, independentFailure, "migration-4")
 			orderStatefulSetCleanupFenceTasks(t, store, "migration-1", "migration-2", "migration-3", "migration-4")
@@ -139,9 +149,9 @@ func TestStatefulSetCleanupFenceUsesExplicitCausalityInsteadOfCreateTime(t *test
 }
 
 func TestStatefulSetCleanupFenceDoesNotGuessLegacyRecoveryOrder(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 	store.tasks[0].CreateTime = time.Unix(200, 0)
-	legacySuccess, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+	legacySuccess, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 	legacySuccess.tasks[0].CreateTime = time.Unix(100, 0)
 	prependStatefulSetCleanupFenceAttempt(store, legacySuccess, "migration-2")
 
@@ -151,7 +161,7 @@ func TestStatefulSetCleanupFenceDoesNotGuessLegacyRecoveryOrder(t *testing.T) {
 }
 
 func TestStatefulSetCleanupFenceRejectsUnknownResolutionTask(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 	setStatefulSetCleanupFenceResolution(t, store.tasks[0], "missing")
 
 	err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -160,9 +170,9 @@ func TestStatefulSetCleanupFenceRejectsUnknownResolutionTask(t *testing.T) {
 }
 
 func TestStatefulSetCleanupFenceRejectsResolutionCycle(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 	setStatefulSetCleanupFenceResolution(t, store.tasks[0], "migration-2")
-	second, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+	second, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 	setStatefulSetCleanupFenceResolution(t, second.tasks[0], "migration-1")
 	prependStatefulSetCleanupFenceAttempt(store, second, "migration-2")
 
@@ -178,7 +188,7 @@ func TestStatefulSetCleanupFencePreservesResolutionCoverage(t *testing.T) {
 		secondResolver  bool
 		namespace       string
 		pvcTemplate     string
-		resolverVersion int
+		resolverVersion statefulSetCleanupKind
 		err             string
 	}{
 		{name: "normalized reference"},
@@ -186,17 +196,17 @@ func TestStatefulSetCleanupFencePreservesResolutionCoverage(t *testing.T) {
 		{name: "multiple successful resolvers", secondResolver: true, err: "resolved by both tasks"},
 		{name: "different resource identity", namespace: "other", err: "does not cover every referenced"},
 		{name: "different PVC template", pvcTemplate: "other", err: "does not cover every referenced"},
-		{name: "V2 cannot resolve V3", resolverVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, err: "does not cover every referenced"},
+		{name: "V2 cannot resolve V3", resolverVersion: statefulSetRecreation, err: "does not cover every referenced"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			targetStatus := config.StatusFailed
 			if tt.completedTarget {
 				targetStatus = config.StatusCompleted
 			}
-			store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, targetStatus)
+			store, _ := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, targetStatus)
 			version := tt.resolverVersion
 			if version == 0 {
-				version = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+				version = statefulSetPVCDeletion
 			}
 			resolver, _ := newStatefulSetCleanupFenceStore(t, version, config.StatusCompleted)
 			var info model.VersionUpdateCleanupInfo
@@ -255,7 +265,7 @@ func TestStatefulSetCleanupFenceDoesNotTrustPassedOrSkippedCleanup(t *testing.T)
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, tt.jobStatus)
+			store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, tt.jobStatus)
 			store.tasks[0].Status = tt.taskStatus
 
 			err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -278,7 +288,7 @@ func TestStatefulSetCleanupFenceBlocksTerminalTaskWithActiveCleanupJob(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, tt.jobStatus)
+			store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, tt.jobStatus)
 			store.tasks[0].Status = tt.taskStatus
 
 			err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -302,7 +312,7 @@ func TestStatefulSetCleanupFenceTreatsPreStartJobOnTerminalTaskAsPending(t *test
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, tt.jobStatus)
+			store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, tt.jobStatus)
 			store.tasks[0].Status = tt.taskStatus
 
 			err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -315,7 +325,7 @@ func TestStatefulSetCleanupFenceTreatsPreStartJobOnTerminalTaskAsPending(t *test
 }
 
 func TestStatefulSetCleanupFenceKeepsUnknownJobStatusInternal(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 	store.jobs[0].Status = "draining"
 
 	err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -327,7 +337,7 @@ func TestStatefulSetCleanupFenceKeepsUnknownJobStatusInternal(t *testing.T) {
 }
 
 func TestStatefulSetCleanupFenceRetainsTerminalTaskBeforeJobCreation(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 	store.jobs = nil
 
 	err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
@@ -336,7 +346,7 @@ func TestStatefulSetCleanupFenceRetainsTerminalTaskBeforeJobCreation(t *testing.
 }
 
 func TestStatefulSetCleanupFenceIgnoresOrdinaryCleanupJobsForSameComponent(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusCompleted)
 	store.jobs = append([]*model.JobInfo{
 		{
 			TaskID: "migration-1", AppID: "app-1", Type: string(config.JobCleanupResources),
@@ -358,8 +368,8 @@ func TestStatefulSetCleanupFenceIgnoresOrdinaryCleanupJobsForSameComponent(t *te
 }
 
 func TestStatefulSetCleanupFenceStrictlyValidatesExplicitMigrationMarker(t *testing.T) {
-	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusCompleted)
-	store.jobs[0].InternalInfo = `{"source":"version_update_remove","version":"invalid","requireStatefulSetDeletion":true}`
+	store, _ := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, config.StatusCompleted)
+	store.jobs[0].InternalInfo = `{"source":"version_update_remove","requireStatefulSetDeletion":"invalid"}`
 
 	err := EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
 
@@ -367,7 +377,7 @@ func TestStatefulSetCleanupFenceStrictlyValidatesExplicitMigrationMarker(t *test
 }
 
 func TestExecWorkflowTaskForAppAllowsCompletedStatefulSetCleanup(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusCompleted)
+	store, workflow := newStatefulSetCleanupFenceStore(t, statefulSetPVCDeletion, config.StatusCompleted)
 	svc := &workflowServiceImpl{
 		Store:          store,
 		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
@@ -396,7 +406,7 @@ func TestExecWorkflowTaskForAppUsesApplicationScheduleLock(t *testing.T) {
 }
 
 func TestDispatchWorkflowSchedulesSkipsPendingStatefulSetCleanup(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
+	store, workflow := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusFailed)
 	initialNextRun := time.Now().Add(-time.Minute).Unix()
 	store.schedules = []*model.WorkflowSchedule{{
 		ID:         "schedule-1",
@@ -439,7 +449,7 @@ func TestDispatchWorkflowSchedulesSkipsMixedV2V3PendingCleanup(t *testing.T) {
 }
 
 func TestDispatchWorkflowSchedulesSkipsCancellingStatefulSetCleanup(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusRunning)
+	store, workflow := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, config.StatusRunning)
 	store.tasks[0].Status = config.StatusCancelled
 	initialNextRun := time.Now().Add(-time.Minute).Unix()
 	store.schedules = []*model.WorkflowSchedule{{
@@ -457,7 +467,7 @@ func TestDispatchWorkflowSchedulesSkipsCancellingStatefulSetCleanup(t *testing.T
 	require.Greater(t, store.schedules[0].NextRun, initialNextRun)
 }
 
-func newStatefulSetCleanupFenceStore(t *testing.T, cleanupVersion int, cleanupStatus config.Status) (*enqueueWorkflowDataStore, *model.Workflow) {
+func newStatefulSetCleanupFenceStore(t *testing.T, cleanupVersion statefulSetCleanupKind, cleanupStatus config.Status) (*enqueueWorkflowDataStore, *model.Workflow) {
 	t.Helper()
 	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{Steps: []*model.WorkflowStep{{
 		Name:         "deploy-db",
@@ -482,14 +492,12 @@ func newStatefulSetCleanupFenceStore(t *testing.T, cleanupVersion int, cleanupSt
 		Source:                     config.JobInfoSourceVersionUpdateRemove,
 		RequireStatefulSetDeletion: true,
 	}
-	if cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+	if cleanupVersion == statefulSetPVCDeletion {
 		cleanupComponent.StatefulSetPVCTemplatesToDelete = []string{"data"}
-		marker.Version = cleanupVersion
 		marker.StatefulSetPVCTemplatesToDelete = []string{"data"}
 	}
 	cleanupInfoJSON, err := json.Marshal(model.VersionUpdateCleanupInfo{
 		Source:     config.JobInfoSourceVersionUpdateRemove,
-		Version:    cleanupVersion,
 		Components: []model.VersionUpdateCleanupComponent{cleanupComponent},
 	})
 	require.NoError(t, err)
@@ -519,10 +527,9 @@ func newMixedStatefulSetCleanupFenceStore(
 	v3Status config.Status,
 ) (*enqueueWorkflowDataStore, *model.Workflow) {
 	t.Helper()
-	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, v2Status)
+	store, workflow := newStatefulSetCleanupFenceStore(t, statefulSetRecreation, v2Status)
 	var cleanupInfo model.VersionUpdateCleanupInfo
 	require.NoError(t, json.Unmarshal([]byte(store.tasks[0].CleanupInfo), &cleanupInfo))
-	cleanupInfo.Version = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
 	cleanupInfo.Components = append(cleanupInfo.Components, model.VersionUpdateCleanupComponent{
 		Component: &model.ApplicationComponent{
 			ID: 2, AppID: workflow.AppID, Name: "cache", Namespace: "default", ResourceAppName: "shop",
@@ -541,7 +548,7 @@ func newMixedStatefulSetCleanupFenceStore(
 		store.tasks[0].Status = config.StatusFailed
 	}
 	v3MarkerJSON, err := json.Marshal(model.VersionUpdateCleanupJobMarker{
-		Source: config.JobInfoSourceVersionUpdateRemove, Version: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+		Source:                     config.JobInfoSourceVersionUpdateRemove,
 		RequireStatefulSetDeletion: true, StatefulSetPVCTemplatesToDelete: []string{"data"},
 	})
 	require.NoError(t, err)

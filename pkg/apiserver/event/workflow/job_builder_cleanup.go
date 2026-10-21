@@ -148,7 +148,7 @@ func loadPersistedCleanupJobInfos(ctx context.Context, task *model.WorkflowQueue
 		if record == nil {
 			return nil, fmt.Errorf("precreated cleanup job info not found for component %s", componentName)
 		}
-		if err := validatePersistedCleanupJobContract(cleanupInfo.Version, cleanupComponent, record); err != nil {
+		if err := validatePersistedCleanupJobContract(cleanupComponent, record); err != nil {
 			return nil, fmt.Errorf("validate cleanup component %s contract: %w", componentName, err)
 		}
 		componentCopy := *component
@@ -225,26 +225,12 @@ func versionUpdateCleanupInfoFromTask(task *model.WorkflowQueue) (model.VersionU
 	if raw == "" {
 		return model.VersionUpdateCleanupInfo{}, false, nil
 	}
-	var marker struct {
-		Source  string `json:"source"`
-		Version int    `json:"version"`
-	}
-	if err := json.Unmarshal([]byte(raw), &marker); err != nil {
-		return model.VersionUpdateCleanupInfo{}, true, err
-	}
-	if marker.Source != config.JobInfoSourceVersionUpdateRemove {
-		return model.VersionUpdateCleanupInfo{}, true, fmt.Errorf("unsupported cleanup info source %q", marker.Source)
-	}
-	switch marker.Version {
-	case model.VersionUpdateCleanupInfoVersionV1,
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion:
-	default:
-		return model.VersionUpdateCleanupInfo{}, true, fmt.Errorf("unsupported cleanup info version %d", marker.Version)
-	}
 	var cleanupInfo model.VersionUpdateCleanupInfo
 	if err := json.Unmarshal([]byte(raw), &cleanupInfo); err != nil {
 		return model.VersionUpdateCleanupInfo{}, true, err
+	}
+	if cleanupInfo.Source != config.JobInfoSourceVersionUpdateRemove {
+		return model.VersionUpdateCleanupInfo{}, true, fmt.Errorf("unsupported cleanup info source %q", cleanupInfo.Source)
 	}
 	if err := validateVersionUpdateCleanupInfo(cleanupInfo); err != nil {
 		return model.VersionUpdateCleanupInfo{}, true, err
@@ -253,36 +239,23 @@ func versionUpdateCleanupInfoFromTask(task *model.WorkflowQueue) (model.VersionU
 }
 
 func validateVersionUpdateCleanupInfo(cleanupInfo model.VersionUpdateCleanupInfo) error {
-	maxComponentVersion := model.VersionUpdateCleanupInfoVersionV1
 	for _, component := range cleanupInfo.Components {
-		templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
-		componentVersion := model.VersionUpdateCleanupInfoVersionV1
 		if component.RequireStatefulSetDeletion {
+			if cleanupInfo.CleanupOnly {
+				return fmt.Errorf("cleanup-only task cannot carry a StatefulSet deletion contract")
+			}
 			if component.Component == nil || component.Component.ComponentType != config.StoreJob {
 				return fmt.Errorf("cleanup StatefulSet deletion is only valid for store components")
 			}
-			componentVersion = model.VersionUpdateCleanupInfoVersionStatefulSetDeletion
 		}
-		if len(templates) > 0 {
-			if !component.RequireStatefulSetDeletion {
-				return fmt.Errorf("cleanup PVC deletion templates require StatefulSet deletion")
-			}
-			componentVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+		if len(model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)) > 0 && !component.RequireStatefulSetDeletion {
+			return fmt.Errorf("cleanup PVC deletion templates require StatefulSet deletion")
 		}
-		if componentVersion > maxComponentVersion {
-			maxComponentVersion = componentVersion
-		}
-	}
-	if cleanupInfo.Version != maxComponentVersion {
-		return fmt.Errorf("cleanup info version %d does not match maximum component contract version %d", cleanupInfo.Version, maxComponentVersion)
-	}
-	if cleanupInfo.CleanupOnly && cleanupInfo.Version >= model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-		return fmt.Errorf("cleanup-only task cannot carry StatefulSet deletion contract version %d", cleanupInfo.Version)
 	}
 	return nil
 }
 
-func validatePersistedCleanupJobContract(cleanupInfoVersion int, component model.VersionUpdateCleanupComponent, record *model.JobInfo) error {
+func validatePersistedCleanupJobContract(component model.VersionUpdateCleanupComponent, record *model.JobInfo) error {
 	if record == nil {
 		return fmt.Errorf("cleanup job info is nil")
 	}
@@ -297,18 +270,6 @@ func validatePersistedCleanupJobContract(cleanupInfoVersion int, component model
 	}
 	if marker.RequireStatefulSetDeletion != component.RequireStatefulSetDeletion {
 		return fmt.Errorf("cleanup job info StatefulSet deletion requirement does not match task cleanup info")
-	}
-	if len(expectedTemplates) == 0 {
-		if marker.Version != 0 {
-			return fmt.Errorf("cleanup job info version %d does not match non-PVC cleanup marker version 0", marker.Version)
-		}
-		return nil
-	}
-	if cleanupInfoVersion != model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion || marker.Version != cleanupInfoVersion {
-		return fmt.Errorf("cleanup job info version %d does not match task cleanup info version %d", marker.Version, cleanupInfoVersion)
-	}
-	if !marker.RequireStatefulSetDeletion || !component.RequireStatefulSetDeletion {
-		return fmt.Errorf("cleanup job info StatefulSet PVC deletion requires StatefulSet deletion")
 	}
 	return nil
 }

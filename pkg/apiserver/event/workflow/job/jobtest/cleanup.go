@@ -256,12 +256,10 @@ func VersionUpdateRequireStatefulSetPVCDeletionInternalInfo(t *testing.T, templa
 	t.Helper()
 	payload, err := json.Marshal(struct {
 		Source                          string   `json:"source"`
-		Version                         int      `json:"version"`
 		RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion"`
 		StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete"`
 	}{
 		Source:                          config.JobInfoSourceVersionUpdateRemove,
-		Version:                         model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
 		RequireStatefulSetDeletion:      true,
 		StatefulSetPVCTemplatesToDelete: templates,
 	})

@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -66,7 +65,7 @@ func TestUpdateVersionPendingStatefulSetPVCDeletionAllowsCoveredReplayWithAdditi
 	cleanupInfo := requireVersionUpdateCleanupInfoVersion(
 		t,
 		store.tasks[second.TaskID],
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+		statefulSetPVCDeletion,
 	)
 	require.Equal(t, []string{first.TaskID}, cleanupInfo.ResolvesTaskIDs)
 	cleanupComponent := requireVersionUpdateCleanupComponent(t, cleanupInfo, "mysql")

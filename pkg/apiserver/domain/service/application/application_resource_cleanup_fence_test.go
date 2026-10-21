@@ -24,28 +24,28 @@ import (
 func TestCleanupApplicationResourcesRejectsPendingStatefulSetCleanupWithoutSideEffects(t *testing.T) {
 	tests := []struct {
 		name           string
-		cleanupVersion int
+		cleanupVersion statefulSetCleanupKind
 		taskStatus     config.Status
 		jobStatus      config.Status
 		wantErr        error
 	}{
 		{
 			name:           "queued v2 migration",
-			cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+			cleanupVersion: statefulSetRecreation,
 			taskStatus:     config.StatusWaiting,
 			jobStatus:      config.StatusWaiting,
 			wantErr:        bcode.ErrWorkflowTaskRunning,
 		},
 		{
 			name:           "failed v2 migration",
-			cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+			cleanupVersion: statefulSetRecreation,
 			taskStatus:     config.StatusFailed,
 			jobStatus:      config.StatusFailed,
 			wantErr:        bcode.ErrApplicationConfig,
 		},
 		{
 			name:           "cancelled v3 migration",
-			cleanupVersion: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
+			cleanupVersion: statefulSetPVCDeletion,
 			taskStatus:     config.StatusCancelled,
 			jobStatus:      config.StatusCancelled,
 			wantErr:        bcode.ErrApplicationConfig,
@@ -143,7 +143,7 @@ func TestDeleteApplicationCascadeBypassesPendingCleanupWithoutNestedLock(t *test
 	task, cleanupJob := cleanupLifecyclePendingStatefulSetRecords(
 		t,
 		component,
-		model.VersionUpdateCleanupInfoVersionStatefulSetDeletion,
+		statefulSetRecreation,
 		config.StatusFailed,
 		config.StatusFailed,
 	)
@@ -175,7 +175,7 @@ func TestDeleteApplicationCascadeBypassesPendingCleanupWithoutNestedLock(t *test
 
 func newCleanupApplicationFenceFixture(
 	t *testing.T,
-	cleanupVersion int,
+	cleanupVersion statefulSetCleanupKind,
 	taskStatus config.Status,
 	jobStatus config.Status,
 ) (*inMemoryAppStore, *applicationsServiceImpl, *model.ApplicationComponent, *fake.Clientset) {
@@ -205,18 +205,17 @@ func newCleanupApplicationFenceFixture(
 func cleanupLifecyclePendingStatefulSetRecords(
 	t *testing.T,
 	component *model.ApplicationComponent,
-	cleanupVersion int,
+	cleanupVersion statefulSetCleanupKind,
 	taskStatus config.Status,
 	jobStatus config.Status,
 ) (*model.WorkflowQueue, *model.JobInfo) {
 	t.Helper()
 	templates := []string(nil)
-	if cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+	if cleanupVersion == statefulSetPVCDeletion {
 		templates = []string{"data"}
 	}
 	cleanupInfo := model.VersionUpdateCleanupInfo{
-		Source:  config.JobInfoSourceVersionUpdateRemove,
-		Version: cleanupVersion,
+		Source: config.JobInfoSourceVersionUpdateRemove,
 		Components: []model.VersionUpdateCleanupComponent{{
 			Component:                       component,
 			ResourceAppName:                 component.ResourceAppName,

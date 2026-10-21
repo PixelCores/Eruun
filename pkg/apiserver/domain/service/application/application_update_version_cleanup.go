@@ -68,7 +68,6 @@ func buildVersionUpdateCleanupInfo(
 	}
 	return &model.VersionUpdateCleanupInfo{
 		Source:     config.JobInfoSourceVersionUpdateRemove,
-		Version:    model.VersionUpdateCleanupInfoVersionV1,
 		Components: components,
 	}, nil
 }
@@ -84,7 +83,6 @@ func buildVersionUpdateFullCleanupInfo(
 		return nil, fmt.Errorf("cleanup insert step index is negative")
 	}
 	components := make([]model.VersionUpdateCleanupComponent, 0, len(componentMap))
-	cleanupInfoVersion := model.VersionUpdateCleanupInfoVersionV1
 	updateSpecs, err := versionUpdateComponentUpdateSpecsByName(specs)
 	if err != nil {
 		return nil, err
@@ -129,16 +127,10 @@ func buildVersionUpdateFullCleanupInfo(
 			}
 		}
 		if requireStatefulSetDeletion {
-			if cleanupInfoVersion < model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-				cleanupInfoVersion = model.VersionUpdateCleanupInfoVersionStatefulSetDeletion
-			}
 			if update, exists := updateSpecs[strings.ToLower(strings.TrimSpace(comp.Name))]; exists {
 				statefulSetPVCTemplatesToDelete, err = versionUpdateStatefulSetPVCTemplatesToDelete(comp, update)
 				if err != nil {
 					return nil, fmt.Errorf("build cleanup component %s StatefulSet PVC plan: %w", comp.Name, err)
-				}
-				if len(statefulSetPVCTemplatesToDelete) > 0 {
-					cleanupInfoVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
 				}
 			}
 		}
@@ -155,7 +147,6 @@ func buildVersionUpdateFullCleanupInfo(
 	}
 	return &model.VersionUpdateCleanupInfo{
 		Source:      config.JobInfoSourceVersionUpdateRemove,
-		Version:     cleanupInfoVersion,
 		CleanupOnly: cleanupOnly,
 		Components:  components,
 	}, nil
@@ -429,13 +420,8 @@ func recordVersionUpdateCleanupJobs(
 }
 
 func versionUpdateCleanupJobInfoMarker(requireStatefulSetDeletion bool, statefulSetPVCTemplatesToDelete []string) (string, error) {
-	markerVersion := 0
-	if len(statefulSetPVCTemplatesToDelete) > 0 {
-		markerVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
-	}
 	payload, err := json.Marshal(model.VersionUpdateCleanupJobMarker{
 		Source:                          config.JobInfoSourceVersionUpdateRemove,
-		Version:                         markerVersion,
 		RequireStatefulSetDeletion:      requireStatefulSetDeletion,
 		StatefulSetPVCTemplatesToDelete: model.NormalizeVersionUpdateCleanupPVCTemplateNames(statefulSetPVCTemplatesToDelete),
 	})

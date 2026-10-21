@@ -465,23 +465,6 @@ func TestCleanupResourcesJobCtlRechecksProtectedPodsBeforePVCDeletion(t *testing
 	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 }
 
-func TestCleanupResourcesJobCtlRejectsUnversionedStatefulSetPVCDeletionMarker(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
-	}
-	job := &model.JobTask{
-		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
-		InternalInfo: `{"source":"` + config.JobInfoSourceVersionUpdateRemove + `","requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["data"]}`,
-	}
-	ctl := NewCleanupResourcesJobCtl(job, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Ack: nil})
-	require.NotNil(t, ctl)
-
-	err := ctl.ensureRequiredStatefulSetDeletionAllowed(context.Background(), component)
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "marker is missing version")
-}
-
 func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t *testing.T) {
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,

@@ -914,7 +914,7 @@ func Cancel(ctx context.Context, taskID, reason string) error {
 - 若历史 cleanup v2/v3 仍有未完成的 StatefulSet 删除或 PVC 迁移，普通直接执行、定时调度、数据库重置、既有应用刷新和公共资源清理会被部署栅栏阻止；只能通过 `/version` 的显式全量重建恢复契约继续。级联删除整个应用是显式终止操作，它在同一锁内取消活跃任务后有意跳过该恢复栅栏
 - 已提前创建且 `executeAt > 0` 的普通延迟任务在到点从 `waiting` 进入 `queued` 前，会在同一应用锁内再次检查部署栅栏；cleanup v2/v3 迁移/恢复任务自身豁免，立即任务不新增分发阶段的锁依赖
 - cleanup v2/v3 只有在对应 `cleanup_resources` JobInfo 与整体 WorkflowQueue task 都为 `completed` 时才解除栅栏；cleanup 已完成但后续部署失败，或 Job/Workflow 为 `passed`、`skipped` 及其他失败终态，都会继续视为 pending。恢复 task 通过持久化的 `resolvesTaskIDs` 显式引用待消解 task，并且必须完整覆盖其组件、资源身份和 VCT 计划；栅栏不依赖 API 实例本地 `create_time` 或查询返回顺序，缺失、循环或覆盖不完整的引用都会 fail-closed
-- 直接执行 API 的应用锁冲突返回 `HTTP 409 / code 10031`，锁后端不可用返回 `HTTP 503 / code 10032`；命中 pending v2/v3 栅栏返回 `HTTP 400 / code 10000` 并提示先通过版本更新 API 恢复。既有活跃/取消收敛任务仍分别返回 `HTTP 409 / code 20007` 与 `20008`
+- 直接执行 API 的应用锁冲突返回 `HTTP 409 / code 10031`，锁后端不可用返回 `HTTP 503 / code 10032`；命中 pending StatefulSet 迁移栅栏返回 `HTTP 400 / code 10000` 并提示先通过版本更新 API 恢复。既有活跃/取消收敛任务仍分别返回 `HTTP 409 / code 20007` 与 `20008`
 
 ### 6.2 固定队列执行要求
 

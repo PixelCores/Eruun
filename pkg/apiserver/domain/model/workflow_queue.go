@@ -11,12 +11,6 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-const (
-	VersionUpdateCleanupInfoVersionV1                     = 1
-	VersionUpdateCleanupInfoVersionStatefulSetDeletion    = 2
-	VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion = 3
-)
-
 // WorkflowQueue is a durable execution instance, including standalone workspace
 // Jobs. Workflow and JobDefinition hold reusable definitions; message queues dispatch this
 // record. Status writes still require the repository's transaction and ownership guards.
@@ -75,7 +69,6 @@ func IsWorkflowActiveStatus(status config.Status) bool {
 
 type VersionUpdateCleanupInfo struct {
 	Source      string `json:"source"`
-	Version     int    `json:"version"`
 	CleanupOnly bool   `json:"cleanupOnly,omitempty"`
 	// ResolvesTaskIDs records the exact unfinished migration attempts that this
 	// task may resolve, but only after both its cleanup jobs and workflow succeed.
@@ -84,11 +77,9 @@ type VersionUpdateCleanupInfo struct {
 }
 
 // VersionUpdateCleanupJobMarker is the persisted JobInfo.InternalInfo contract.
-// Keep omitted zero fields for existing cleanup records; a v2 task still uses
-// marker version 0, while PVC deletion uses marker version 3.
+// PVC templates are only valid together with StatefulSet deletion.
 type VersionUpdateCleanupJobMarker struct {
 	Source                          string   `json:"source"`
-	Version                         int      `json:"version,omitempty"`
 	RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion,omitempty"`
 	StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete,omitempty"`
 }
