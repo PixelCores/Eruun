@@ -661,7 +661,7 @@ func (c *applicationsServiceImpl) prepareApplicationComponentForRead(component *
 	if copied == nil {
 		return nil, nil, nil
 	}
-	if shouldCorrectPendingStatus(copied) || shouldCorrectUpdatingStatus(copied) || shouldCorrectDeployingStatus(copied) {
+	if shouldReadAsRunning(copied) {
 		copied.Status = string(config.ComponentStatusRunning)
 		copied.LastAbnormal = ""
 		klog.V(4).Infof("component %s status corrected for read path: %s -> %s", copied.Name, component.Status, copied.Status)
@@ -690,61 +690,18 @@ func buildCachedApplicationComponent(original, prepared *model.ApplicationCompon
 	return cached
 }
 
-func shouldCorrectPendingStatus(component *model.ApplicationComponent) bool {
-	if component == nil {
+// shouldReadAsRunning reports an in-progress status whose Pods are already
+// all ready. The read path shows it as Running without rewriting MySQL.
+func shouldReadAsRunning(component *model.ApplicationComponent) bool {
+	if component == nil || component.Replicas <= 0 || component.ReadyReplicas < component.Replicas || !componentUsesPods(component.ComponentType) {
 		return false
 	}
-	if component.Status != string(config.ComponentStatusPending) {
+	switch config.ComponentStatus(component.Status) {
+	case config.ComponentStatusPending, config.ComponentStatusUpdating, config.ComponentStatusDeploying:
+		return true
+	default:
 		return false
 	}
-	if component.Replicas <= 0 {
-		return false
-	}
-	if component.ReadyReplicas < component.Replicas {
-		return false
-	}
-	if !componentUsesPods(component.ComponentType) {
-		return false
-	}
-	return true
-}
-
-func shouldCorrectUpdatingStatus(component *model.ApplicationComponent) bool {
-	if component == nil {
-		return false
-	}
-	if component.Status != string(config.ComponentStatusUpdating) {
-		return false
-	}
-	if component.Replicas <= 0 {
-		return false
-	}
-	if component.ReadyReplicas < component.Replicas {
-		return false
-	}
-	if !componentUsesPods(component.ComponentType) {
-		return false
-	}
-	return true
-}
-
-func shouldCorrectDeployingStatus(component *model.ApplicationComponent) bool {
-	if component == nil {
-		return false
-	}
-	if component.Status != string(config.ComponentStatusDeploying) {
-		return false
-	}
-	if component.Replicas <= 0 {
-		return false
-	}
-	if component.ReadyReplicas < component.Replicas {
-		return false
-	}
-	if !componentUsesPods(component.ComponentType) {
-		return false
-	}
-	return true
 }
 
 func (c *applicationsServiceImpl) ListApplicationTasks(ctx context.Context, appID string) ([]*model.WorkflowQueue, error) {
