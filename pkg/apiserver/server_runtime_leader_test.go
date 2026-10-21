@@ -27,7 +27,7 @@ func TestRuntimeLeaderElectionUsesOneLease(t *testing.T) {
 
 func TestPromotionPreservesRunningExecutionAndDemotionResumesIntake(t *testing.T) {
 	worker := &contextTrackingServerWorker{contexts: make(chan testWorkerContexts, 2), waitForExecution: true}
-	s := &restServer{cfg: *config.NewConfig(), workflow: worker}
+	s := &restServer{cfg: *config.NewConfig(), workflow: worker, Queue: &testServerQueue{}}
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s.startWorkers(runtimeCtx)

@@ -36,7 +36,7 @@ func IsCancelledJobCleanupPending(record *model.JobInfo) bool {
 // cleanup intents so a bad record cannot hide newer work.
 func CleanupRecoveredCancelledJobsPage(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, page, pageSize int) (int, int, error) {
 	if client == nil || store == nil {
-		return 0, 0, nil
+		return 0, 0, fmt.Errorf("cleanup recovered cancelled jobs: Kubernetes client and datastore are required")
 	}
 	if page <= 0 {
 		page = 1

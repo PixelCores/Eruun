@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
@@ -205,6 +206,7 @@ func newMockServiceWithStore(store *inMemoryAppStore) *applicationsServiceImpl {
 		ComponentRepo:             &mockComponentRepo{store: store},
 		URLSecurityPolicyProvider: urlpolicy.NewProvider(store, 0),
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:                k8sfake.NewSimpleClientset(),
 	}
 }
 

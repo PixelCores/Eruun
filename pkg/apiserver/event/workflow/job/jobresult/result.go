@@ -412,7 +412,10 @@ func decodeResultPayload(raw []byte) (*JobResultPayload, error) {
 }
 
 func (d *ResultDispatcher) ackMessage(ctx context.Context, msgID, reason string) error {
-	if d == nil || d.queue == nil || msgID == "" {
+	if d.queue == nil {
+		return fmt.Errorf("result dispatcher queue is not configured")
+	}
+	if msgID == "" {
 		return nil
 	}
 	if err := d.queue.Ack(ctx, d.Group, msgID); err != nil {

@@ -707,7 +707,7 @@ func jobStatusFailed(status config.Status) bool {
 
 func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobTask, store datastore.DataStore, runtime *jobexec.Runtime) error {
 	if jobCtl == nil || job == nil || store == nil {
-		return nil
+		return fmt.Errorf("persist terminal job state: job controller, job and datastore are required")
 	}
 	if suppressTerminalJobPersistence(ctx) {
 		klog.FromContext(ctx).Info("Skip terminal job persistence after infrastructure stop", "jobName", job.Name, "jobType", job.JobType)

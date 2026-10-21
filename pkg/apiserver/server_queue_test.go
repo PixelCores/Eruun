@@ -156,10 +156,9 @@ func (l *testLeaderElectionLock) Identity() string { return l.identity }
 func (l *testLeaderElectionLock) Describe() string { return "test-lock" }
 
 func TestEnsureQueueGroup(t *testing.T) {
-	t.Run("skip when queue is nil", func(t *testing.T) {
+	t.Run("reject missing queue", func(t *testing.T) {
 		server := &restServer{}
-		require.NoError(t, server.ensureQueueGroup(context.Background()))
-		require.EqualValues(t, 0, server.ensureQueueGroupFailures.Load())
+		require.ErrorContains(t, server.ensureQueueGroup(context.Background()), "queue is not configured")
 	})
 
 	t.Run("propagate ensure group error", func(t *testing.T) {
@@ -525,7 +524,7 @@ func TestOnStartedSchedulerLeadingReturnsStartupResult(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			worker := &schedulerStartupTestWorker{entered: make(chan func(), 1), finish: make(chan struct{})}
-			server := &restServer{workflow: worker}
+			server := &restServer{workflow: worker, Queue: &testServerQueue{}}
 			t.Cleanup(func() { cancel(); server.stopSchedulerRun() })
 			result := make(chan bool, 1)
 			go func() { result <- server.onStartedSchedulerLeading(ctx, nil) }()

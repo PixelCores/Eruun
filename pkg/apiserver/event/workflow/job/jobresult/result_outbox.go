@@ -327,7 +327,10 @@ func CreateJobResultOutbox(ctx context.Context, store datastore.DataStore, paylo
 }
 
 func deleteJobResultOutbox(ctx context.Context, store datastore.DataStore, id string) error {
-	if store == nil || strings.TrimSpace(id) == "" {
+	if store == nil {
+		return fmt.Errorf("delete job result outbox: datastore is nil")
+	}
+	if strings.TrimSpace(id) == "" {
 		return nil
 	}
 	err := store.Delete(ctx, &model.JobResultOutbox{ID: strings.TrimSpace(id)})

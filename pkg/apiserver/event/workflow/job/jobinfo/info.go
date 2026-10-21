@@ -474,7 +474,10 @@ func ValidateVersionUpdateCleanupInternalInfo(raw string, component *model.Appli
 }
 
 func LoadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobType, serviceName string) ([]*model.JobInfo, error) {
-	if store == nil || strings.TrimSpace(taskID) == "" {
+	if store == nil {
+		return nil, fmt.Errorf("load job infos: datastore is nil")
+	}
+	if strings.TrimSpace(taskID) == "" {
 		return nil, nil
 	}
 	query := &model.JobInfo{TaskID: strings.TrimSpace(taskID)}

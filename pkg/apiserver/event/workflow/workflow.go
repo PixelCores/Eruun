@@ -728,7 +728,7 @@ func (w *Workflow) reportTaskError(err error) {
 }
 
 func (w *Workflow) markTaskRunStartFailure(ctx context.Context, task *model.WorkflowQueue, runErr error) {
-	if task == nil || w == nil || w.Store == nil {
+	if task == nil {
 		return
 	}
 	expectedStatus := task.Status

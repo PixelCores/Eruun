@@ -225,7 +225,7 @@ func reportWorkerStartupError(ctx context.Context, errChan chan error, err error
 
 func (s *restServer) ensureQueueGroup(ctx context.Context) error {
 	if s.Queue == nil {
-		return nil
+		return fmt.Errorf("workflow queue is not configured")
 	}
 	if err := s.Queue.EnsureGroup(ctx, config.WorkflowWorkerQueueGroup); err != nil {
 		if (ctx != nil && ctx.Err() != nil) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -369,9 +369,6 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 }
 
 func (s *restServer) runQueueMetrics(ctx context.Context) {
-	if s.Queue == nil {
-		return
-	}
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
 	for {
@@ -379,9 +376,6 @@ func (s *restServer) runQueueMetrics(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if s.Queue == nil {
-				continue
-			}
 			if bl, pd, err := s.Queue.Stats(ctx, config.WorkflowWorkerQueueGroup); err == nil {
 				klog.Infof("queue stats stream=%s backlog=%d pending=%d", s.dispatchTopic(), bl, pd)
 			} else {
