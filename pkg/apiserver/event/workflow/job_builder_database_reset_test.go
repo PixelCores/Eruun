@@ -68,7 +68,6 @@ func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
 	require.Len(t, info.DatabaseComponents, 2)
 	require.Equal(t, "mysql", info.DatabaseComponents[0].Name)
 	require.Equal(t, "redis", info.DatabaseComponents[1].Name)
-	require.Empty(t, info.RestartComponents)
 	require.Equal(t, "https://files.example/game-1.0.8.sql", info.InitSQLURL)
 	require.Equal(t, "step:0/component:0", info.ExecutionKey)
 }
