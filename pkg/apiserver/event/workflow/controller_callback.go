@@ -31,9 +31,6 @@ func (w *WorkflowCtl) triggerWorkflowCallbackOnce(ctx context.Context, status co
 }
 
 func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config.Status, reason string) {
-	if w == nil || w.Store == nil {
-		return
-	}
 	if !isWorkflowTerminal(status) {
 		return
 	}

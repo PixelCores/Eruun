@@ -39,8 +39,7 @@ func TestResultDispatcherHelperBranches(t *testing.T) {
 	require.Equal(t, 2*time.Second, dispatcher.backoffDelay(0))
 	require.Equal(t, 4*time.Second, dispatcher.backoffDelay(4*time.Second))
 
-	var nilDispatcher *ResultDispatcher
-	require.NoError(t, nilDispatcher.ackMessage(context.Background(), "id-1", "reason"))
+	require.ErrorContains(t, (&ResultDispatcher{}).ackMessage(context.Background(), "id-1", "reason"), "queue is not configured")
 
 	queue := &jobtest.DispatcherAckQueue{AckErr: errors.New("ack failed")}
 	dispatcher.queue = queue

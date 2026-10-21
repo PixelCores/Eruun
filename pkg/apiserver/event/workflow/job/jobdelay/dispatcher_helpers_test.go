@@ -110,8 +110,7 @@ func TestDelayDispatcherRunReleasesItemWaitingOnTimer(t *testing.T) {
 }
 
 func TestDelayDispatcherAckAndDecodePayload(t *testing.T) {
-	var nilDispatcher *DelayDispatcher
-	require.NoError(t, nilDispatcher.ackMessage(context.Background(), "id-1", "reason"))
+	require.ErrorContains(t, (&DelayDispatcher{}).ackMessage(context.Background(), "id-1", "reason"), "queue is not configured")
 
 	queue := &jobtest.DispatcherAckQueue{AckErr: errors.New("ack failed")}
 	dispatcher := &DelayDispatcher{

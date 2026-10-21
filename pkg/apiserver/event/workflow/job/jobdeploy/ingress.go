@@ -130,8 +130,8 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployIngressJobCtl) findReusableIngressName(ctx context.Context, desired *networkingv1.Ingress) (string, error) {
-	if c == nil || c.Client == nil || desired == nil {
-		return "", nil
+	if c.Client == nil || desired == nil {
+		return "", fmt.Errorf("find reusable ingress: Kubernetes client and desired ingress are required")
 	}
 	ns := strings.TrimSpace(desired.Namespace)
 	if ns == "" {

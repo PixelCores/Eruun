@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,7 +17,10 @@ import (
 // that were persisted before execution when their workflow exits before running them.
 func TerminalizePrecreatedVersionUpdateCleanupJobs(ctx context.Context, store datastore.DataStore, taskID string, targetStatus config.Status, reason string) error {
 	taskID = strings.TrimSpace(taskID)
-	if taskID == "" || store == nil {
+	if store == nil {
+		return fmt.Errorf("terminalize precreated cleanup jobs: datastore is nil")
+	}
+	if taskID == "" {
 		return nil
 	}
 	targetStatus = config.Status(strings.TrimSpace(string(targetStatus)))

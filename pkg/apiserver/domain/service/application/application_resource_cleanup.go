@@ -387,7 +387,7 @@ func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.C
 }
 
 func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
-	if component == nil || reporter == nil || c.KubeClient == nil {
+	if component == nil || reporter == nil {
 		return
 	}
 	ns := pickNamespace(component.Namespace, config.DefaultNamespace)
@@ -420,7 +420,7 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 }
 
 func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
-	if component == nil || reporter == nil || c.KubeClient == nil {
+	if component == nil || reporter == nil {
 		return
 	}
 	ns := pickNamespace(component.Namespace, config.DefaultNamespace)

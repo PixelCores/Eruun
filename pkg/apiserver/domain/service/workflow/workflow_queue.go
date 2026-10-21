@@ -156,7 +156,10 @@ func newWorkflowQueueTask(workflow *model.Workflow, executeAt int64) *model.Work
 
 func EnsureAppWorkflowIdle(ctx context.Context, store datastore.DataStore, appID string) error {
 	appID = strings.TrimSpace(appID)
-	if appID == "" || store == nil {
+	if store == nil {
+		return fmt.Errorf("check application workflow idle: datastore is nil")
+	}
+	if appID == "" {
 		return nil
 	}
 	tasks, err := repository.FindWorkflowTasksByAppID(ctx, store, appID)
@@ -217,7 +220,10 @@ func NormalizeExecuteAt(executeAt int64) (int64, error) {
 
 func taskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
 	taskID = strings.TrimSpace(taskID)
-	if taskID == "" || store == nil {
+	if store == nil {
+		return false, fmt.Errorf("check active jobs: datastore is nil")
+	}
+	if taskID == "" {
 		return false, nil
 	}
 	entities, err := store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{})

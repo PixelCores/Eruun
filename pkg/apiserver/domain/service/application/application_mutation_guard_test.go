@@ -73,6 +73,7 @@ func TestApplicationMutationValidationOrder(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "shop"}
 	svc := newMockServiceWithStore(store)
+	svc.KubeClient = nil
 
 	_, err := svc.StopApplicationDeployments(context.Background(), " app-1 ", apisv1.ApplicationLifecycleRequest{})
 	require.EqualError(t, err, "kube client is nil")

@@ -486,7 +486,10 @@ func (d *DelayDispatcher) itemKey(item *delayItem) string {
 }
 
 func (d *DelayDispatcher) ackMessage(ctx context.Context, msgID, reason string) error {
-	if d == nil || d.queue == nil || msgID == "" {
+	if d.queue == nil {
+		return fmt.Errorf("delay dispatcher queue is not configured")
+	}
+	if msgID == "" {
 		return nil
 	}
 	if err := d.queue.Ack(ctx, d.group, msgID); err != nil {
@@ -865,8 +868,11 @@ func (d *DelayDispatcher) delayedExecutionCommitted(ctx context.Context, payload
 }
 
 func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, payload *jobinfo.DelayJobPayload) error {
-	if d == nil || d.store == nil || payload == nil {
+	if payload == nil {
 		return nil
+	}
+	if d.store == nil {
+		return fmt.Errorf("mark delayed checkpoint dispatched: datastore is nil")
 	}
 	record, err := d.findDelayCheckpoint(ctx, payload)
 	if err != nil {
@@ -905,8 +911,11 @@ func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, pay
 }
 
 func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *jobinfo.DelayJobPayload) (*model.JobInfo, error) {
-	if d == nil || d.store == nil || payload == nil {
+	if payload == nil {
 		return nil, nil
+	}
+	if d.store == nil {
+		return nil, fmt.Errorf("find delayed checkpoint: datastore is nil")
 	}
 	records, err := jobinfo.LoadJobInfos(
 		ctx,

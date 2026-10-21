@@ -81,6 +81,9 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 	if cfg == nil {
 		return nil, fmt.Errorf("server config is required")
 	}
+	if store == nil {
+		return nil, fmt.Errorf("datastore is required")
+	}
 	ctl := &WorkflowCtl{
 		workflowTask:             workflowTask,
 		runtimeConfig:            cfg,
@@ -232,9 +235,6 @@ func workflowTaskPersistenceFieldsEqual(left, right *model.WorkflowQueue) bool {
 
 func (w *WorkflowCtl) terminalizePrecreatedVersionUpdateCleanupJobs(ctx context.Context, taskID string, status config.Status, reason string) {
 	if !shouldTerminalizeSkippedCleanupForWorkflowStatus(status) {
-		return
-	}
-	if w == nil || w.Store == nil {
 		return
 	}
 	if err := workflowservice.TerminalizePrecreatedVersionUpdateCleanupJobs(ctx, w.Store, taskID, status, reason); err != nil {

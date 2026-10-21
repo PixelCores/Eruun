@@ -107,7 +107,7 @@ func TestRuntimeElectionFailoverWithRealElector(t *testing.T) {
 		cfg := config.NewConfig()
 		cfg.LeaderConfig.ID = identity
 		workers[i] = &testServerWorker{}
-		servers[i] = &restServer{cfg: *cfg, workflow: workers[i]}
+		servers[i] = &restServer{cfg: *cfg, workflow: workers[i], Queue: &testServerQueue{}}
 		locks[i] = &electionLeaseClient{state: shared, identity: identity}
 		done[i] = make(chan struct{})
 		servers[i].startWorkers(ctx)

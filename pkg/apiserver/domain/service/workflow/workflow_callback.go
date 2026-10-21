@@ -46,8 +46,8 @@ func TriggerWorkflowTerminalCallbackAsync(ctx context.Context, store datastore.D
 }
 
 func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ctx context.Context, task *model.WorkflowQueue, status config.Status, reason string) error {
-	if w == nil || w.Store == nil || task == nil {
-		return nil
+	if w.Store == nil || task == nil {
+		return fmt.Errorf("trigger terminal callback: datastore and task are required")
 	}
 	callback, err := w.loadWorkflowTerminalCallback(ctx, task)
 	if err != nil || callback == nil {
