@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestGenerateWebService_UsesCommand(t *testing.T) {
@@ -36,7 +35,7 @@ func TestGenerateWebService_UsesCommand(t *testing.T) {
 		Command: []string{"sh", "-c", "echo ok"},
 	}
 
-	result, err := GenerateWebService(component, &properties, workflowtraits.Profiles{})
+	result, err := GenerateWebService(component, &properties, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +82,7 @@ func TestGenerateWebService_AppliesRolloutTrait(t *testing.T) {
 		Traits:    traitsJSON,
 	}
 
-	result, err := GenerateWebService(component, &model.Properties{}, workflowtraits.Profiles{})
+	result, err := GenerateWebService(component, &model.Properties{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +112,7 @@ func TestGenerateWebService_BoundsNameAndUsesStableSelector(t *testing.T) {
 		},
 	}
 
-	result, err := GenerateWebService(component, properties, workflowtraits.Profiles{})
+	result, err := GenerateWebService(component, properties, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

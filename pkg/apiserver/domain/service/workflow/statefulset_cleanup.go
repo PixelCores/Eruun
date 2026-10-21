@@ -450,7 +450,7 @@ func statefulSetCleanupIdentity(cleanupComponent model.VersionUpdateCleanupCompo
 // RenderComponentStatefulSet renders the StatefulSet a store component deploys.
 func RenderComponentStatefulSet(component *model.ApplicationComponent) (*appsv1.StatefulSet, error) {
 	snapshot := *component
-	result, err := jobdeploy.GenerateStoreService(&snapshot, workflowtraits.IdentityProfiles(&snapshot))
+	result, err := jobdeploy.GenerateStoreService(&snapshot, workflowtraits.IdentityNodePool(&snapshot))
 	if err != nil {
 		return nil, fmt.Errorf("%w: render StatefulSet for component %s: %w", bcode.ErrApplicationConfig, component.Name, err)
 	}

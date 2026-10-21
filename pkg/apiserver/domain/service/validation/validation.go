@@ -133,7 +133,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				effectiveReq.Components[i] = comp
 			}
 			errors = append(errors, applicationservice.ValidateComponent(comp, fieldPrefix, componentNames)...)
-			errors = append(errors, traitvalidation.ValidateProfiles(ctx, v.NodePoolRepo, comp.Traits, fieldPrefix+".traits")...)
+			errors = append(errors, traitvalidation.ValidateNodePoolRef(ctx, v.NodePoolRepo, comp.Traits, fieldPrefix+".traits")...)
 		}
 	}
 

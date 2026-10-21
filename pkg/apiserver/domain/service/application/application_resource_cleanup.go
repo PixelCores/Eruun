@@ -281,7 +281,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		result, err := jobdeploy.GenerateWebService(componentPtr, &props, workflowtraits.IdentityProfiles(componentPtr))
+		result, err := jobdeploy.GenerateWebService(componentPtr, &props, workflowtraits.IdentityNodePool(componentPtr))
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		}
 		reporter.record("Deployment", deployNS, deployName, false, c.deleteDeployment(ctx, deployNS, deployName))
 	case config.StoreJob:
-		result, err := jobdeploy.GenerateStoreService(componentPtr, workflowtraits.IdentityProfiles(componentPtr))
+		result, err := jobdeploy.GenerateStoreService(componentPtr, workflowtraits.IdentityNodePool(componentPtr))
 		if err != nil {
 			return err
 		}
@@ -327,7 +327,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			c.deleteEvaluationJobsForComponent(ctx, componentPtr, reporter)
 			break
 		}
-		result, err := jobdeploy.GenerateInstantJob(componentPtr, &props, props.RunPolicy, workflowtraits.IdentityProfiles(componentPtr))
+		result, err := jobdeploy.GenerateInstantJob(componentPtr, &props, props.RunPolicy, workflowtraits.IdentityNodePool(componentPtr))
 		if err != nil {
 			return err
 		}
@@ -597,7 +597,7 @@ func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Con
 		if err != nil {
 			klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
 		}
-		result, err := jobdeploy.GenerateScheduledCronJob(component, props, normalized, workflowtraits.IdentityProfiles(component))
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, normalized, workflowtraits.IdentityNodePool(component))
 		if err != nil {
 			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), false, err)
 			return

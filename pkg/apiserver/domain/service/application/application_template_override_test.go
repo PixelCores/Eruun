@@ -796,7 +796,7 @@ func TestCreateApplicationsFromTemplateOverridesResources(t *testing.T) {
 	}
 }
 
-func TestCreateApplicationsFromTemplateReplacesProfiles(t *testing.T) {
+func TestCreateApplicationsFromTemplateReplacesNodePool(t *testing.T) {
 	store := newInMemoryAppStore()
 	templateApp := &model.Applications{ID: "tmpl-target-work-env", Name: "mysql", TemplateEnabled: true}
 	store.apps[templateApp.ID] = templateApp

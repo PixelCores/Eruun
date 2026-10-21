@@ -231,7 +231,7 @@ func (c *applicationsServiceImpl) createApplications(
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateComponentProfiles(ctx, resolvedComponents); err != nil {
+	if err := c.validateComponentNodePools(ctx, resolvedComponents); err != nil {
 		return nil, err
 	}
 	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, application, resolvedComponents); err != nil {
@@ -992,9 +992,9 @@ func (c *applicationsServiceImpl) resolveWorkflowUpdateTarget(ctx context.Contex
 	return target, targetName, nil
 }
 
-func (c *applicationsServiceImpl) validateComponentProfiles(ctx context.Context, components []apisv1.CreateComponentRequest) error {
+func (c *applicationsServiceImpl) validateComponentNodePools(ctx context.Context, components []apisv1.CreateComponentRequest) error {
 	for i, component := range components {
-		errors := traitvalidation.ValidateProfiles(ctx, c.NodePoolRepo, component.Traits, fmt.Sprintf("component[%d].traits", i))
+		errors := traitvalidation.ValidateNodePoolRef(ctx, c.NodePoolRepo, component.Traits, fmt.Sprintf("component[%d].traits", i))
 		if len(errors) > 0 {
 			return fmt.Errorf("%w: %s: %s", bcode.ErrApplicationConfig, errors[0].Field, errors[0].Message)
 		}

@@ -7,7 +7,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
-	traitprocessors "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
@@ -19,7 +18,7 @@ func TestBuildCommandJobUsesReferencesWithoutApplication(t *testing.T) {
 			{Name: "TOKEN", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "credentials", Key: "token"}}}},
 		EnvFrom: []spec.EnvFromSourceSpec{{Type: "config", SourceName: "settings"}},
 		Storage: []spec.StorageTraitSpec{{Name: "input", Type: "persistent", ClaimName: "uploaded-input", MountPath: "/input", ReadOnly: true}}}
-	job, err := buildCommandJob("command-task-1", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"echo"}, Args: []string{"hello"}, TimeoutSeconds: 60}, traits, traitprocessors.Profiles{})
+	job, err := buildCommandJob("command-task-1", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"echo"}, Args: []string{"hello"}, TimeoutSeconds: 60}, traits, nil)
 	require.NoError(t, err)
 	require.Equal(t, "space", job.Namespace)
 	require.Empty(t, job.Labels[spec.LabelAppID])
@@ -50,7 +49,7 @@ func TestBuildCommandJobAppliesNestedComponentTraits(t *testing.T) {
 		Sidecar: []spec.SidecarTraitsSpec{{Name: "observe", Image: "busybox:1.37.0", Command: []string{"true"},
 			Traits: spec.Traits{Resources: &spec.ResourceTraitsSpec{CPU: "100m", Memory: "32Mi"}}}},
 	}
-	job, err := buildCommandJob("command-task", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"true"}, TimeoutSeconds: 60}, traits, traitprocessors.Profiles{NodePool: &model.NodePool{Name: "batch", NodeSelector: map[string]string{"pool": "batch"}}})
+	job, err := buildCommandJob("command-task", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"true"}, TimeoutSeconds: 60}, traits, &model.NodePool{Name: "batch", NodeSelector: map[string]string{"pool": "batch"}})
 	require.NoError(t, err)
 	pod := job.Spec.Template.Spec
 	require.Equal(t, "batch", pod.NodeSelector["pool"])

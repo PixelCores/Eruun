@@ -34,7 +34,7 @@ func (s *componentProfileStore) Get(_ context.Context, entity datastore.Entity) 
 	return nil
 }
 
-func TestComponentDeploymentResolvesProfiles(t *testing.T) {
+func TestComponentDeploymentResolvesNodePool(t *testing.T) {
 	traits, err := model.NewJSONStructByStruct(spec.Traits{NodePool: "gpu"})
 	require.NoError(t, err)
 	component := &model.ApplicationComponent{Name: "api", AppID: "app", Namespace: "demo", ComponentType: config.ServerJob, Image: "nginx:1.27", Traits: traits}

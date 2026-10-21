@@ -10,20 +10,20 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-func TestApplyTraitsRequiresResolvedProfiles(t *testing.T) {
+func TestApplyTraitsRequiresResolvedNodePool(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		traits   spec.Traits
-		profiles Profiles
+		nodePool *model.NodePool
 	}{
-		{"missing nodePool", spec.Traits{NodePool: "gpu"}, Profiles{}},
-		{"different nodePool", spec.Traits{NodePool: "gpu"}, Profiles{NodePool: &model.NodePool{Name: "cpu"}}},
+		{"missing nodePool", spec.Traits{NodePool: "gpu"}, nil},
+		{"different nodePool", spec.Traits{NodePool: "gpu"}, &model.NodePool{Name: "cpu"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			component := &model.ApplicationComponent{Name: "api", Traits: toJSONStruct(tc.traits)}
 			workload := &appsv1.Deployment{}
 			before := workload.DeepCopy()
-			_, err := ApplyTraits(component, workload, tc.profiles)
+			_, err := ApplyTraits(component, workload, tc.nodePool)
 			require.ErrorContains(t, err, "was not resolved for deployment")
 			require.Equal(t, before, workload)
 		})

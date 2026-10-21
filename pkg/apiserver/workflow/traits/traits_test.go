@@ -83,7 +83,7 @@ func TestEnvProcessor(t *testing.T) {
 		workload := mockWorkload.DeepCopy()
 
 		// --- Act ---
-		_, err := ApplyTraits(mockComponent, workload, Profiles{})
+		_, err := ApplyTraits(mockComponent, workload, nil)
 
 		// --- Assert ---
 		assert.NoError(t, err)
@@ -119,7 +119,7 @@ func TestEnvProcessor(t *testing.T) {
 		}
 
 		// --- Act ---
-		_, err := ApplyTraits(componentWithEmptyTraits, workload, Profiles{})
+		_, err := ApplyTraits(componentWithEmptyTraits, workload, nil)
 
 		// --- Assert ---
 		assert.NoError(t, err)
@@ -182,7 +182,7 @@ func TestSecurityPolicyTrait(t *testing.T) {
 		},
 	}
 
-	_, err := ApplyTraits(component, workload, Profiles{})
+	_, err := ApplyTraits(component, workload, nil)
 	require.NoError(t, err)
 
 	mainContainer := findContainer(workload.Spec.Template.Spec.Containers, "main-app")
@@ -231,7 +231,7 @@ func TestNodePoolTrait(t *testing.T) {
 		},
 	}
 
-	_, err := ApplyTraits(component, workload, Profiles{NodePool: &model.NodePool{Name: "batch", NodeSelector: map[string]string{"app": "lab"}, Tolerations: []corev1.Toleration{{Key: "gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}}}})
+	_, err := ApplyTraits(component, workload, &model.NodePool{Name: "batch", NodeSelector: map[string]string{"app": "lab"}, Tolerations: []corev1.Toleration{{Key: "gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}}})
 	require.NoError(t, err)
 	require.Equal(t, "lab", workload.Spec.Template.Spec.NodeSelector["app"])
 	require.Len(t, workload.Spec.Template.Spec.Tolerations, 1)
@@ -321,7 +321,7 @@ func TestApplyTraits_FinalSimplifiedEnvs(t *testing.T) {
 	}
 
 	// 3. Apply the traits.
-	_, err = ApplyTraits(component, workload, Profiles{})
+	_, err = ApplyTraits(component, workload, nil)
 	require.NoError(t, err)
 
 	// 4. Assertions
@@ -646,7 +646,7 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 	}
 
 	// 3. Apply the traits.
-	_, err = ApplyTraits(component, workload, Profiles{})
+	_, err = ApplyTraits(component, workload, nil)
 	require.NoError(t, err)
 	require.Len(t, workload.Spec.Template.Spec.InitContainers, 2)
 	for _, container := range workload.Spec.Template.Spec.InitContainers {
@@ -689,7 +689,7 @@ func TestResourcesProcessor(t *testing.T) {
 	}
 
 	// Apply traits
-	_, err := ApplyTraits(component, workload, Profiles{})
+	_, err := ApplyTraits(component, workload, nil)
 	require.NoError(t, err)
 
 	// Verify resources were applied to the main container
@@ -754,7 +754,7 @@ func TestResourcesProcessor_WithSidecar(t *testing.T) {
 	}
 
 	// Apply traits
-	_, err := ApplyTraits(component, workload, Profiles{})
+	_, err := ApplyTraits(component, workload, nil)
 	require.NoError(t, err)
 
 	// Verify sidecar container was created with resources
@@ -819,7 +819,7 @@ func TestApplyTraits_SidecarTrait_WithNestedTraits(t *testing.T) {
 	// 3. Apply the traits.
 	// Reset processors for a clean test to avoid double registration panics.
 
-	_, err = ApplyTraits(component, workload, Profiles{})
+	_, err = ApplyTraits(component, workload, nil)
 	require.NoError(t, err)
 
 	// 4. Marshal and print for snapshot verification.
@@ -1136,7 +1136,7 @@ func TestApplyStorageToStatefulSet(t *testing.T) {
 		},
 	}
 
-	objects, err := ApplyTraits(component, sts, Profiles{})
+	objects, err := ApplyTraits(component, sts, nil)
 	require.NoError(t, err)
 	require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
 	template := sts.Spec.VolumeClaimTemplates[0]

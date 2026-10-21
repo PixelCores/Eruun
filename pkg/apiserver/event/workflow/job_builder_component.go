@@ -26,7 +26,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func NewJobTask(name, namespace, workflowID, projectID, appID, taskID string, timeoutSeconds int64, resourceAppName ...string) *model.JobTask {
@@ -402,13 +401,13 @@ func buildJobsForComponent(
 			return nil, fmt.Errorf("decode component traits: %w", err)
 		}
 	}
-	profiles := workflowtraits.Profiles{}
+	var nodePool *model.NodePool
 	if componentTraits.NodePool != "" {
-		profiles.NodePool = &model.NodePool{Name: componentTraits.NodePool}
+		nodePool = &model.NodePool{Name: componentTraits.NodePool}
 		if ds == nil {
 			return nil, fmt.Errorf("resolve nodePool %q: datastore is unavailable", componentTraits.NodePool)
 		}
-		if err := ds.Get(ctx, profiles.NodePool); err != nil {
+		if err := ds.Get(ctx, nodePool); err != nil {
 			return nil, fmt.Errorf("resolve nodePool %q: %w", componentTraits.NodePool, err)
 		}
 	}
@@ -418,7 +417,7 @@ func buildJobsForComponent(
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		serviceJobs, err := jobdeploy.GenerateWebService(component, &properties, profiles)
+		serviceJobs, err := jobdeploy.GenerateWebService(component, &properties, nodePool)
 		if err != nil {
 			return nil, err
 		}
@@ -426,7 +425,7 @@ func buildJobsForComponent(
 			return nil, err
 		}
 	case config.StoreJob:
-		storeJobs, err := jobdeploy.GenerateStoreService(component, profiles)
+		storeJobs, err := jobdeploy.GenerateStoreService(component, nodePool)
 		if err != nil {
 			return nil, err
 		}
@@ -480,7 +479,7 @@ func buildJobsForComponent(
 			break
 		}
 		if properties.StartTime > 0 {
-			result, err := jobinstant.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime, profiles)
+			result, err := jobinstant.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime, nodePool)
 			if err != nil {
 				return nil, err
 			}
@@ -492,7 +491,7 @@ func buildJobsForComponent(
 			applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
 			break
 		}
-		result, err := jobdeploy.GenerateInstantJob(component, &properties, properties.RunPolicy, profiles)
+		result, err := jobdeploy.GenerateInstantJob(component, &properties, properties.RunPolicy, nodePool)
 		if err != nil {
 			return nil, err
 		}
@@ -508,7 +507,7 @@ func buildJobsForComponent(
 			if err != nil {
 				return nil, fmt.Errorf("normalize cron schedule: %w", err)
 			}
-			result, err := jobdeploy.GenerateScheduledCronJob(component, &properties, normalized, profiles)
+			result, err := jobdeploy.GenerateScheduledCronJob(component, &properties, normalized, nodePool)
 			if err != nil {
 				return nil, err
 			}

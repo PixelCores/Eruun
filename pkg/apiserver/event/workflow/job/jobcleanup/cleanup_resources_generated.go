@@ -22,7 +22,7 @@ import (
 func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
 	switch component.ComponentType {
 	case config.ServerJob:
-		result, err := jobdeploy.GenerateWebService(component, props, workflowtraits.IdentityProfiles(component))
+		result, err := jobdeploy.GenerateWebService(component, props, workflowtraits.IdentityNodePool(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -37,7 +37,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return c.deleteDeployment(deleteCtx, ns, name)
 		})
 	case config.StoreJob:
-		result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
+		result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityNodePool(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -61,7 +61,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			// through the component labels, not the ordinary Job naming rule.
 			break
 		}
-		result, err := jobdeploy.GenerateInstantJob(component, props, props.RunPolicy, workflowtraits.IdentityProfiles(component))
+		result, err := jobdeploy.GenerateInstantJob(component, props, props.RunPolicy, workflowtraits.IdentityNodePool(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -79,7 +79,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		if strings.TrimSpace(props.Schedule) == "" {
 			break
 		}
-		result, err := jobdeploy.GenerateScheduledCronJob(component, props, props.Schedule, workflowtraits.IdentityProfiles(component))
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, props.Schedule, workflowtraits.IdentityNodePool(component))
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return

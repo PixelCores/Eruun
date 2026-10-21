@@ -9,8 +9,8 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
-// ValidateProfiles checks references against the authoritative repositories.
-func ValidateProfiles(ctx context.Context, nodePoolRepo repository.NodePoolRepository, traits spec.Traits, field string) []apisv1.ValidationError {
+// ValidateNodePoolRef checks a nodePool reference against the repository.
+func ValidateNodePoolRef(ctx context.Context, nodePoolRepo repository.NodePoolRepository, traits spec.Traits, field string) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 	if traits.NodePool != "" {
 		var err error
@@ -26,14 +26,14 @@ func ValidateProfiles(ctx context.Context, nodePoolRepo repository.NodePoolRepos
 	return errors
 }
 
-// ValidateNestedProfiles rejects pod-wide references on nested containers.
-func ValidateNestedProfiles(traits spec.Traits, field string) []apisv1.ValidationError {
+// ValidateNestedNodePool rejects pod-wide references on nested containers.
+func ValidateNestedNodePool(traits spec.Traits, field string) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 	check := func(nested spec.Traits, field string) {
 		if nested.NodePool != "" {
 			errors = append(errors, apisv1.ValidationError{Field: field + ".nodePool", Code: apisv1.ErrCodeInvalidTraitConfig, Message: "nodePool is a pod-level trait and only supports component-level traits"})
 		}
-		errors = append(errors, ValidateNestedProfiles(nested, field)...)
+		errors = append(errors, ValidateNestedNodePool(nested, field)...)
 	}
 	for i, init := range traits.Init {
 		check(init.Traits, fmt.Sprintf("%s.init[%d].traits", field, i))

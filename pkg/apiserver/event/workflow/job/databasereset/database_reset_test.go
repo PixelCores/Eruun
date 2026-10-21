@@ -25,7 +25,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type databaseResetComponentStore struct {
@@ -1082,7 +1081,7 @@ func databaseResetStatefulSetInitSQLURL(t *testing.T, statefulSet *appsv1.Statef
 
 func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponent) (*jobexec.GenerateServiceResult, *appsv1.StatefulSet) {
 	t.Helper()
-	result, err := jobdeploy.GenerateStoreService(component, workflowtraits.Profiles{})
+	result, err := jobdeploy.GenerateStoreService(component, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1112,7 +1111,7 @@ func databaseResetDeployment(t *testing.T, component *model.ApplicationComponent
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := jobdeploy.GenerateWebService(component, &properties, workflowtraits.Profiles{})
+	result, err := jobdeploy.GenerateWebService(component, &properties, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,8 +9,8 @@ import (
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
-// ValidateNodeSelectorEntry validates the label rules used by node pools.
-func ValidateNodeSelectorEntry(key, value string) (keyError, valueError string) {
+// validateNodeSelectorEntry validates the label rules used by node pools.
+func validateNodeSelectorEntry(key, value string) (keyError, valueError string) {
 	if causes := k8svalidation.IsQualifiedName(key); len(causes) > 0 {
 		keyError = "key must be a valid label key: " + strings.Join(causes, "; ")
 	}
@@ -22,7 +22,7 @@ func ValidateNodeSelectorEntry(key, value string) (keyError, valueError string) 
 	return
 }
 
-func ValidateSchedulingProfileName(name string) error {
+func ValidateNodePoolName(name string) error {
 	if causes := k8svalidation.IsDNS1123Label(name); len(causes) > 0 {
 		return fmt.Errorf("name: %s", strings.Join(causes, "; "))
 	}
@@ -30,7 +30,7 @@ func ValidateSchedulingProfileName(name string) error {
 }
 
 func ValidateNodePool(name string, selector map[string]string, tolerations []corev1.Toleration) error {
-	if err := ValidateSchedulingProfileName(name); err != nil {
+	if err := ValidateNodePoolName(name); err != nil {
 		return err
 	}
 	if len(selector) == 0 {
@@ -42,7 +42,7 @@ func ValidateNodePool(name string, selector map[string]string, tolerations []cor
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		keyErr, valueErr := ValidateNodeSelectorEntry(key, selector[key])
+		keyErr, valueErr := validateNodeSelectorEntry(key, selector[key])
 		if keyErr != "" {
 			return fmt.Errorf("nodeSelector[%q]: %s", key, keyErr)
 		}

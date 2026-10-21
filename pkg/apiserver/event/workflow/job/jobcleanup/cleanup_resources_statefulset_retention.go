@@ -123,7 +123,7 @@ func (c *CleanupResourcesJobCtl) prepareRequiredStatefulSetDeletion(ctx context.
 		return err
 	}
 	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)
-	generated, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
+	generated, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityNodePool(component))
 	if err != nil {
 		return err
 	}

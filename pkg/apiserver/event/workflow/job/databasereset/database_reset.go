@@ -222,7 +222,7 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 			continue
 		}
 		component := normalizeDatabaseResetComponent(rawComponent)
-		result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityProfiles(component))
+		result, err := jobdeploy.GenerateStoreService(component, workflowtraits.IdentityNodePool(component))
 		if err != nil {
 			return nil, err
 		}

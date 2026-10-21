@@ -36,7 +36,7 @@ func normalizePodSpecDefaults(spec *corev1.PodSpec) {
 		spec.EnableServiceLinks = &enableServiceLinks
 	}
 	// Kubernetes defaults an omitted toleration operator to Equal. Preserve
-	// tolerations in comparison so scheduling profile edits trigger updates.
+	// tolerations in comparison so node pool edits trigger updates.
 	if len(spec.Tolerations) == 0 {
 		spec.Tolerations = nil
 	}

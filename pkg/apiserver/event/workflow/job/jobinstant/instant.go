@@ -26,12 +26,12 @@ type InstantJobCtl struct {
 	jobexec.DeployNamespacedResourceJobBase
 }
 
-func GenerateOneTimeJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string, startTime int64, profiles traitsPlu.Profiles) (*jobexec.GenerateServiceResult, error) {
+func GenerateOneTimeJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string, startTime int64, nodePool *model.NodePool) (*jobexec.GenerateServiceResult, error) {
 	job := jobexec.BuildJob(component, properties, jobexec.JobBuildOptions{RunPolicy: runPolicy, StartTime: startTime})
 	if job == nil {
 		return nil, nil
 	}
-	additionalObjects, err := traitsPlu.ApplyTraits(component, job, profiles)
+	additionalObjects, err := traitsPlu.ApplyTraits(component, job, nodePool)
 	if err != nil {
 		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}

@@ -48,7 +48,7 @@ func (s *nodepoolService) List(ctx context.Context) ([]*model.NodePool, error) {
 }
 
 func (s *nodepoolService) Get(ctx context.Context, name string) (*model.NodePool, error) {
-	if err := spec.ValidateSchedulingProfileName(name); err != nil {
+	if err := spec.ValidateNodePoolName(name); err != nil {
 		return nil, bcode.WithSafeClientMessage(bcode.ErrNodePoolInvalid, err.Error())
 	}
 	item, err := s.Repo.Get(ctx, name)
@@ -99,7 +99,7 @@ func (s *nodepoolService) Update(ctx context.Context, name string, command Updat
 }
 
 func (s *nodepoolService) Delete(ctx context.Context, name string) error {
-	if err := spec.ValidateSchedulingProfileName(name); err != nil {
+	if err := spec.ValidateNodePoolName(name); err != nil {
 		return bcode.WithSafeClientMessage(bcode.ErrNodePoolInvalid, err.Error())
 	}
 	if err := s.Repo.Delete(ctx, &model.NodePool{Name: name}); err != nil {

@@ -850,7 +850,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 			Containers: []corev1.Container{{Name: createdStore.Name, Image: createdStore.Image}},
 		}}},
 	}
-	additional, err := workflowtraits.ApplyTraits(createdStore, workload, workflowtraits.Profiles{})
+	additional, err := workflowtraits.ApplyTraits(createdStore, workload, nil)
 	require.NoError(t, err)
 	require.Empty(t, additional)
 	require.Len(t, workload.Spec.VolumeClaimTemplates, 1)
