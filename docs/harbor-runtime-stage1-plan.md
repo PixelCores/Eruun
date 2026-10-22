@@ -37,7 +37,7 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 | eval 默认 1 小时、最多 24 小时，Runner 与 trial 也有 deadline | 周级任务当前不支持，不能只改一个 API 校验值 | [规格](../pkg/apiserver/domain/spec/job.go)、[构建](../pkg/apiserver/jobs/builder.go)、[Runner](../pkg/apiserver/jobs/runners/harbor/runner.py) |
 | Runner 显式关闭 SandboxClaim；任务环境沿用 Harbor ACK Pod 后端 | 尚无按需 Sandbox CR 执行与生命周期适配 | [环境适配](../pkg/apiserver/jobs/runners/harbor/eruun_environment.py)、[Runner 配置](../pkg/apiserver/jobs/runners/harbor/runner.py) |
 
-现有 Worker Pod Informer 只筛选带 `eruun.io/app-id` 的 Pod；独立 eval Runner/trial 使用 task 标签，不能把应用组件的共享缓存视为独立 Job 已完成共享观察。应用组件路径还有每次事件遍历全部 Pod 的 tracker，以及每个等待器查询全部缓存的 lister；它们是复用前需修正/测量的相邻边界，不可误归因于纯独立 eval 压力。[观察器](../pkg/apiserver/infrastructure/informer/kubernetes_observer.go)、[tracker](../pkg/apiserver/infrastructure/informer/waiter.go)。
+现有 Worker Pod Informer 只筛选带 `eruun.io/app-id` 的 Pod；独立 eval Runner/trial 使用 task 标签，不能把应用组件的共享缓存视为独立 Job 已完成共享观察。应用组件路径还有每次事件遍历全部 Pod 的 tracker，以及每个等待器查询全部缓存的 lister；它们是复用前需修正/测量的相邻边界，不可误归因于纯独立 eval 压力。[观察器](../pkg/apiserver/infrastructure/informer/kubernetes_observer.go)、[tracker](../pkg/apiserver/infrastructure/informer/status_sync.go)。
 
 ## 4. 数据、身份与职责契约
 

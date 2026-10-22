@@ -39,7 +39,7 @@ func TestManagerBoundsInitialCacheSync(t *testing.T) {
 
 func TestManagerCanRestartAfterStop(t *testing.T) {
 	manager := NewManager(fake.NewSimpleClientset(), "")
-	waiter := manager.GetWaiter()
+	syncer := manager.StatusSyncer()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -48,18 +48,18 @@ func TestManagerCanRestartAfterStop(t *testing.T) {
 	require.True(t, manager.IsStarted())
 
 	pod := newDeploymentTestPod("default", "stale-demo", "app-1", "api", 7, 0)
-	waiter.OnPodAdd(pod)
-	require.Equal(t, 1, podSnapshotCount(waiter))
+	syncer.OnPodAdd(pod)
+	require.Equal(t, 1, podSnapshotCount(syncer))
 
 	manager.Stop()
 	require.False(t, manager.IsStarted())
-	require.Same(t, waiter, manager.GetWaiter())
+	require.Same(t, syncer, manager.StatusSyncer())
 
 	require.NoError(t, manager.Start(ctx))
 	require.True(t, manager.IsStarted())
-	require.Same(t, waiter, manager.GetWaiter())
-	require.Equal(t, 0, podSnapshotCount(waiter))
-	require.Equal(t, 0, podRestartSnapshotCount(waiter))
+	require.Same(t, syncer, manager.StatusSyncer())
+	require.Equal(t, 0, podSnapshotCount(syncer))
+	require.Equal(t, 0, podRestartSnapshotCount(syncer))
 
 	manager.Stop()
 	require.False(t, manager.IsStarted())
@@ -68,43 +68,43 @@ func TestManagerCanRestartAfterStop(t *testing.T) {
 func TestManagerRejectsPreviousGenerationHandlersAfterRestart(t *testing.T) {
 	manager := NewManager(fake.NewSimpleClientset(), "")
 	t.Cleanup(manager.Stop)
-	waiter := manager.GetWaiter()
+	syncer := manager.StatusSyncer()
 
 	require.NoError(t, manager.Start(context.Background()))
-	oldGeneration := manager.waiterGeneration
+	oldGeneration := manager.syncerGeneration
 	require.NotZero(t, oldGeneration)
 	manager.Stop()
 
 	require.NoError(t, manager.Start(context.Background()))
-	currentGeneration := manager.waiterGeneration
+	currentGeneration := manager.syncerGeneration
 	require.NotZero(t, currentGeneration)
 	require.NotEqual(t, oldGeneration, currentGeneration)
 
 	manager.stopGeneration(oldGeneration)
 	require.True(t, manager.IsStarted(), "a late stop from the old runtime must not stop the current runtime")
-	require.Equal(t, currentGeneration, manager.waiterGeneration)
+	require.Equal(t, currentGeneration, manager.syncerGeneration)
 
 	stalePod := newDeploymentTestPod("default", "stale", "app-1", "api", 7, 0)
-	waiter.onPodAddForGeneration(oldGeneration, stalePod)
-	require.Equal(t, 0, podSnapshotCount(waiter))
-	require.Equal(t, 0, podRestartSnapshotCount(waiter))
+	syncer.onPodAddForGeneration(oldGeneration, stalePod)
+	require.Equal(t, 0, podSnapshotCount(syncer))
+	require.Equal(t, 0, podRestartSnapshotCount(syncer))
 
 	currentPod := newDeploymentTestPod("default", "current", "app-1", "api", 7, 0)
-	waiter.onPodAddForGeneration(currentGeneration, currentPod)
-	require.Equal(t, 1, podSnapshotCount(waiter))
-	require.Equal(t, 1, podRestartSnapshotCount(waiter))
+	syncer.onPodAddForGeneration(currentGeneration, currentPod)
+	require.Equal(t, 1, podSnapshotCount(syncer))
+	require.Equal(t, 1, podRestartSnapshotCount(syncer))
 }
 
 func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
 	manager := NewManager(fake.NewSimpleClientset(), "")
-	waiter := manager.GetWaiter()
-	waiter.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {})
+	syncer := manager.StatusSyncer()
+	syncer.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {})
 	require.NoError(t, manager.Start(context.Background()))
-	generation := manager.waiterGeneration
+	generation := manager.syncerGeneration
 
 	var statusUnlockOnce sync.Once
-	waiter.statusSyncMu.Lock()
-	unlockStatus := func() { statusUnlockOnce.Do(waiter.statusSyncMu.Unlock) }
+	syncer.statusSyncMu.Lock()
+	unlockStatus := func() { statusUnlockOnce.Do(syncer.statusSyncMu.Unlock) }
 	t.Cleanup(func() {
 		unlockStatus()
 		manager.Stop()
@@ -114,10 +114,10 @@ func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
 	go func() {
 		defer close(handlerDone)
 		pod := newDeploymentTestPod("default", "in-flight", "app-1", "api", 7, 0)
-		waiter.onPodAddForGeneration(generation, pod)
+		syncer.onPodAddForGeneration(generation, pod)
 	}()
 	require.Eventually(t, func() bool {
-		return podSnapshotCount(waiter) == 1
+		return podSnapshotCount(syncer) == 1
 	}, time.Second, 5*time.Millisecond)
 
 	stopDone := make(chan struct{})
@@ -125,7 +125,7 @@ func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
 		manager.Stop()
 		close(stopDone)
 	}()
-	requirePodGenerationWriteFencePending(t, waiter)
+	requirePodGenerationWriteFencePending(t, syncer)
 	select {
 	case <-stopDone:
 		t.Fatal("manager stop returned before the active handler left its generation")
@@ -145,34 +145,34 @@ func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
 	}
 
 	require.False(t, manager.IsStarted())
-	require.Equal(t, 0, podSnapshotCount(waiter))
-	require.Equal(t, 0, podRestartSnapshotCount(waiter))
+	require.Equal(t, 0, podSnapshotCount(syncer))
+	require.Equal(t, 0, podRestartSnapshotCount(syncer))
 }
 
 func TestManagerStopWaitsForCurrentGenerationStatusCallback(t *testing.T) {
 	manager := NewManager(fake.NewSimpleClientset(), "")
-	waiter := manager.GetWaiter()
+	syncer := manager.StatusSyncer()
 	releaseCallback := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() {
 		releaseOnce.Do(func() { close(releaseCallback) })
 		manager.Stop()
-		waiter.Close()
+		syncer.Close()
 	})
 
 	callbackStarted := make(chan struct{}, 2)
-	waiter.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {
+	syncer.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {
 		callbackStarted <- struct{}{}
 		<-releaseCallback
 	})
 	require.NoError(t, manager.Start(context.Background()))
-	waiter.statusSyncMu.Lock()
-	epoch := waiter.statusSyncEpoch
-	waiter.statusSyncMu.Unlock()
+	syncer.statusSyncMu.Lock()
+	epoch := syncer.statusSyncEpoch
+	syncer.statusSyncMu.Unlock()
 	update := &model.ComponentStatusUpdate{AppID: "app-1", ComponentID: 7}
 	callbackDone := make(chan struct{})
 	go func() {
-		waiter.executeStatusSyncIfCurrent(update, epoch)
+		syncer.executeStatusSyncIfCurrent(update, epoch)
 		close(callbackDone)
 	}()
 	select {
@@ -186,7 +186,7 @@ func TestManagerStopWaitsForCurrentGenerationStatusCallback(t *testing.T) {
 		manager.Stop()
 		close(stopDone)
 	}()
-	requirePodGenerationWriteFencePending(t, waiter)
+	requirePodGenerationWriteFencePending(t, syncer)
 	select {
 	case <-stopDone:
 		t.Fatal("manager stop returned while the current generation callback was still running")
@@ -205,7 +205,7 @@ func TestManagerStopWaitsForCurrentGenerationStatusCallback(t *testing.T) {
 		t.Fatal("manager stop did not finish after the callback left its generation")
 	}
 
-	waiter.executeStatusSyncIfCurrent(update, epoch)
+	syncer.executeStatusSyncIfCurrent(update, epoch)
 	select {
 	case <-callbackStarted:
 		t.Fatal("previous generation callback started after manager stop returned")

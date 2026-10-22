@@ -53,7 +53,6 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 
 	restartedAt := formatWorkloadRestartAt(time.Now())
 	reporter := newOperationReporter("restart")
-	restartedComponents := make([]string, 0, len(components))
 	var markErr error
 	var task *model.WorkflowQueue
 	var taskID string
@@ -76,7 +75,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	restartedComponents = c.restartNativeApplicationComponents(ctx, components, patch, reporter)
+	restartedComponents := c.restartNativeApplicationComponents(ctx, components, patch, reporter)
 
 	if len(restartedComponents) > 0 {
 		if err := c.markComponentsStatus(ctx, app.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {

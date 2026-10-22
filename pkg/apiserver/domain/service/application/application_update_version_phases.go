@@ -271,7 +271,7 @@ func (c *applicationsServiceImpl) selectVersionUpdateWorkflow(ctx context.Contex
 	}
 	if run.requiresAutoExecWorkflow || (run.autoExec && !callbackIsEmpty(run.req.Callback)) {
 		var err error
-		run.taskCallback, err = c.resolveVersionUpdateTaskCallback(ctx, run.req.Callback)
+		run.taskCallback, err = c.resolveOperationTaskCallback(ctx, run.req.Callback)
 		if err != nil {
 			return err
 		}

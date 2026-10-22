@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -555,7 +556,7 @@ func (c *applicationsServiceImpl) ListApplicationComponents(ctx context.Context,
 		return nil, err
 	}
 	appID = app.ID
-	componentCacheKey := applicationComponentsCacheKey(appID)
+	componentCacheKey := cacheutil.ApplicationComponentsKey(appID)
 	var cached []*model.ApplicationComponent
 	if c.loadJSONCache(ctx, componentCacheKey, &cached) {
 		result, _, err := c.prepareApplicationComponentsForRead(cached, false)
@@ -693,7 +694,7 @@ func buildCachedApplicationComponent(original, prepared *model.ApplicationCompon
 // shouldReadAsRunning reports an in-progress status whose Pods are already
 // all ready. The read path shows it as Running without rewriting MySQL.
 func shouldReadAsRunning(component *model.ApplicationComponent) bool {
-	if component == nil || component.Replicas <= 0 || component.ReadyReplicas < component.Replicas || !componentUsesPods(component.ComponentType) {
+	if component == nil || component.Replicas <= 0 || component.ReadyReplicas < component.Replicas || !config.ComponentTypeUsesPods(component.ComponentType) {
 		return false
 	}
 	switch config.ComponentStatus(component.Status) {

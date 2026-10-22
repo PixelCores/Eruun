@@ -522,7 +522,7 @@ func TestListApplicationRuntimeComponentsBypassesDetailCache(t *testing.T) {
 	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingComponentRepo{mockComponentRepo: &mockComponentRepo{store: store}}
 	svc.ComponentRepo = countingRepo
-	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
+	svc.storeJSONCache(context.Background(), cache.ApplicationComponentsKey(app.ID), []*model.ApplicationComponent{{
 		ID:            1,
 		AppID:         app.ID,
 		Name:          "web",
@@ -578,7 +578,7 @@ func TestListApplicationComponentsCacheStoresSecretValuesAsText(t *testing.T) {
 	require.Equal(t, "c2VjcmV0LXB3ZA==", props.Secret["password"])
 
 	var cached []*model.ApplicationComponent
-	require.True(t, svc.loadJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), &cached))
+	require.True(t, svc.loadJSONCache(context.Background(), cache.ApplicationComponentsKey(app.ID), &cached))
 	require.Len(t, cached, 1)
 	require.NoError(t, decodeJSONStruct(cached[0].Properties, &props))
 	require.Equal(t, "c2VjcmV0LXB3ZA==", props.Secret["password"])
@@ -594,7 +594,7 @@ func TestListApplicationComponentsCacheHitKeepsBase64LikeTextSecrets(t *testing.
 	client := fake.NewSimpleClientset()
 	svc.KubeClient = client
 
-	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
+	svc.storeJSONCache(context.Background(), cache.ApplicationComponentsKey(app.ID), []*model.ApplicationComponent{{
 		AppID:         app.ID,
 		Name:          "manual-secret",
 		Namespace:     "default",
@@ -623,17 +623,17 @@ func TestDeleteApplicationCascadeInvalidatesCache(t *testing.T) {
 	svc.Cache = cache.NewMemCache()
 	svc.storeJSONCache(context.Background(), applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
-	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
+	svc.storeJSONCache(context.Background(), cache.ApplicationComponentsKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
 
 	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
 	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
-	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), cache.ApplicationComponentsKey(app.ID)))
 
 	_, deleteErr := svc.DeleteApplicationCascade(context.Background(), app.ID, apisv1.DeleteApplicationRequest{})
 	require.NoError(t, deleteErr)
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
-	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), cache.ApplicationComponentsKey(app.ID)))
 }
 
 func TestUpdateVersionInvalidatesCache(t *testing.T) {
@@ -652,7 +652,7 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 	svc.Cache = cache.NewMemCache()
 	svc.storeJSONCache(context.Background(), applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
-	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
+	svc.storeJSONCache(context.Background(), cache.ApplicationComponentsKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
 
 	autoExec := false
 	resp, err := svc.UpdateVersion(context.Background(), app.ID, apisv1.UpdateVersionRequest{
@@ -663,7 +663,7 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 	require.Equal(t, "2.0.0", resp.Version)
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
-	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), cache.ApplicationComponentsKey(app.ID)))
 }
 
 type committedCacheUpdateStore struct {
@@ -804,7 +804,7 @@ func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *tes
 			svc := newMockServiceWithStore(store)
 			c := &requestContextCache{ICache: cache.NewMemCache(), loadErr: tc.loadErr}
 			if tc.cached != "" {
-				require.NoError(t, c.ICache.Store(t.Context(), applicationComponentsCacheKey(app.ID), tc.cached))
+				require.NoError(t, c.ICache.Store(t.Context(), cache.ApplicationComponentsKey(app.ID), tc.cached))
 			}
 			svc.Cache = c
 			scope := access.Scope{WorkspaceID: "workspace-current", Namespace: "default"}
@@ -830,7 +830,7 @@ func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *tes
 			cancel()
 			svc.invalidateApplicationComponentsCache(ctx, app.ID)
 			require.Len(t, c.contexts, tc.wantCalls+1)
-			require.Empty(t, cachedValue(t, c.ICache, t.Context(), applicationComponentsCacheKey(app.ID)))
+			require.Empty(t, cachedValue(t, c.ICache, t.Context(), cache.ApplicationComponentsKey(app.ID)))
 		})
 	}
 }

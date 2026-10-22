@@ -19,10 +19,10 @@ type Manager struct {
 	client           kubernetes.Interface
 	factory          informers.SharedInformerFactory
 	stopCh           chan struct{}
-	waiter           *ResourceReadyWaiter
+	syncer           *ComponentStatusSyncer
 	mu               sync.RWMutex
 	started          bool
-	waiterGeneration uint64
+	syncerGeneration uint64
 	syncTimeout      time.Duration
 	labelSelector    string
 }
@@ -36,7 +36,7 @@ const (
 func NewManager(client kubernetes.Interface, labelSelector string) *Manager {
 	return &Manager{
 		client:        client,
-		waiter:        NewResourceReadyWaiter(),
+		syncer:        NewComponentStatusSyncer(),
 		syncTimeout:   defaultManagerSyncTimeout,
 		labelSelector: labelSelector,
 	}
@@ -58,9 +58,10 @@ func (m *Manager) newFactory() informers.SharedInformerFactory {
 	)
 }
 
-// GetWaiter 获取资源等待器
-func (m *Manager) GetWaiter() *ResourceReadyWaiter {
-	return m.waiter
+// StatusSyncer returns the Pod event handler that syncs component status and
+// monitors Deployment Pod restarts while this node is Leader.
+func (m *Manager) StatusSyncer() *ComponentStatusSyncer {
+	return m.syncer
 }
 
 // Start 启动 Informer
@@ -72,8 +73,8 @@ func (m *Manager) Start(ctx context.Context) error {
 		return nil
 	}
 	m.resetRuntime()
-	generation := m.waiter.beginPodSnapshotGeneration()
-	m.waiterGeneration = generation
+	generation := m.syncer.beginPodSnapshotGeneration()
+	m.syncerGeneration = generation
 	factory := m.factory
 	stopCh := m.stopCh
 	m.started = true
@@ -86,22 +87,22 @@ func (m *Manager) Start(ctx context.Context) error {
 	_, err := podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if pod, ok := obj.(*corev1.Pod); ok {
-				m.waiter.onPodAddForGeneration(generation, pod)
+				m.syncer.onPodAddForGeneration(generation, pod)
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			oldPod, ok1 := oldObj.(*corev1.Pod)
 			newPod, ok2 := newObj.(*corev1.Pod)
 			if ok1 && ok2 {
-				m.waiter.onPodUpdateForGeneration(generation, oldPod, newPod)
+				m.syncer.onPodUpdateForGeneration(generation, oldPod, newPod)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			if pod, ok := obj.(*corev1.Pod); ok {
-				m.waiter.onPodDeleteForGeneration(generation, pod)
+				m.syncer.onPodDeleteForGeneration(generation, pod)
 			} else if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 				if pod, ok := tombstone.Obj.(*corev1.Pod); ok {
-					m.waiter.onPodDeleteForGeneration(generation, pod)
+					m.syncer.onPodDeleteForGeneration(generation, pod)
 				}
 			}
 		},
@@ -162,17 +163,17 @@ func (m *Manager) stopGeneration(generation uint64) {
 		m.mu.Unlock()
 		return
 	}
-	if generation != 0 && m.waiterGeneration != generation {
+	if generation != 0 && m.syncerGeneration != generation {
 		m.mu.Unlock()
 		return
 	}
 	stopCh := m.stopCh
-	activeGeneration := m.waiterGeneration
+	activeGeneration := m.syncerGeneration
 	m.started = false
-	m.waiterGeneration = 0
+	m.syncerGeneration = 0
 	m.stopCh = nil
 	m.factory = nil
-	m.waiter.endPodSnapshotGeneration(activeGeneration)
+	m.syncer.endPodSnapshotGeneration(activeGeneration)
 	m.mu.Unlock()
 
 	if stopCh != nil {

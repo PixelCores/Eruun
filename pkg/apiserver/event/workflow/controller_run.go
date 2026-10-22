@@ -224,7 +224,7 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 	for _, execution := range stepExecutions {
 		for _, tasks := range execution.Jobs {
 			for _, task := range tasks {
-				if task.JobType == string(config.JobEval) && task.EvaluationInfo != "" && r.runtimeConfig != nil && r.runtimeConfig.Jobs != nil {
+				if task.JobType == string(config.JobEval) && task.EvaluationInfo != "" && r.runtimeConfig.Jobs != nil {
 					ctx = workspace.WithEvaluationRunner(ctx, task.Name, r.runtimeConfig.Jobs.RunnerImage)
 				}
 			}
@@ -414,7 +414,7 @@ func (r *workflowRun) ensureEvaluationRunner(tasks []*model.JobTask) error {
 		if task.JobType != string(config.JobEval) || isWorkflowTerminal(task.Status) || task.Status == config.StatusSkipped {
 			continue
 		}
-		if r.runtimeConfig == nil || r.runtimeConfig.Jobs == nil {
+		if r.runtimeConfig.Jobs == nil {
 			return fmt.Errorf("evaluation runner configuration is required")
 		}
 		if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
@@ -611,7 +611,7 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 		}
 		for _, stage := range definition.Stages {
 			for _, step := range stage.Steps {
-				if step.Traits.Evaluation != nil && (w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "") {
+				if step.Traits.Evaluation != nil && w.runtimeConfig.Jobs == nil {
 					return ctx, fmt.Errorf("evaluation runner configuration is required for stage %q step %q", stage.Name, step.Name)
 				}
 			}
@@ -625,7 +625,7 @@ func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, e
 		if isWorkflowTerminal(task.Status) || task.Status == config.StatusSkipped {
 			return false, nil
 		}
-		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
+		if w.runtimeConfig.Jobs == nil {
 			return false, fmt.Errorf("evaluation runner configuration is required")
 		}
 		return true, evaluationjobs.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)

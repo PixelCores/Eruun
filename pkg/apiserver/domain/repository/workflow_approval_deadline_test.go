@@ -165,7 +165,7 @@ func TestExpireApprovalDeadlinesLosesToNewerCheckpoint(t *testing.T) {
 	require.True(t, moved)
 
 	// The listed snapshot is stale: its step and deadline no longer match.
-	updated, err := compareWorkflowTaskWithConditions(ctx, store, "task", map[string]interface{}{
+	updated, err := UpdateTaskFieldsIfConditions(ctx, store, "task", map[string]interface{}{
 		"status": config.StatusWaitingApprove, "approval_pending": true, "current_step": stale.CurrentStep,
 		"pending_approval_step": stale.PendingApprovalStep, "run_generation": stale.RunGeneration,
 		"approval_deadline": *stale.ApprovalDeadline,

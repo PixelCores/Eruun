@@ -621,7 +621,7 @@ func appendBatchJob(
 	jobTask.JobType = string(jobTaskType)
 	jobTask.JobInfo = result.Service
 	applyShareLabelsToJobInfo(jobTask.JobInfo, share)
-	applyJobTaskMetadata(jobTask)
+	jobinfo.ApplyTaskIDAnnotation(jobTask)
 	jobTask.Info = buildWorkloadInfo(jobType, result.Service, namespace, infoFallbackName)
 	markJobSkippedIfIgnored(share, jobTask)
 	buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
@@ -647,8 +647,4 @@ func applyJobFailurePolicyOverride(jobTask *model.JobTask, policy *workflowconfi
 		return
 	}
 	jobTask.FailurePolicy = normalized
-}
-
-func applyJobTaskMetadata(jobTask *model.JobTask) {
-	jobinfo.ApplyTaskIDAnnotation(jobTask)
 }

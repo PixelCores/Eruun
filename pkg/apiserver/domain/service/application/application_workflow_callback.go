@@ -57,10 +57,6 @@ func resolveCreateApplicationCallback(ctx context.Context, cfg *config.Config, p
 	return selection, nil
 }
 
-func (c *applicationsServiceImpl) resolveVersionUpdateTaskCallback(ctx context.Context, callback *apisv1.WorkflowCallback) (*model.JSONStruct, error) {
-	return c.resolveOperationTaskCallback(ctx, callback)
-}
-
 func (c *applicationsServiceImpl) resolveOperationTaskCallback(ctx context.Context, callback *apisv1.WorkflowCallback) (*model.JSONStruct, error) {
 	if callbackIsEmpty(callback) {
 		return nil, nil
