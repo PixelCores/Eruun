@@ -2,7 +2,8 @@ package grpcapi
 
 // routeRPC is the versioned route-to-RPC contract for the 106 user-facing
 // HTTP routes. Browser OAuth, Runner callbacks and probes are deliberately
-// omitted; every new route needs an explicit decision.
+// omitted; every new route needs an explicit decision. Each RPC inherits the
+// authorization and rate-limit class of its route.
 var routeRPC = map[string]string{
 	"GET /api/v1/node-pools":                                                  "/eruun.v1.NodePoolsService/ListNodePoolOptions",
 	"GET /api/v1/admin/node-pools":                                            "/eruun.v1.NodePoolsService/ListNodePools",
@@ -110,19 +111,4 @@ var routeRPC = map[string]string{
 	"POST /api/v1/programming-languages":                                      "/eruun.v1.ProgrammingLanguagesService/CreateProgrammingLanguage",
 	"PUT /api/v1/programming-languages/:id":                                   "/eruun.v1.ProgrammingLanguagesService/UpdateProgrammingLanguage",
 	"DELETE /api/v1/programming-languages/:id":                                "/eruun.v1.ProgrammingLanguagesService/DeleteProgrammingLanguage",
-}
-
-var grpcRouteExceptions = map[string]bool{
-	// Runner capability and Pod identity authentication is HTTP-only.
-	"POST /api/v1/job-runners/:taskID/checkpoints/:checkpointID":         true,
-	"GET /api/v1/job-runners/:taskID/checkpoints/:checkpointID":          true,
-	"GET /api/v1/job-runners/:taskID/checkpoints/:checkpointID/material": true,
-	"POST /api/v1/job-runners/:taskID/sandboxes":                         true,
-	"GET /api/v1/job-runners/:taskID/sandboxes/:trialID":                 true,
-	"POST /api/v1/job-runners/:taskID/sandboxes/:trialID/release":        true,
-	"POST /api/v1/auth/oauth2/:provider/start":                           true,
-	"POST /api/v1/auth/oauth2/:provider/callback":                        true,
-	"GET /api/v1/job-runners/:taskID/dataset":                            true,
-	"POST /api/v1/job-runners/:taskID/results":                           true,
-	"POST /api/v1/job-runners/:taskID/events":                            true,
 }

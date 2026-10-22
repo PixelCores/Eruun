@@ -1,7 +1,6 @@
 package grpcapi
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -72,20 +71,35 @@ func TestRouteRPCCoverageAndExceptions(t *testing.T) {
 	}
 }
 
-func TestHTTPAndRPCBusinessPoliciesAgree(t *testing.T) {
-	for route, rpc := range routeRPC {
-		verb, path, _ := strings.Cut(route, " ")
-		expected := middleware.BusinessRoutePolicy(verb, path)
-		actual := applicationMethodPolicies[rpc]
-		if role := administrationMethodPolicies[rpc]; role != "" {
-			actual = role
-		}
-		if role := jobsMethodPolicies[rpc]; role != "" {
-			actual = role
-		}
-		if adminAccountMethods[rpc] {
-			actual = "system"
-		}
-		require.Equal(t, expected, actual, "authorization drift for %s -> %s", route, rpc)
+// grpcRouteExceptions are the reviewed HTTP routes deliberately left without
+// an RPC.
+var grpcRouteExceptions = map[string]bool{
+	// Runner capability and Pod identity authentication is HTTP-only.
+	"POST /api/v1/job-runners/:taskID/checkpoints/:checkpointID":         true,
+	"GET /api/v1/job-runners/:taskID/checkpoints/:checkpointID":          true,
+	"GET /api/v1/job-runners/:taskID/checkpoints/:checkpointID/material": true,
+	"POST /api/v1/job-runners/:taskID/sandboxes":                         true,
+	"GET /api/v1/job-runners/:taskID/sandboxes/:trialID":                 true,
+	"POST /api/v1/job-runners/:taskID/sandboxes/:trialID/release":        true,
+	"POST /api/v1/auth/oauth2/:provider/start":                           true,
+	"POST /api/v1/auth/oauth2/:provider/callback":                        true,
+	"GET /api/v1/job-runners/:taskID/dataset":                            true,
+	"POST /api/v1/job-runners/:taskID/results":                           true,
+	"POST /api/v1/job-runners/:taskID/events":                            true,
+}
+
+// Every RPC outside the account service must inherit a business policy, or
+// authorizeRPC denies it.
+func TestEveryBusinessRPCInheritsHTTPPolicy(t *testing.T) {
+	methods := rpcMethods(
+		eruunv1.ApplicationService_ServiceDesc, eruunv1.JobsService_ServiceDesc,
+		eruunv1.SettingsService_ServiceDesc, eruunv1.ProgrammingLanguagesService_ServiceDesc,
+		eruunv1.NodePoolsService_ServiceDesc,
+	)
+	for method := range methods {
+		require.NotEmpty(t, methodPolicy(method), "RPC %s has no business policy", method)
 	}
+	require.Equal(t, "system", methodPolicy(eruunv1.AccountService_ListAdminUsers_FullMethodName))
+	require.Equal(t, "system", methodPolicy(eruunv1.AccountService_SetAdminUserDisabled_FullMethodName))
+	require.Empty(t, methodPolicy(eruunv1.AccountService_GetMe_FullMethodName))
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -38,11 +39,6 @@ var publicAccountMethods = map[string]bool{
 	eruunv1.AccountService_ResetPassword_FullMethodName:  true,
 }
 
-var adminAccountMethods = map[string]bool{
-	eruunv1.AccountService_ListAdminUsers_FullMethodName:       true,
-	eruunv1.AccountService_SetAdminUserDisabled_FullMethodName: true,
-}
-
 var authAccountMethods = map[string]bool{
 	eruunv1.AccountService_GetAuthMethods_FullMethodName: true,
 	eruunv1.AccountService_SendAuthCode_FullMethodName:   true,
@@ -58,96 +54,33 @@ var authAccountMethods = map[string]bool{
 	eruunv1.AccountService_UnbindIdentity_FullMethodName: true,
 }
 
-var administrationMethodPolicies = map[string]string{
-	eruunv1.NodePoolsService_ListNodePoolOptions_FullMethodName:                  "viewer",
-	eruunv1.NodePoolsService_ListNodePools_FullMethodName:                        "system",
-	eruunv1.NodePoolsService_GetNodePool_FullMethodName:                          "system",
-	eruunv1.NodePoolsService_CreateNodePool_FullMethodName:                       "system",
-	eruunv1.NodePoolsService_UpdateNodePool_FullMethodName:                       "system",
-	eruunv1.NodePoolsService_DeleteNodePool_FullMethodName:                       "system",
-	eruunv1.SettingsService_ListSettings_FullMethodName:                          "system",
-	eruunv1.SettingsService_GetSetting_FullMethodName:                            "system",
-	eruunv1.SettingsService_CreateSetting_FullMethodName:                         "system",
-	eruunv1.SettingsService_UpdateSetting_FullMethodName:                         "system",
-	eruunv1.SettingsService_DeleteSetting_FullMethodName:                         "system",
-	eruunv1.ProgrammingLanguagesService_ListProgrammingLanguages_FullMethodName:  "member",
-	eruunv1.ProgrammingLanguagesService_GetProgrammingLanguage_FullMethodName:    "member",
-	eruunv1.ProgrammingLanguagesService_CreateProgrammingLanguage_FullMethodName: "system",
-	eruunv1.ProgrammingLanguagesService_UpdateProgrammingLanguage_FullMethodName: "system",
-	eruunv1.ProgrammingLanguagesService_DeleteProgrammingLanguage_FullMethodName: "system",
+type httpRoute struct{ verb, path string }
+
+// rpcRoutes inverts routeRPC, so every RPC inherits the authorization and
+// rate-limit class of the HTTP route it mirrors instead of restating it.
+var rpcRoutes = invertRouteRPC()
+
+func invertRouteRPC() map[string]httpRoute {
+	routes := make(map[string]httpRoute, len(routeRPC))
+	for route, rpc := range routeRPC {
+		verb, path, _ := strings.Cut(route, " ")
+		routes[rpc] = httpRoute{verb: verb, path: path}
+	}
+	return routes
 }
 
-var jobsMethodPolicies = map[string]string{
-	eruunv1.JobsService_CreateJobDefinition_FullMethodName: "member",
-	eruunv1.JobsService_GetJobDefinition_FullMethodName:    "viewer",
-	eruunv1.JobsService_ListJobDefinitions_FullMethodName:  "viewer",
-	eruunv1.JobsService_UpdateJobDefinition_FullMethodName: "member",
-	eruunv1.JobsService_DeleteJobDefinition_FullMethodName: "member",
-	eruunv1.JobsService_RunJobDefinition_FullMethodName:    "member",
-	eruunv1.JobsService_ListJobs_FullMethodName:            "viewer",
-	eruunv1.JobsService_SubmitJob_FullMethodName:           "member",
-	eruunv1.JobsService_GetJob_FullMethodName:              "viewer",
-	eruunv1.JobsService_CancelJob_FullMethodName:           "member",
-	eruunv1.JobsService_GetJobResults_FullMethodName:       "viewer",
-	eruunv1.JobsService_DownloadJobResult_FullMethodName:   "viewer",
-	eruunv1.JobsService_DownloadJobDelivery_FullMethodName: "viewer",
-	eruunv1.JobsService_RetryJobDelivery_FullMethodName:    "member",
-	eruunv1.JobsService_SetJobRetention_FullMethodName:     "member",
-	eruunv1.JobsService_GetJobStoragePolicy_FullMethodName: "viewer",
-	eruunv1.JobsService_SetJobStoragePolicy_FullMethodName: "member",
-	eruunv1.JobsService_UploadJobDataset_FullMethodName:    "member",
-	eruunv1.JobsService_ListJobDatasets_FullMethodName:     "viewer",
-	eruunv1.JobsService_GetJobDataset_FullMethodName:       "viewer",
-	eruunv1.JobsService_DownloadJobDataset_FullMethodName:  "viewer",
+// methodPolicy returns the business policy of the HTTP route an RPC mirrors;
+// empty means the RPC has none.
+func methodPolicy(method string) string {
+	route, ok := rpcRoutes[method]
+	if !ok {
+		return ""
+	}
+	return middleware.BusinessRoutePolicy(route.verb, route.path)
 }
 
-var applicationMethodPolicies = map[string]string{
-	eruunv1.ApplicationService_GetCanonicalJSONSchema_FullMethodName:          "viewer",
-	eruunv1.ApplicationService_ListApplications_FullMethodName:                "viewer",
-	eruunv1.ApplicationService_ListTemplateApplications_FullMethodName:        "member",
-	eruunv1.ApplicationService_ListCronJobs_FullMethodName:                    "member",
-	eruunv1.ApplicationService_ListScheduledJobs_FullMethodName:               "member",
-	eruunv1.ApplicationService_CreateApplications_FullMethodName:              "member",
-	eruunv1.ApplicationService_CreateAndExecApplications_FullMethodName:       "member",
-	eruunv1.ApplicationService_BatchGetApplications_FullMethodName:            "member",
-	eruunv1.ApplicationService_ConvertApplications_FullMethodName:             "member",
-	eruunv1.ApplicationService_ListApplicationWorkflows_FullMethodName:        "member",
-	eruunv1.ApplicationService_GetApplicationSpec_FullMethodName:              "member",
-	eruunv1.ApplicationService_GetApplicationStatus_FullMethodName:            "viewer",
-	eruunv1.ApplicationService_ListApplicationComponents_FullMethodName:       "member",
-	eruunv1.ApplicationService_GetApplicationComponentStatus_FullMethodName:   "viewer",
-	eruunv1.ApplicationService_ListComponentContainers_FullMethodName:         "member",
-	eruunv1.ApplicationService_BatchApplicationComponentStatus_FullMethodName: "member",
-	eruunv1.ApplicationService_StreamComponentLogs_FullMethodName:             "member",
-	eruunv1.ApplicationService_ExportComponentFiles_FullMethodName:            "member",
-	eruunv1.ApplicationService_ExecComponentShell_FullMethodName:              "member",
-	eruunv1.ApplicationService_StreamComponentShell_FullMethodName:            "member",
-	eruunv1.ApplicationService_DeleteApplication_FullMethodName:               "member",
-	eruunv1.ApplicationService_UpdateApplicationWorkflow_FullMethodName:       "member",
-	eruunv1.ApplicationService_ListWorkflowSchedules_FullMethodName:           "member",
-	eruunv1.ApplicationService_UpsertWorkflowSchedule_FullMethodName:          "member",
-	eruunv1.ApplicationService_DeleteWorkflowSchedule_FullMethodName:          "member",
-	eruunv1.ApplicationService_CleanupApplicationResources_FullMethodName:     "member",
-	eruunv1.ApplicationService_ResetApplicationDatabases_FullMethodName:       "member",
-	eruunv1.ApplicationService_DownloadLogArchive_FullMethodName:              "member",
-	eruunv1.ApplicationService_RestartApplicationWorkloads_FullMethodName:     "member",
-	eruunv1.ApplicationService_StopApplicationDeployments_FullMethodName:      "member",
-	eruunv1.ApplicationService_StartApplicationDeployments_FullMethodName:     "member",
-	eruunv1.ApplicationService_ExecApplicationWorkflow_FullMethodName:         "member",
-	eruunv1.ApplicationService_CancelApplicationWorkflow_FullMethodName:       "member",
-	eruunv1.ApplicationService_CancelAllApplicationWorkflows_FullMethodName:   "member",
-	eruunv1.ApplicationService_ListApplicationTasks_FullMethodName:            "member",
-	eruunv1.ApplicationService_ApproveWorkflowTask_FullMethodName:             "member",
-	eruunv1.ApplicationService_GetWorkflowTaskStatus_FullMethodName:           "member",
-	eruunv1.ApplicationService_GetWorkflowTaskStages_FullMethodName:           "member",
-	eruunv1.ApplicationService_UpdateApplicationVersion_FullMethodName:        "member",
-	eruunv1.ApplicationService_DiffUpdateApplicationVersion_FullMethodName:    "member",
-	eruunv1.ApplicationService_CancelDelayedVersionUpdate_FullMethodName:      "member",
-	eruunv1.ApplicationService_TryApplication_FullMethodName:                  "member",
-	eruunv1.ApplicationService_TryWorkflow_FullMethodName:                     "member",
-}
-
-// NewServer registers only methods with an explicit authorization policy.
+// NewServer registers the RPCs mapped in routeRPC; authorizeRPC denies any
+// method without an account or business policy.
 func NewServer(accounts *account.Service, namespaces *workspace.Manager, administration *AdministrationServer, jobsAdapter *JobsServer, applications *ApplicationsServer, limiter *ratelimit.Limiter, options ...grpc.ServerOption) *grpc.Server {
 	interceptor := accountAuthInterceptor(accounts, limiter)
 	options = append(options,
@@ -223,7 +156,7 @@ func accountStreamAuthInterceptor(accounts *account.Service, limiter *ratelimit.
 }
 
 func guardRPCResource(ctx context.Context, method string, request any, accounts *account.Service) error {
-	if _, known := applicationMethodPolicies[method]; !known {
+	if !strings.HasPrefix(method, "/"+eruunv1.ApplicationService_ServiceDesc.ServiceName+"/") {
 		return nil
 	}
 	if accounts == nil || accounts.Repo.Store == nil {
@@ -244,13 +177,7 @@ func guardRPCResource(ctx context.Context, method string, request any, accounts 
 }
 
 func authorizeRPC(ctx context.Context, method string, accounts *account.Service, limiter *ratelimit.Limiter) (context.Context, error) {
-	minimum := administrationMethodPolicies[method]
-	if minimum == "" {
-		minimum = jobsMethodPolicies[method]
-	}
-	if minimum == "" {
-		minimum = applicationMethodPolicies[method]
-	}
+	minimum := methodPolicy(method)
 	if !accountMethodKnown(method) && minimum == "" {
 		return nil, rpcError(bcode.ErrForbidden)
 	}
@@ -291,9 +218,6 @@ func authorizeRPC(ctx context.Context, method string, accounts *account.Service,
 			method != eruunv1.AccountService_Logout_FullMethodName {
 			return nil, rpcError(bcode.ErrAccountPasswordChange)
 		}
-		if adminAccountMethods[method] && !p.User.SystemAdmin {
-			return nil, rpcError(bcode.ErrForbidden)
-		}
 		if minimum != "" {
 			if minimum == "system" {
 				if !p.User.SystemAdmin {
@@ -323,14 +247,11 @@ func authorizeRPC(ctx context.Context, method string, accounts *account.Service,
 }
 
 func expensiveRPC(method string) bool {
-	for route, rpc := range routeRPC {
-		if rpc != method {
-			continue
-		}
-		verb, path, _ := strings.Cut(route, " ")
-		return ratelimit.IsExpensiveRequest(verb, path)
+	route, ok := rpcRoutes[method]
+	if !ok {
+		return true
 	}
-	return true
+	return ratelimit.IsExpensiveRequest(route.verb, route.path)
 }
 
 func selectedWorkspaceID(ctx context.Context) (string, error) {
