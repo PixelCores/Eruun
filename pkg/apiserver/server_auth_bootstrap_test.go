@@ -71,10 +71,6 @@ func (s *systemSettingStore) Count(context.Context, datastore.Entity, *datastore
 	return 0, nil
 }
 
-func (s *systemSettingStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *systemSettingStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

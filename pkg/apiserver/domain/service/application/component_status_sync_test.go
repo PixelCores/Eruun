@@ -83,10 +83,6 @@ func (s *statusSyncStore) Count(context.Context, datastore.Entity, *datastore.Fi
 	return 0, nil
 }
 
-func (s *statusSyncStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *statusSyncStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return s.exists, s.existsErr
 }

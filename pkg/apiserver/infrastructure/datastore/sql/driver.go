@@ -139,38 +139,6 @@ func (m *Driver) Put(ctx context.Context, entity datastore.Entity) error {
 	return nil
 }
 
-// IsExist determine whether data exists.
-func (m *Driver) IsExist(ctx context.Context, entity datastore.Entity) (bool, error) {
-	if entity == nil {
-		return false, datastore.ErrNilEntity
-	}
-	table := entity.TableName()
-	if table == "" {
-		return false, datastore.ErrTableNameEmpty
-	}
-
-	conds := entity.Index()
-	if len(conds) == 0 {
-		return false, fmt.Errorf("IsExist: no query condition provided")
-	}
-
-	dest, err := datastore.NewEntity(entity)
-	if err != nil {
-		return false, err
-	}
-	tx := m.Client.WithContext(ctx).Table(table).Where(conds).Limit(1).Find(dest)
-	if tx.Error != nil {
-		if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, datastore.NewDBError(tx.Error)
-	}
-	if tx.RowsAffected == 0 {
-		return false, nil
-	}
-	return true, nil
-}
-
 func (m *Driver) IsExistByCondition(ctx context.Context, table string, cond map[string]interface{}, dest interface{}) (bool, error) {
 	if table == "" {
 		return false, datastore.ErrTableNameEmpty
@@ -249,15 +217,11 @@ func (m *Driver) DeleteByFilter(ctx context.Context, entity datastore.Entity, op
 	return nil
 }
 
-// _toColumnName converts keys of the models to lowercase as the column name are in lowercase in the database
-func _toColumnName(columnName string) string {
-	return strings.ToLower(columnName)
-}
-
+// _applyFilterOptions lowercases model keys, the case of the database columns.
 func _applyFilterOptions(clauses []clause.Expression, filterOptions datastore.FilterOptions) []clause.Expression {
 	for _, queryOp := range filterOptions.Queries {
 		clauses = append(clauses, clause.Like{
-			Column: _toColumnName(queryOp.Key),
+			Column: strings.ToLower(queryOp.Key),
 			Value:  fmt.Sprintf("%%%s%%", queryOp.Query),
 		})
 	}
@@ -267,26 +231,20 @@ func _applyFilterOptions(clauses []clause.Expression, filterOptions datastore.Fi
 			values[i] = v
 		}
 		clauses = append(clauses, clause.IN{
-			Column: _toColumnName(queryOp.Key),
+			Column: strings.ToLower(queryOp.Key),
 			Values: values,
 		})
 	}
 	for _, queryOp := range filterOptions.NotEqual {
 		clauses = append(clauses, clause.Neq{
-			Column: _toColumnName(queryOp.Key),
+			Column: strings.ToLower(queryOp.Key),
 			Value:  queryOp.Value,
 		})
 	}
 	for _, queryOp := range filterOptions.LessThan {
 		clauses = append(clauses, clause.Lt{
-			Column: _toColumnName(queryOp.Key),
+			Column: strings.ToLower(queryOp.Key),
 			Value:  queryOp.Value,
-		})
-	}
-	for _, queryOp := range filterOptions.IsNotExist {
-		clauses = append(clauses, clause.Eq{
-			Column: _toColumnName(queryOp.Key),
-			Value:  "",
 		})
 	}
 	return clauses
@@ -449,10 +407,10 @@ func (m *Driver) CompareAndSwapWithConditions(ctx context.Context, entity datast
 func applyCompareAndSwapConditions(query *gorm.DB, conditions map[string]interface{}) *gorm.DB {
 	for field, value := range conditions {
 		if value == nil {
-			query = query.Where(_toColumnName(field) + " IS NULL")
+			query = query.Where(strings.ToLower(field) + " IS NULL")
 			continue
 		}
-		query = query.Where(_toColumnName(field)+" = ?", value)
+		query = query.Where(strings.ToLower(field)+" = ?", value)
 	}
 	return query
 }

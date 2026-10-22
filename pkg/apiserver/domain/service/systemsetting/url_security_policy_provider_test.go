@@ -52,9 +52,6 @@ func (f *fakeSettingStore) List(context.Context, datastore.Entity, *datastore.Li
 func (f *fakeSettingStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
-func (f *fakeSettingStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
 func (f *fakeSettingStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

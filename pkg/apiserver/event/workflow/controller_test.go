@@ -293,10 +293,6 @@ func (s *controllerTestStore) Count(context.Context, datastore.Entity, *datastor
 	return 0, nil
 }
 
-func (s *controllerTestStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *controllerTestStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

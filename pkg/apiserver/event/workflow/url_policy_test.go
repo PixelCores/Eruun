@@ -62,9 +62,6 @@ func (s *workflowURLPolicyStore) List(context.Context, datastore.Entity, *datast
 func (s *workflowURLPolicyStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
-func (s *workflowURLPolicyStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
 func (s *workflowURLPolicyStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

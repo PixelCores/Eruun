@@ -23,7 +23,6 @@ func (*NoopStore) List(context.Context, datastore.Entity, *datastore.ListOptions
 func (*NoopStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
-func (*NoopStore) IsExist(context.Context, datastore.Entity) (bool, error) { return false, nil }
 func (*NoopStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

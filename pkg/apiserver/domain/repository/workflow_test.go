@@ -35,9 +35,6 @@ func (w *waitingTaskStore) List(ctx context.Context, query datastore.Entity, opt
 func (w *waitingTaskStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
-func (w *waitingTaskStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
 func (w *waitingTaskStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }
@@ -104,9 +101,6 @@ func (w *waitingTaskFilterStore) List(context.Context, datastore.Entity, *datast
 func (w *waitingTaskFilterStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
-func (w *waitingTaskFilterStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
 func (w *waitingTaskFilterStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }
@@ -138,9 +132,6 @@ func (s *updateTaskFieldStore) List(context.Context, datastore.Entity, *datastor
 }
 func (s *updateTaskFieldStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
-}
-func (s *updateTaskFieldStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
 }
 func (s *updateTaskFieldStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
@@ -230,9 +221,6 @@ func (s *idempotencyTaskStore) List(_ context.Context, query datastore.Entity, _
 }
 func (s *idempotencyTaskStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
-}
-func (s *idempotencyTaskStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
 }
 func (s *idempotencyTaskStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil

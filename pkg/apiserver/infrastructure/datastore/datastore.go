@@ -137,18 +137,12 @@ type ComparisonQueryOption struct {
 	Value interface{}
 }
 
-// IsNotExistQueryOption means the value is empty
-type IsNotExistQueryOption struct {
-	Key string
-}
-
 // FilterOptions filter query returned items
 type FilterOptions struct {
-	Queries    []FuzzyQueryOption
-	In         []InQueryOption
-	NotEqual   []ComparisonQueryOption
-	LessThan   []ComparisonQueryOption
-	IsNotExist []IsNotExistQueryOption
+	Queries  []FuzzyQueryOption
+	In       []InQueryOption
+	NotEqual []ComparisonQueryOption
+	LessThan []ComparisonQueryOption
 }
 
 // ListOptions list api options
@@ -184,9 +178,6 @@ type DataStore interface {
 
 	// Count entities from database, TableName() can't return zero value.
 	Count(ctx context.Context, entity Entity, options *FilterOptions) (int64, error)
-
-	// IsExist Name() and TableName() can't return zero value.
-	IsExist(ctx context.Context, entity Entity) (bool, error)
 
 	//IsExistByCondition 多条件判断实体是否存在
 	IsExistByCondition(ctx context.Context, table string, cond map[string]interface{}, dest interface{}) (bool, error)
