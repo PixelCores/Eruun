@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/stretchr/testify/require"
 
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
@@ -598,13 +599,13 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 		Namespace: config.DefaultNamespace,
 		Name:      "phase-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "cfg", ComponentType: config.ConfJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-config"}},
-			{Name: "sec", ComponentType: config.SecretJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-secret"}},
-			{Name: "db", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-store"}},
-			{Name: "runner", ComponentType: config.InstantJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-job"}},
+			{Name: "cfg", ComponentType: config.ConfJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-config"}},
+			{Name: "sec", ComponentType: config.SecretJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-secret"}},
+			{Name: "db", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-store"}},
+			{Name: "runner", ComponentType: config.InstantJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-job"}},
 			{Name: "init-sql", ComponentType: config.InstantJob, Image: "busybox:1.36"},
-			{Name: "api", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-web"}},
-			{Name: "nightly", ComponentType: config.ScheduledJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-cron"}},
+			{Name: "api", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-web"}},
+			{Name: "nightly", ComponentType: config.ScheduledJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-cron"}},
 		},
 	}
 
@@ -673,7 +674,7 @@ func TestCreateApplications_TemplateWithExplicitWorkflow_DoesNotRewrite(t *testi
 			{
 				Name:          "tenant-store",
 				ComponentType: config.StoreJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-store"},
+				Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "tpl-store"},
 			},
 		},
 		Workflow: []apisv1.CreateWorkflowStepRequest{

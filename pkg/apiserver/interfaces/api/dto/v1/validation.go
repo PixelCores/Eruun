@@ -92,10 +92,9 @@ type PlanAction struct {
 // Validation error codes
 const (
 	// Naming errors
-	ErrCodeNameTooShort         = "NAME_TOO_SHORT"
-	ErrCodeNameTooLong          = "NAME_TOO_LONG"
-	ErrCodeInvalidNameFormat    = "INVALID_NAME_FORMAT"
-	ErrCodeInvalidComponentName = "INVALID_COMPONENT_NAME"
+	ErrCodeNameTooShort      = "NAME_TOO_SHORT"
+	ErrCodeNameTooLong       = "NAME_TOO_LONG"
+	ErrCodeInvalidNameFormat = "INVALID_NAME_FORMAT"
 
 	// Component errors
 	ErrCodeInvalidComponentType = "INVALID_COMPONENT_TYPE"

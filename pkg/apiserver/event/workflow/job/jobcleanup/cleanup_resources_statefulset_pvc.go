@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -195,7 +196,7 @@ func (c *CleanupResourcesJobCtl) refreshRequiredStatefulSetPVCTargets(ctx contex
 		}
 	}
 	target := c.requiredStatefulSetPVCTarget
-	if target.ref.namespace != ref.namespace || target.ref.name != ref.name || !equalStringSlices(target.templates, templates) {
+	if target.ref.namespace != ref.namespace || target.ref.name != ref.name || !slices.Equal(target.templates, templates) {
 		return requiredStatefulSetPVCConflict(ref, ref.name, "PVC deletion target changed after the identity checkpoint")
 	}
 	for name, pvc := range current {
@@ -240,11 +241,8 @@ func (c *CleanupResourcesJobCtl) listRequiredStatefulSetPVCs(
 	result := make(map[string]*corev1.PersistentVolumeClaim)
 	for i := range list.Items {
 		pvc := &list.Items[i]
-		for _, template := range templates {
-			if jobexec.IsStatefulSetTemplatePVCName(template, ref.name, pvc.Name) {
-				result[pvc.Name] = pvc.DeepCopy()
-				break
-			}
+		if matchesStatefulSetTemplatePVCName(templates, ref.name, pvc.Name) {
+			result[pvc.Name] = pvc.DeepCopy()
 		}
 	}
 	return result, nil
@@ -410,7 +408,7 @@ func requiredStatefulSetPVCTargetFromCheckpoint(
 ) (*requiredStatefulSetPVCDeletionTarget, error) {
 	checkpoint.StatefulSetName = strings.TrimSpace(checkpoint.StatefulSetName)
 	checkpoint.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(checkpoint.Templates)
-	if checkpoint.Namespace != ref.namespace || checkpoint.StatefulSetName != ref.name || !equalStringSlices(checkpoint.Templates, templates) {
+	if checkpoint.Namespace != ref.namespace || checkpoint.StatefulSetName != ref.name || !slices.Equal(checkpoint.Templates, templates) {
 		return nil, requiredStatefulSetPVCConflict(ref, ref.name, fmt.Sprintf("PVC identity checkpoint targets %s/%s templates %v instead of %s templates %v", checkpoint.Namespace, checkpoint.StatefulSetName, checkpoint.Templates, cleanupResourceDisplayName(ref), templates))
 	}
 	target := &requiredStatefulSetPVCDeletionTarget{
@@ -476,7 +474,7 @@ func requiredStatefulSetPVCCheckpointsEqual(a, b requiredStatefulSetPVCDeletionC
 	b.StatefulSetName = strings.TrimSpace(b.StatefulSetName)
 	a.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(a.Templates)
 	b.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(b.Templates)
-	if a.Namespace != b.Namespace || a.StatefulSetName != b.StatefulSetName || !equalStringSlices(a.Templates, b.Templates) || len(a.PVCs) != len(b.PVCs) {
+	if a.Namespace != b.Namespace || a.StatefulSetName != b.StatefulSetName || !slices.Equal(a.Templates, b.Templates) || len(a.PVCs) != len(b.PVCs) {
 		return false
 	}
 	aPVCs := make(map[string]types.UID, len(a.PVCs))
@@ -542,18 +540,6 @@ func matchesStatefulSetTemplatePVCName(templates []string, statefulSetName, pvcN
 		}
 	}
 	return false
-}
-
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func requiredStatefulSetPVCConflict(ref cleanupResourceRef, name, detail string) error {

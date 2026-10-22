@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -286,12 +285,12 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCOwnerReferencesRemoved(
 	updatedAny := false
 	for i := range list.Items {
 		pvc := &list.Items[i]
-		if !statefulSetVolumeClaimTemplatePVC(ref.name, templates, pvc.Name) {
+		if !matchesStatefulSetTemplatePVCName(templates, ref.name, pvc.Name) {
 			continue
 		}
-		if pvc.DeletionTimestamp != nil && !statefulSetVolumeClaimTemplatePVC(
-			ref.name,
+		if pvc.DeletionTimestamp != nil && !matchesStatefulSetTemplatePVCName(
 			plannedDeletionTemplates,
+			ref.name,
 			pvc.Name,
 		) {
 			return false, fmt.Errorf(
@@ -431,15 +430,6 @@ func statefulSetPVCRetentionIsRetain(statefulSet *appsv1.StatefulSet) bool {
 	policy := statefulSet.Spec.PersistentVolumeClaimRetentionPolicy
 	return policy.WhenDeleted == appsv1.RetainPersistentVolumeClaimRetentionPolicyType &&
 		policy.WhenScaled == appsv1.RetainPersistentVolumeClaimRetentionPolicyType
-}
-
-func statefulSetVolumeClaimTemplatePVC(statefulSetName string, templates []string, pvcName string) bool {
-	for _, template := range templates {
-		if jobexec.IsStatefulSetTemplatePVCName(template, statefulSetName, pvcName) {
-			return true
-		}
-	}
-	return false
 }
 
 func statefulSetOwnerReferenceMatches(statefulSetName string, statefulSetUID types.UID, ownerName string, ownerUID types.UID) bool {

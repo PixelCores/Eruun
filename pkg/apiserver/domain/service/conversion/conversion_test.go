@@ -32,7 +32,7 @@ func TestConvertKubeResourcesPreservesLegacyValidationErrors(t *testing.T) {
 		Errors: []apis.TryValidationError{{
 			Field:   "component[0].name",
 			Path:    "/components/0/name",
-			Code:    apis.ErrCodeInvalidComponentName,
+			Code:    apis.ErrCodeInvalidNameFormat,
 			Message: "invalid component name",
 		}},
 	}}}

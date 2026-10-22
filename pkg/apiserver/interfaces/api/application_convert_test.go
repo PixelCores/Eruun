@@ -72,7 +72,7 @@ func TestConvertApplicationsEndpointPreservesLegacyValidationErrorField(t *testi
 		Valid:      false,
 		Errors: []apis.ValidationError{{
 			Field:   "component[0].name",
-			Code:    apis.ErrCodeInvalidComponentName,
+			Code:    apis.ErrCodeInvalidNameFormat,
 			Message: "invalid component name",
 		}},
 	}}

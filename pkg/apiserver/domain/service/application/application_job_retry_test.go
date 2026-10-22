@@ -42,7 +42,7 @@ func TestJobRetryPolicyValidation(t *testing.T) {
 	_, err := normalizeVersionUpdateJobFailurePolicies([]apisv1.ComponentUpdateSpec{{Name: "job", Action: "add", ComponentType: config.ScheduledJob,
 		Properties: &apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}, nil)
 	require.ErrorContains(t, err, "jobRetryPolicy")
-	errors := ValidateTemplateOverrides([]apisv1.CreateComponentRequest{{Template: &apisv1.TemplateRef{ID: "tmpl"},
+	errors := ValidateTemplateOverrides([]apisv1.CreateComponentRequest{{Template: &spec.TemplateRef{ID: "tmpl"},
 		Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{Properties: apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}}}})
 	require.Len(t, errors, 1)
 	require.Equal(t, "component[0].traits.init[0].properties.jobRetryPolicy", errors[0].Field)

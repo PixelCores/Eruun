@@ -79,7 +79,7 @@ func convertKubeYAMLToComponents(yamlText string) ([]apis.CreateComponentRequest
 	if err != nil {
 		return nil, nil, err
 	}
-	return ConvertKubeObjectsToComponents(objects)
+	return convertKubeObjects(objects)
 }
 
 func decodeKubeObjects(yamlText string) ([]*unstructured.Unstructured, error) {

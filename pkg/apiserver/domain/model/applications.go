@@ -172,31 +172,3 @@ type Ports = spec.Ports
 
 // Traits 附加特性
 type Traits = spec.Traits
-
-// EnvFromSourceSpec corresponds to a single corev1.EnvFromSource.
-type EnvFromSourceSpec = spec.EnvFromSourceSpec
-
-// SimplifiedEnvSpec is the user-friendly, simplified way to define environment variables.
-type SimplifiedEnvSpec = spec.SimplifiedEnvSpec
-
-// ValueSource defines the source for an environment variable's value.
-// Only one of its fields may be set.
-// Static 可能根本不需要实现，因为Env就直接实现这种方式
-type ValueSource = spec.ValueSource
-
-// SecretSelectorSpec selects a key from a Secret.
-type SecretSelectorSpec = spec.SecretSelectorSpec
-
-// ConfigMapSelectorSpec selects a key from a ConfigMap.
-type ConfigMapSelectorSpec = spec.ConfigMapSelectorSpec
-
-// InitTrait 初始化容器的特征
-type InitTrait = spec.InitTraitSpec
-
-// StorageTrait 描述存储特征
-type StorageTrait = spec.StorageTraitSpec
-
-type SidecarSpec = spec.SidecarTraitsSpec
-
-// ResourceSpec defines CPU/Memory/GPU resources for containers
-type ResourceSpec = spec.ResourceTraitsSpec

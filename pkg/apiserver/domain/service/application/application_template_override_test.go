@@ -57,7 +57,7 @@ func TestCreateApplicationsFromTemplatePreservesEnvOverrideValuesDuringRewrite(t
 			Properties: apisv1.Properties{
 				Env: map[string]string{"DB_HOST": "mysql-master.default.svc"},
 			},
-			Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestCreateApplicationsFromTemplatePreservesInitEnvOverrideValuesDuringRewri
 					},
 				}},
 			},
-			Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.NoError(t, err)
@@ -224,7 +224,7 @@ func TestCreateApplicationsFromTemplateAppliesDefaultStorageClass(t *testing.T) 
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
-			Template: &apisv1.TemplateRef{
+			Template: &spec.TemplateRef{
 				ID:                  templateApp.ID,
 				Target:              "mysql",
 				DefaultStorageClass: " tenant-a-nas ",
@@ -302,7 +302,7 @@ func TestCreateApplicationsFromTemplatePreservesSecretTextOverrides(t *testing.T
 			{
 				Name:          "clone-app",
 				ComponentType: config.ServerJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "app"},
+				Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "app"},
 			},
 			{
 				Name:          "clone-secret",
@@ -310,7 +310,7 @@ func TestCreateApplicationsFromTemplatePreservesSecretTextOverrides(t *testing.T
 				Properties: apisv1.Properties{
 					Secret: map[string]string{"PASSWORD": "override-secret"},
 				},
-				Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tem-app-secret"},
+				Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tem-app-secret"},
 			},
 		},
 	}
@@ -411,7 +411,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideAsText(t *testi
 			{
 				Name:          "clone-app",
 				ComponentType: config.ServerJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "app"},
+				Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "app"},
 			},
 			{
 				Name:          "clone-secret",
@@ -419,7 +419,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideAsText(t *testi
 				Properties: apisv1.Properties{
 					Secret: map[string]string{"PASSWORD": encodedOverride},
 				},
-				Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tem-app-secret"},
+				Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tem-app-secret"},
 			},
 		},
 	}
@@ -506,7 +506,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideOnPlaintextSecr
 			{
 				Name:          "clone-app",
 				ComponentType: config.ServerJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "app"},
+				Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "app"},
 			},
 			{
 				Name:          "clone-secret",
@@ -514,7 +514,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideOnPlaintextSecr
 				Properties: apisv1.Properties{
 					Secret: map[string]string{"PASSWORD": encodedOverride},
 				},
-				Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tem-app-secret"},
+				Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tem-app-secret"},
 			},
 		},
 	}
@@ -616,7 +616,7 @@ func TestCreateApplicationsFromTemplateOverridesInitEnv(t *testing.T) {
 					},
 				}},
 			},
-			Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	}
 
@@ -704,7 +704,7 @@ func TestCreateApplicationsFromTemplateOverridesInitEnvDefaultFirst(t *testing.T
 					},
 				}},
 			},
-			Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	}
 
@@ -788,7 +788,7 @@ func TestCreateApplicationsFromTemplateOverridesResources(t *testing.T) {
 					Traits: apisv1.Traits{
 						Resources: tt.overrideResources,
 					},
-					Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+					Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 				}},
 			})
 			require.NoError(t, err)
@@ -832,7 +832,7 @@ func TestCreateApplicationsFromTemplateReplacesNodePool(t *testing.T) {
 			Traits: apisv1.Traits{
 				NodePool: "override",
 			},
-			Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.NoError(t, err)

@@ -362,7 +362,7 @@ func TestValidationService_TryApplication_WorkflowUsesResolvedTemplateComponentN
 		Name:      "game",
 		Namespace: "default",
 		Components: []apisv1.CreateComponentRequest{{
-			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "api"},
+			Template: &spec.TemplateRef{ID: "tmpl-1", Target: "api"},
 		}},
 		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-step",

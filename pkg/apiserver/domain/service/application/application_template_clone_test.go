@@ -192,8 +192,8 @@ func TestCreateApplicationsFromTemplateSuffixesDuplicateTargets(t *testing.T) {
 		Namespace: config.DefaultNamespace,
 		Name:      "game",
 		Components: []apisv1.CreateComponentRequest{
-			{Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "mysql-config"}},
-			{Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "mysql-config"}},
+			{Template: &spec.TemplateRef{ID: "tmpl-1", Target: "mysql-config"}},
+			{Template: &spec.TemplateRef{ID: "tmpl-1", Target: "mysql-config"}},
 		},
 	})
 
@@ -239,7 +239,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 		components, _, err := ResolveComponentsWithSourceIndexes(context.Background(), svc.AppRepo, svc.ComponentRepo, config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{{
 			Name:          "legacy-job",
 			ComponentType: config.InstantJob,
-			Template:      &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
+			Template:      &spec.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
 		}}, nil)
 
 		require.NoError(t, err)
@@ -256,7 +256,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 			{
 				Name:          "first-job",
 				ComponentType: config.InstantJob,
-				Template:      &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
+				Template:      &spec.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
 			},
 			{
 				Name:          "direct-api",
@@ -266,7 +266,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 			{
 				Name:          "second-job",
 				ComponentType: config.InstantJob,
-				Template:      &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
+				Template:      &spec.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
 			},
 		}, svc.Cfg)
 
@@ -294,7 +294,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 			{
 				Name:          "fallback-job",
 				ComponentType: config.InstantJob,
-				Template:      &apisv1.TemplateRef{ID: "tmpl-source-index"},
+				Template:      &spec.TemplateRef{ID: "tmpl-source-index"},
 			},
 		}, svc.Cfg)
 
@@ -515,7 +515,7 @@ func TestCreateApplicationsFromTemplateRequiresEnable(t *testing.T) {
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-comp",
 			ComponentType: config.StoreJob,
-			Template:      &apisv1.TemplateRef{ID: templateApp.ID},
+			Template:      &spec.TemplateRef{ID: templateApp.ID},
 		}},
 	}
 
@@ -662,7 +662,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 				Properties: apisv1.Properties{
 					Env: map[string]string{"a": "override", "NEW": "env"},
 				},
-				Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+				Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 			},
 			{
 				Name:          "new-mysql-secret",
@@ -670,7 +670,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 				Properties: apisv1.Properties{
 					Secret: map[string]string{"MYSQL_ROOT_PASSWORD": "override-secret"},
 				},
-				Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tem-mysql-secret"},
+				Template: &spec.TemplateRef{ID: templateApp.ID, Target: "tem-mysql-secret"},
 			},
 		},
 		TemplateEnabled: &templateEnabled,
@@ -811,7 +811,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 			{
 				Name:          "tenant-a-mysql",
 				ComponentType: config.StoreJob,
-				Template: &apisv1.TemplateRef{
+				Template: &spec.TemplateRef{
 					ID:                  templateApp.ID,
 					Target:              "mysql",
 					DefaultStorageClass: "tenant-a-nas",

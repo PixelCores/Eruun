@@ -241,10 +241,9 @@ func (c *applicationsServiceImpl) scaleDeployment(ctx context.Context, namespace
 	if name == "" {
 		return true, nil
 	}
-	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationWorkloadScaleTimeout)
 	defer cancel()
-	_, err := c.KubeClient.AppsV1().Deployments(ns).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	_, err := c.KubeClient.AppsV1().Deployments(namespace).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return true, nil

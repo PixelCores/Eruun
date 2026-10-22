@@ -194,10 +194,9 @@ func (c *applicationsServiceImpl) restartDeployment(ctx context.Context, namespa
 	if name == "" {
 		return true, nil
 	}
-	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationWorkloadRestartTimeout)
 	defer cancel()
-	_, err := c.KubeClient.AppsV1().Deployments(ns).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	_, err := c.KubeClient.AppsV1().Deployments(namespace).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return true, nil
@@ -211,10 +210,9 @@ func (c *applicationsServiceImpl) restartStatefulSet(ctx context.Context, namesp
 	if name == "" {
 		return true, nil
 	}
-	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationWorkloadRestartTimeout)
 	defer cancel()
-	_, err := c.KubeClient.AppsV1().StatefulSets(ns).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	_, err := c.KubeClient.AppsV1().StatefulSets(namespace).Patch(opCtx, name, types.MergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return true, nil
