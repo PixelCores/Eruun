@@ -93,9 +93,7 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 		CreateFn: func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 			return c.Client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(ctx, pvc, metav1.CreateOptions{})
 		},
-		OnExisting:      observeExistingPVC,
-		IsNotFound:      k8serrors.IsNotFound,
-		IsAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting: observeExistingPVC,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure pvc %q failed: %w", pvc.Name, err)

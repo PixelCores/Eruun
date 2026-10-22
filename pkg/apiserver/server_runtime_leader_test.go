@@ -2,10 +2,14 @@ package apiserver
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
@@ -64,8 +68,6 @@ func TestPromotionPreservesRunningExecutionAndDemotionResumesIntake(t *testing.T
 }
 
 func TestLeaderStopsBothControlLoopsBeforeLeaseRelease(t *testing.T) {
-	old := releaseLeaderLock
-	defer func() { releaseLeaderLock = old }()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	s := &restServer{cfg: *config.NewConfig()}
@@ -78,7 +80,8 @@ func TestLeaderStopsBothControlLoopsBeforeLeaseRelease(t *testing.T) {
 	s.controllerRun, s.schedulerRun = controller, scheduler
 	apiCtx, apiCancel := context.WithCancel(context.Background())
 	s.leaderCtx, s.leaderCancel = apiCtx, apiCancel
-	releaseLeaderLock = func(resourcelock.Interface, time.Duration) bool {
+	lock := &testLeaderElectionLock{identity: "self", record: &resourcelock.LeaderElectionRecord{HolderIdentity: "self"}}
+	lock.getFunc = func(context.Context) (*resourcelock.LeaderElectionRecord, []byte, error) {
 		require.ErrorIs(t, apiCtx.Err(), context.Canceled)
 		for _, run := range []*workerRun{controller, scheduler} {
 			select {
@@ -87,10 +90,12 @@ func TestLeaderStopsBothControlLoopsBeforeLeaseRelease(t *testing.T) {
 				t.Fatal("released Lease before control loop stopped")
 			}
 		}
-		return true
+		record := *lock.record
+		return &record, nil, nil
 	}
-	election := s.buildRuntimeLeaderElectionConfig(ctx, ctx, &testLeaderElectionLock{}, nil)
+	election := s.buildRuntimeLeaderElectionConfig(ctx, ctx, lock, nil)
 	election.Callbacks.OnStoppedLeading()
+	require.Len(t, lock.updates, 1, "the Lease must be released")
 	require.Nil(t, s.workersRun, "shutdown must not restart workers")
 }
 
@@ -124,30 +129,17 @@ func TestLeaderWaitsForInitializationBeforeExposingAPI(t *testing.T) {
 	}
 }
 
-func TestLeaderElectionSerializesLateStartupAndStop(t *testing.T) {
-	old := runLeaderElector
-	defer func() { runLeaderElector = old }()
+func TestLeaderTermSerializesLateStartupAndStop(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	stopped := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runLeaderElector = func(ctx context.Context, cfg leaderelection.LeaderElectionConfig) {
-		leaderCtx, lose := context.WithCancel(ctx)
-		go cfg.Callbacks.OnStartedLeading(leaderCtx)
-		<-started
-		lose()
-		cfg.Callbacks.OnStoppedLeading()
-		cancel()
-	}
-	s := &restServer{}
-	election := leaderelection.LeaderElectionConfig{Callbacks: leaderelection.LeaderCallbacks{
+	term := serializeLeaderTerm(leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(context.Context) { close(started); <-release },
 		OnStoppedLeading: func() { close(stopped) },
-	}}
-	done := make(chan struct{})
-	go func() { defer close(done); s.runRuntimeLeaderElection(ctx, election) }()
+	})
+	go term.OnStartedLeading(context.Background())
 	<-started
+	go term.OnStoppedLeading()
 	select {
 	case <-stopped:
 		t.Fatal("stop ran while startup was still in flight")
@@ -155,45 +147,89 @@ func TestLeaderElectionSerializesLateStartupAndStop(t *testing.T) {
 	}
 	close(release)
 	select {
-	case <-done:
+	case <-stopped:
 	case <-time.After(time.Second):
-		t.Fatal("election did not stop")
+		t.Fatal("stop did not run after startup finished")
 	}
-	<-stopped
 }
 
-func TestLeaderElectionRejectsStartDeliveredAfterStop(t *testing.T) {
-	old := runLeaderElector
-	defer func() { runLeaderElector = old }()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runLeaderElector = func(ctx context.Context, cfg leaderelection.LeaderElectionConfig) {
-		cfg.Callbacks.OnStoppedLeading()
-		cfg.Callbacks.OnStartedLeading(ctx)
-		cancel()
-	}
-	s := &restServer{}
+func TestLeaderTermRejectsStartDeliveredAfterStop(t *testing.T) {
 	starts, stops := 0, 0
-	s.runRuntimeLeaderElection(ctx, leaderelection.LeaderElectionConfig{Callbacks: leaderelection.LeaderCallbacks{OnStartedLeading: func(context.Context) { starts++ }, OnStoppedLeading: func() { stops++ }}})
+	term := serializeLeaderTerm(leaderelection.LeaderCallbacks{OnStartedLeading: func(context.Context) { starts++ }, OnStoppedLeading: func() { stops++ }})
+	term.OnStoppedLeading()
+	term.OnStartedLeading(context.Background())
 	require.Zero(t, starts)
 	require.Equal(t, 1, stops)
 }
 
 func TestLeaderElectionRetriesAfterLoss(t *testing.T) {
-	oldRunner, oldDelay := runLeaderElector, leaderElectionRetryDelay
-	defer func() { runLeaderElector = oldRunner; leaderElectionRetryDelay = oldDelay }()
-	leaderElectionRetryDelay = time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	runs := 0
-	runLeaderElector = func(context.Context, leaderelection.LeaderElectionConfig) {
-		runs++
-		if runs == 2 {
-			cancel()
-		}
+	lock := &renewFailingLeaderLock{identity: "self"}
+	stopped := make(chan time.Time, 1)
+	election := leaderelection.LeaderElectionConfig{
+		Lock: lock, LeaseDuration: 400 * time.Millisecond, RenewDeadline: 200 * time.Millisecond, RetryPeriod: 50 * time.Millisecond,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(context.Context) {},
+			OnStoppedLeading: func() { stopped <- time.Now() },
+		},
 	}
-	(&restServer{}).runRuntimeLeaderElection(ctx, leaderelection.LeaderElectionConfig{})
-	require.Equal(t, 2, runs)
+	done := make(chan struct{})
+	go func() { defer close(done); (&restServer{}).runRuntimeLeaderElection(ctx, election) }()
+
+	lostAt := <-stopped
+	getsAtLoss := lock.gets()
+	require.Eventually(t, func() bool { return lock.gets() > getsAtLoss }, 3*leaderElectionRetryPeriod, 10*time.Millisecond, "election was not retried")
+	require.GreaterOrEqual(t, time.Since(lostAt), leaderElectionRetryPeriod, "retry must wait for the retry period")
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("election did not stop")
+	}
+}
+
+// renewFailingLeaderLock grants the Lease once and rejects every renewal, so a
+// real elector loses each term after RenewDeadline.
+type renewFailingLeaderLock struct {
+	identity string
+	mu       sync.Mutex
+	record   *resourcelock.LeaderElectionRecord
+	getCalls int
+}
+
+func (l *renewFailingLeaderLock) Get(context.Context) (*resourcelock.LeaderElectionRecord, []byte, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.getCalls++
+	if l.record == nil {
+		return nil, nil, apierrors.NewNotFound(schema.GroupResource{Group: "coordination.k8s.io", Resource: "leases"}, "test")
+	}
+	record := *l.record
+	return &record, nil, nil
+}
+
+func (l *renewFailingLeaderLock) Create(_ context.Context, record resourcelock.LeaderElectionRecord) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.record = &record
+	return nil
+}
+
+func (l *renewFailingLeaderLock) Update(context.Context, resourcelock.LeaderElectionRecord) error {
+	return errors.New("renewal rejected")
+}
+
+func (l *renewFailingLeaderLock) RecordEvent(string) {}
+
+func (l *renewFailingLeaderLock) Identity() string { return l.identity }
+
+func (l *renewFailingLeaderLock) Describe() string { return "renew-failing-lock" }
+
+func (l *renewFailingLeaderLock) gets() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.getCalls
 }
 
 func TestRuntimeReadinessTracksCurrentDuty(t *testing.T) {

@@ -3,6 +3,7 @@ package jobexec
 import (
 	"context"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -28,13 +29,11 @@ type SharedResourceAccessOptions struct {
 
 type TrackedResourceReconcileOptions[T any] struct {
 	SharedResourceAccessOptions
-	Namespace       string
-	Name            string
-	GetFn           getResourceFunc[T]
-	CreateFn        createResourceFunc[T]
-	OnExisting      onExistingResourceFunc[T]
-	IsNotFound      func(error) bool
-	IsAlreadyExists func(error) bool
+	Namespace  string
+	Name       string
+	GetFn      getResourceFunc[T]
+	CreateFn   createResourceFunc[T]
+	OnExisting onExistingResourceFunc[T]
 }
 
 // createOrUpdateResource updates an existing resource or creates a new one when missing.
@@ -43,8 +42,6 @@ func CreateOrUpdateResource[T any](
 	getFn getResourceFunc[T],
 	createFn createResourceFunc[T],
 	onExisting onExistingResourceFunc[T],
-	isNotFound func(error) bool,
-	isAlreadyExists func(error) bool,
 ) (*T, bool, error) {
 	existing, err := getFn(ctx)
 	if err == nil {
@@ -55,14 +52,14 @@ func CreateOrUpdateResource[T any](
 		}
 		return existing, false, nil
 	}
-	if !isNotFound(err) {
+	if !k8serrors.IsNotFound(err) {
 		return nil, false, err
 	}
 	created, err := createFn(ctx)
 	if err == nil {
 		return created, true, nil
 	}
-	if isAlreadyExists(err) {
+	if k8serrors.IsAlreadyExists(err) {
 		existing, err := getFn(ctx)
 		if err != nil {
 			return nil, false, err
@@ -86,10 +83,8 @@ func CreateOrUpdateTrackedResource[T any](
 	getFn getResourceFunc[T],
 	createFn createResourceFunc[T],
 	onExisting onExistingResourceFunc[T],
-	isNotFound func(error) bool,
-	isAlreadyExists func(error) bool,
 ) (*T, bool, error) {
-	res, created, err := CreateOrUpdateResource(ctx, getFn, createFn, onExisting, isNotFound, isAlreadyExists)
+	res, created, err := CreateOrUpdateResource(ctx, getFn, createFn, onExisting)
 	if err != nil {
 		return nil, false, err
 	}
@@ -116,13 +111,13 @@ func ReconcileTrackedResource[T any](ctx context.Context, opts TrackedResourceRe
 	if skipped {
 		return nil, false, nil
 	}
-	return CreateOrUpdateTrackedResource(ctx, opts.Kind, opts.Namespace, opts.Name, opts.GetFn, opts.CreateFn, opts.OnExisting, opts.IsNotFound, opts.IsAlreadyExists)
+	return CreateOrUpdateTrackedResource(ctx, opts.Kind, opts.Namespace, opts.Name, opts.GetFn, opts.CreateFn, opts.OnExisting)
 }
 
-func TrackResourcePresence[T any](ctx context.Context, kind domainspec.ResourceKind, namespace, name string, getFn getResourceFunc[T], isNotFound func(error) bool) error {
+func TrackResourcePresence[T any](ctx context.Context, kind domainspec.ResourceKind, namespace, name string, getFn getResourceFunc[T]) error {
 	existing, err := getFn(ctx)
 	if err != nil {
-		if isNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			MarkResourceCreated(ctx, kind, namespace, name)
 			return nil
 		}

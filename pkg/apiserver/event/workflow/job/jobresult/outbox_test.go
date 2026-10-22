@@ -15,61 +15,83 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
+// contextCheckingResultOutboxStore rejects persistence through a context that
+// was created before a long processing step: such a context has already used up
+// part of resultOutboxPersistTimeout.
 type contextCheckingResultOutboxStore struct {
 	*resultOutboxTestStore
 }
 
-func (s *contextCheckingResultOutboxStore) Add(ctx context.Context, entity datastore.Entity) error {
+const persistenceContextStaleTolerance = 100 * time.Millisecond
+
+func ensureFreshPersistenceContext(ctx context.Context) error {
 	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+		return err
+	}
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < resultOutboxPersistTimeout-persistenceContextStaleTolerance {
+		return fmt.Errorf("stale persistence context: %s left", time.Until(deadline))
+	}
+	return nil
+}
+
+func (s *contextCheckingResultOutboxStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
+		return err
+	}
+	return s.resultOutboxTestStore.WithReadCommittedTransaction(ctx, fn)
+}
+
+func (s *contextCheckingResultOutboxStore) Add(ctx context.Context, entity datastore.Entity) error {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return err
 	}
 	return s.resultOutboxTestStore.Add(ctx, entity)
 }
 
 func (s *contextCheckingResultOutboxStore) BatchAdd(ctx context.Context, entities []datastore.Entity) error {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return err
 	}
 	return s.resultOutboxTestStore.BatchAdd(ctx, entities)
 }
 
 func (s *contextCheckingResultOutboxStore) Put(ctx context.Context, entity datastore.Entity) error {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return err
 	}
 	return s.resultOutboxTestStore.Put(ctx, entity)
 }
 
 func (s *contextCheckingResultOutboxStore) Delete(ctx context.Context, entity datastore.Entity) error {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return err
 	}
 	return s.resultOutboxTestStore.Delete(ctx, entity)
 }
 
 func (s *contextCheckingResultOutboxStore) Get(ctx context.Context, entity datastore.Entity) error {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return err
 	}
 	return s.resultOutboxTestStore.Get(ctx, entity)
 }
 
 func (s *contextCheckingResultOutboxStore) List(ctx context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return nil, err
 	}
 	return s.resultOutboxTestStore.List(ctx, query, opts)
 }
 
 func (s *contextCheckingResultOutboxStore) CompareAndSwap(ctx context.Context, entity datastore.Entity, conditionField string, conditionValue interface{}, updates map[string]interface{}) (bool, error) {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return false, err
 	}
 	return s.resultOutboxTestStore.CompareAndSwap(ctx, entity, conditionField, conditionValue, updates)
 }
 
 func (s *contextCheckingResultOutboxStore) CompareAndSwapWithConditions(ctx context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
-	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
+	if err := ensureFreshPersistenceContext(ctx); err != nil {
 		return false, err
 	}
 	return s.resultOutboxTestStore.CompareAndSwapWithConditions(ctx, entity, conditions, updates)

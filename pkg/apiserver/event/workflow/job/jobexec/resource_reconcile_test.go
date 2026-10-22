@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 type fakeResource struct {
@@ -13,15 +16,9 @@ type fakeResource struct {
 func TestCreateOrUpdateResource(t *testing.T) {
 	t.Parallel()
 
-	errNotFound := errors.New("not found")
-	errAlreadyExists := errors.New("already exists")
-
-	isNotFound := func(err error) bool {
-		return errors.Is(err, errNotFound)
-	}
-	isAlreadyExists := func(err error) bool {
-		return errors.Is(err, errAlreadyExists)
-	}
+	resource := schema.GroupResource{Resource: "fakes"}
+	errNotFound := k8serrors.NewNotFound(resource, "demo")
+	errAlreadyExists := k8serrors.NewAlreadyExists(resource, "demo")
 
 	tests := []struct {
 		name         string
@@ -92,7 +89,7 @@ func TestCreateOrUpdateResource(t *testing.T) {
 				return tt.getFn()
 			}, func(context.Context) (*fakeResource, error) {
 				return tt.createFn()
-			}, onExisting, isNotFound, isAlreadyExists)
+			}, onExisting)
 
 			if tt.wantErrMatch != nil {
 				if err == nil || err.Error() != tt.wantErrMatch.Error() {

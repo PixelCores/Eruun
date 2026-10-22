@@ -28,7 +28,7 @@ const (
 	resultOutboxDispatchGrace     = workflowconfig.DefaultWorkerAutoClaimIdle
 )
 
-var resultOutboxPersistTimeout = 5 * time.Second
+const resultOutboxPersistTimeout = 5 * time.Second
 
 type ResultOutboxDispatcher struct {
 	queue        msg.Queue

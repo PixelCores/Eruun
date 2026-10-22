@@ -40,7 +40,7 @@ func (s *restServer) buildRuntimeLeaderElectionConfig(ctx, runtimeCtx context.Co
 			},
 			OnStoppedLeading: func() {
 				s.stopLeader()
-				releaseLeaderLock(lock, leaderElectionReleaseTimeout)
+				bestEffortReleaseLeaderLock(lock, leaderElectionReleaseTimeout)
 				if ctx.Err() == nil {
 					s.startWorkers(runtimeCtx)
 				}
@@ -126,50 +126,58 @@ func (s *restServer) stopLeader() {
 	s.leading.Store(false)
 }
 
-// client-go starts OnStartedLeading asynchronously. Serialize complete terms so
-// a late startup cannot resurrect work after loss or overlap the next term.
+// runRuntimeLeaderElection reruns the election after each lost term until ctx ends.
 func (s *restServer) runRuntimeLeaderElection(ctx context.Context, election leaderelection.LeaderElectionConfig) {
 	for ctx.Err() == nil {
 		cfg := election
-		callbacks := cfg.Callbacks
-		var mu sync.Mutex
-		started, stopped := false, false
-		startedDone := make(chan struct{})
-		cfg.Callbacks.OnStartedLeading = func(leaderCtx context.Context) {
-			mu.Lock()
-			if stopped {
-				mu.Unlock()
-				return
-			}
-			started = true
-			mu.Unlock()
-			defer close(startedDone)
-			if callbacks.OnStartedLeading != nil {
-				callbacks.OnStartedLeading(leaderCtx)
-			}
-		}
-		cfg.Callbacks.OnStoppedLeading = func() {
-			mu.Lock()
-			stopped = true
-			wait := started
-			mu.Unlock()
-			if wait {
-				<-startedDone
-			}
-			if callbacks.OnStoppedLeading != nil {
-				callbacks.OnStoppedLeading()
-			}
-		}
-		runLeaderElector(ctx, cfg)
+		cfg.Callbacks = serializeLeaderTerm(election.Callbacks)
+		leaderelection.RunOrDie(ctx, cfg)
 		if ctx.Err() != nil {
 			return
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(leaderElectionRetryDelay):
+		case <-time.After(leaderElectionRetryPeriod):
 		}
 	}
+}
+
+// serializeLeaderTerm wraps one term's callbacks. client-go starts
+// OnStartedLeading asynchronously, so a late startup must not resurrect work
+// after loss or overlap the next term: a start after stop is dropped, and a
+// stop waits for an in-flight start to finish.
+func serializeLeaderTerm(callbacks leaderelection.LeaderCallbacks) leaderelection.LeaderCallbacks {
+	var mu sync.Mutex
+	started, stopped := false, false
+	startedDone := make(chan struct{})
+	term := callbacks
+	term.OnStartedLeading = func(leaderCtx context.Context) {
+		mu.Lock()
+		if stopped {
+			mu.Unlock()
+			return
+		}
+		started = true
+		mu.Unlock()
+		defer close(startedDone)
+		if callbacks.OnStartedLeading != nil {
+			callbacks.OnStartedLeading(leaderCtx)
+		}
+	}
+	term.OnStoppedLeading = func() {
+		mu.Lock()
+		stopped = true
+		wait := started
+		mu.Unlock()
+		if wait {
+			<-startedDone
+		}
+		if callbacks.OnStoppedLeading != nil {
+			callbacks.OnStoppedLeading()
+		}
+	}
+	return term
 }
 
 // Promotion stops intake without cancelling executions that already own a task.

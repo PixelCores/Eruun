@@ -319,12 +319,9 @@ func (s *restServer) initSandboxObserver(kubeClient kubernetes.Interface, platfo
 
 func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, error) {
 	// Authentication always requires Redis for single-use challenges and limits.
-	redisClient, err := newRedisClient(s.cfg.Cache)
+	redisClient, err := clients.NewRedisClient(s.cfg.Cache)
 	if err != nil {
 		return nil, fmt.Errorf("init redis client for configured redis backend: %w", err)
-	}
-	if redisClient == nil {
-		return nil, fmt.Errorf("init redis client for configured redis backend: redis client is not initialized")
 	}
 	return redisClient, nil
 }

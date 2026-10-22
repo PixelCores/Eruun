@@ -172,9 +172,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 			}
 			return created, err
 		},
-		OnExisting:      updateStatefulSet,
-		IsNotFound:      errors.IsNotFound,
-		IsAlreadyExists: errors.IsAlreadyExists,
+		OnExisting: updateStatefulSet,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure statefulset %s/%s: %w", statefulSet.Namespace, statefulSet.Name, err)

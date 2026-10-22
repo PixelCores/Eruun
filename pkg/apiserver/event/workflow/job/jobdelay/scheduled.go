@@ -108,7 +108,7 @@ func (c *ScheduledJobCtl) runCronJob(ctx context.Context, cron *batchv1.CronJob)
 		return c.Client.BatchV1().CronJobs(namespace).Get(ctx, cron.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.CronJob, error) {
 		return c.Client.BatchV1().CronJobs(namespace).Create(ctx, cron, metav1.CreateOptions{})
-	}, updateCronJob, k8serrors.IsNotFound, k8serrors.IsAlreadyExists)
+	}, updateCronJob)
 	if err != nil {
 		return err
 	}
