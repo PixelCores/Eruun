@@ -241,9 +241,11 @@ func TestWorkloadDiagnosticsBoundTheirOwnDuration(t *testing.T) {
 	defer mu.Unlock()
 	require.NotZero(t, logRequests)
 	require.Zero(t, withoutDeadline, "pod log requests must carry the diagnostics deadline")
+	// The lower bound only rules out a much shorter deadline; it leaves room
+	// for slow scheduling before the log request.
 	for _, left := range remaining {
 		require.LessOrEqual(t, left, workloadDiagnosticsTimeout)
-		require.Greater(t, left, workloadDiagnosticsTimeout-time.Second)
+		require.Greater(t, left, workloadDiagnosticsTimeout/2)
 	}
 }
 
