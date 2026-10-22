@@ -12,7 +12,7 @@ Helm 和静态清单让当前 Leader 提供 `0.0.0.0:9000`，固定 Leader Clust
 
 注册和登录的原生 `LoginResponse` 返回 `access_token` 与 `refresh_token`。刷新使用 `AccountService.Refresh` 的 `RefreshRequest.refresh_token` 显式提交旧 refresh token，并返回轮换后的新令牌；客户端应安全保存令牌、串行刷新、覆盖旧值。现有 HTTP HttpOnly Cookie 行为不变。浏览器 OAuth start/callback 仍仅支持 HTTP。
 
-受保护 RPC 通过 gRPC metadata 传递 `authorization: Bearer <access-token>`。空间操作另用 `x-eruun-workspace-id: <workspace-id>`；有幂等支持的操作可携带 `idempotency-key: <key>`。服务端复用账号会话、空间角色、资源归属和 HTTP 的操作类别限流；未知 RPC 默认拒绝。系统管理员权限不因请求元数据而提升。不要把令牌、密码或请求内容写入日志。
+受保护 RPC 通过 gRPC metadata 传递 `authorization: Bearer <access-token>`。空间操作另用 `x-eruun-workspace-id: <workspace-id>`；有幂等支持的操作可携带 `idempotency-key: <key>`。服务端复用账号会话、空间角色、资源归属和 HTTP 的操作类别限流；每个 RPC 的角色要求和限流类别取自下表中对应 HTTP 路由的策略，不单独维护。未知 RPC 默认拒绝。系统管理员权限不因请求元数据而提升。不要把令牌、密码或请求内容写入日志。
 
 失败使用标准 gRPC status；`google.rpc.ErrorInfo` 的 metadata 中包含 `business_code`，文案只使用审核过的安全消息。HTTP 某些 `200 + 业务错误码` 响应在 gRPC 中是失败 status；业务部分成功仍返回强类型成功响应。客户端应以 status code 做分支，以业务 code 做更细的业务处理，而非解析 message 文本。
 
