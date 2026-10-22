@@ -59,12 +59,12 @@ func TestCreateApplicationsFromTemplateKeepsDuplicateCloneRewritesPerClone(t *te
 			{
 				Name:          "mysql",
 				ComponentType: config.StoreJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+				Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 			},
 			{
 				Name:          "mysql-1",
 				ComponentType: config.StoreJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+				Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 			},
 		},
 	})
@@ -129,7 +129,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameTooLong(t
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "game-db-mysql-component",
 			ComponentType: config.StoreJob,
-			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "db"},
+			Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "db"},
 		}},
 	})
 	require.Error(t, err)
@@ -179,7 +179,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameCollision
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
-			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.Error(t, err)
@@ -224,8 +224,8 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameCollision
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "foo", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "foo"}},
-			{Name: "foo-bar", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "foo-bar"}},
+			{Name: "foo", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "foo"}},
+			{Name: "foo-bar", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "foo-bar"}},
 		},
 	})
 	require.Error(t, err)
@@ -277,7 +277,7 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionWithNonTempla
 					Ports:    []spec.ServicePortTraitSpec{{Port: 8080, TargetPort: 8080, Protocol: "TCP"}},
 				}}},
 			},
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 		},
 	})
 	require.Error(t, err)
@@ -324,8 +324,8 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionAcrossTemplat
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: "tmpl-request-service-collision-a", Target: "mysql"}},
-			{Name: "new", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: "tmpl-request-service-collision-b", Target: "other"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: "tmpl-request-service-collision-a", Target: "mysql"}},
+			{Name: "new", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: "tmpl-request-service-collision-b", Target: "other"}},
 		},
 	})
 	require.Error(t, err)
@@ -380,7 +380,7 @@ func TestCreateApplicationsFromTemplateDoesNotRewriteBareServiceNameText(t *test
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
-			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.NoError(t, err)
@@ -444,7 +444,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredIngressBackend(t *test
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
-			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.NoError(t, err)
@@ -525,9 +525,9 @@ func TestCreateApplicationsFromTemplateRejectsAmbiguousIngressBackendServiceRefe
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
-			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
-			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-redis", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "redis"}},
+			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
 		},
 	})
 	require.Error(t, err)
@@ -592,9 +592,9 @@ func TestCreateApplicationsFromTemplatePreservesAmbiguousServiceDNSInText(t *tes
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
-			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
-			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-redis", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "redis"}},
+			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
 		},
 	})
 	require.NoError(t, err)
@@ -672,9 +672,9 @@ func TestCreateApplicationsFromTemplateRewritesNamespaceQualifiedAmbiguousServic
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
-			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
-			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-redis", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "redis"}},
+			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
 		},
 	})
 	require.NoError(t, err)
@@ -758,8 +758,8 @@ func TestCreateApplicationsFromTemplateRewritesExternalNameServiceDNS(t *testing
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
-			{Name: "new-proxy", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "proxy"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-proxy", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "proxy"}},
 		},
 	})
 	require.NoError(t, err)
@@ -845,8 +845,8 @@ func TestCreateApplicationsFromTemplateKeepsServiceNamesOutOfResourceReferenceRe
 		Namespace: config.DefaultNamespace,
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
-			{Name: "new-primary-secret", ComponentType: config.SecretJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "primary"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-primary-secret", ComponentType: config.SecretJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "primary"}},
 		},
 	})
 	require.NoError(t, err)
@@ -947,7 +947,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredResourceReferenceMatch
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
-			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
+			Template:      &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"},
 		}},
 	})
 	require.NoError(t, err)
@@ -1027,8 +1027,8 @@ func TestCreateApplicationsFromTemplateScopesDuplicateServiceTraitNames(t *testi
 		Namespace: config.DefaultNamespace,
 		Name:      "game-db",
 		Components: []apisv1.CreateComponentRequest{
-			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
-			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
+			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
+			{Name: "new-redis", ComponentType: config.StoreJob, Template: &spec.TemplateRef{ID: templateApp.ID, Target: "redis"}},
 		},
 	})
 	require.NoError(t, err)

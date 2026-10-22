@@ -615,7 +615,7 @@ func TestConvertComponentModelToDTOLastAbnormal(t *testing.T) {
 
 func TestConvertComponentModelToDTOPopulatesSidecars(t *testing.T) {
 	traits := model.Traits{
-		Sidecar: []model.SidecarSpec{
+		Sidecar: []spec.SidecarTraitsSpec{
 			{
 				Name:    "log-agent",
 				Image:   "vector:0.36",

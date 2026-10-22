@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -39,7 +40,7 @@ func TestApplicationWritesRejectMissingNodePool(t *testing.T) {
 			case "template":
 				_, err = service.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 					Namespace: config.DefaultNamespace,
-					Name:      "clone", Components: []apisv1.CreateComponentRequest{{Name: "worker", Template: &apisv1.TemplateRef{ID: app.ID, Target: "api"}, Traits: traits}},
+					Name:      "clone", Components: []apisv1.CreateComponentRequest{{Name: "worker", Template: &spec.TemplateRef{ID: app.ID, Target: "api"}, Traits: traits}},
 				})
 			}
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)

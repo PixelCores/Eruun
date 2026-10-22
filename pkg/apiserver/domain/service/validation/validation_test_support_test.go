@@ -53,13 +53,3 @@ func requireValidationPath(t *testing.T, errors []apisv1.TryValidationError, pat
 	}
 	require.Failf(t, "missing validation error", "expected path=%q code=%q in %+v", path, code, errors)
 }
-
-func requireInternalValidationError(t *testing.T, errors []apisv1.ValidationError, field, code string) {
-	t.Helper()
-	for _, err := range errors {
-		if err.Field == field && err.Code == code {
-			return
-		}
-	}
-	require.Failf(t, "missing validation error", "expected field=%q code=%q in %+v", field, code, errors)
-}

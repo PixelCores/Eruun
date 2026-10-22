@@ -341,7 +341,7 @@ func TestCreateApplicationsFromTemplateMergesJobFailurePolicyOverride(t *testing
 				Name:      "cloned-app",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:       "mysql-update-job",
-					Template:   &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
+					Template:   &spec.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 					Properties: apisv1.Properties{FailurePolicy: tt.overridePolicy},
 				}},
 			})
@@ -383,7 +383,7 @@ func TestCreateApplicationsFromTemplateRejectsInvalidJobFailurePolicyOverride(t 
 				Name:      "cloned-app",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:       "component",
-					Template:   &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
+					Template:   &spec.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(tt.policy)},
 				}},
 			})
@@ -403,7 +403,7 @@ func TestCreateApplicationsFromTemplateRejectsNestedJobFailurePolicyOverride(t *
 		Name:      "cloned-app",
 		Components: []apisv1.CreateComponentRequest{{
 			Name:     "mysql-update-job",
-			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
+			Template: &spec.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 			Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{
 				Name: "migrate",
 				Properties: spec.Properties{

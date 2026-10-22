@@ -739,7 +739,6 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 | `NAME_TOO_SHORT` | 名称太短 (< 2 字符) |
 | `NAME_TOO_LONG` | 名称太长 (> 63 字符) |
 | `INVALID_NAME_FORMAT` | 名称格式不符合 DNS-1123 子域名规范 |
-| `INVALID_COMPONENT_NAME` | 组件名称无效 |
 
 ### 组件错误
 

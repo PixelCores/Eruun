@@ -33,17 +33,17 @@ func TestEnvProcessor(t *testing.T) {
 		Image: "main-app:v1",
 		Traits: toJSONStruct(model.Traits{
 			// Top-level env trait for the main container
-			EnvFrom: []model.EnvFromSourceSpec{
+			EnvFrom: []spec.EnvFromSourceSpec{
 				{Type: "config", SourceName: "main-app-config"},
 				{Type: "secret", SourceName: "main-app-secret"},
 			},
 			// Init container trait with its own nested env trait
-			Init: []model.InitTrait{
+			Init: []spec.InitTraitSpec{
 				{
 					Name:  "my-init-container",
 					Image: "init:v1",
 					Traits: model.Traits{
-						EnvFrom: []model.EnvFromSourceSpec{
+						EnvFrom: []spec.EnvFromSourceSpec{
 							{Type: "config", SourceName: "init-container-config"},
 						},
 					},
@@ -140,7 +140,7 @@ func TestSecurityPolicyTrait(t *testing.T) {
 				RunAsGroup:               ptr.To[int64](1000),
 				AllowPrivilegeEscalation: ptr.To(false),
 			},
-			Init: []model.InitTrait{
+			Init: []spec.InitTraitSpec{
 				{
 					Name:  "init-task",
 					Image: "init:v1",
@@ -152,7 +152,7 @@ func TestSecurityPolicyTrait(t *testing.T) {
 					},
 				},
 			},
-			Sidecar: []model.SidecarSpec{
+			Sidecar: []spec.SidecarTraitsSpec{
 				{
 					Name:  "log-agent",
 					Image: "log-agent:v1",
@@ -268,31 +268,31 @@ func TestApplyTraits_FinalSimplifiedEnvs(t *testing.T) {
 	staticValue := "some_static_value"
 	fieldPath := "metadata.namespace"
 	traitsStruct := &model.Traits{
-		Envs: []model.SimplifiedEnvSpec{
+		Envs: []spec.SimplifiedEnvSpec{
 			{
 				Name:      "STATIC_VAR",
-				ValueFrom: model.ValueSource{Static: &staticValue},
+				ValueFrom: spec.ValueSource{Static: &staticValue},
 			},
 			{
 				Name: "PASSWORD_FROM_SECRET",
-				ValueFrom: model.ValueSource{Secret: &model.SecretSelectorSpec{
+				ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{
 					Name: "secret/with/slashes",
 					Key:  "password",
 				}},
 			},
 			{
 				Name: "API_KEY_FROM_CONFIG",
-				ValueFrom: model.ValueSource{Config: &model.ConfigMapSelectorSpec{
+				ValueFrom: spec.ValueSource{Config: &spec.ConfigMapSelectorSpec{
 					Name: "config/with/slashes",
 					Key:  "api-key",
 				}},
 			},
 			{
 				Name:      "MY_POD_NAMESPACE",
-				ValueFrom: model.ValueSource{Field: &fieldPath},
+				ValueFrom: spec.ValueSource{Field: &fieldPath},
 			},
 		},
-		EnvFrom: []model.EnvFromSourceSpec{
+		EnvFrom: []spec.EnvFromSourceSpec{
 			{
 				Type:       "config",
 				SourceName: "another-configmap",
@@ -572,7 +572,7 @@ func TestApplyIngressDefaultsServiceFromProperties(t *testing.T) {
 func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 	// 1. Define the input component with two init containers sharing a volume.
 	traitsStruct := &model.Traits{
-		Init: []model.InitTrait{
+		Init: []spec.InitTraitSpec{
 			{
 				Name:  "init-mysql",
 				Image: "kubectl:1.28.5",
@@ -581,7 +581,7 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 					Env:     map[string]string{"MYSQL_DATABASE": "test"},
 				},
 				Traits: model.Traits{
-					Storage: []model.StorageTrait{
+					Storage: []spec.StorageTraitSpec{
 						{
 							Name:      "conf",
 							Type:      "config",
@@ -607,7 +607,7 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 					Command: []string{"bash", "-c"},
 				},
 				Traits: model.Traits{
-					Storage: []model.StorageTrait{
+					Storage: []spec.StorageTraitSpec{
 						{ //使用稳定存储进行挂载
 							Name:      "data",
 							Type:      "persistent",
@@ -666,7 +666,7 @@ func TestResourcesProcessor(t *testing.T) {
 		Name:      "test-component",
 		Namespace: "test-namespace",
 		Traits: toJSONStruct(model.Traits{
-			Resources: &model.ResourceSpec{
+			Resources: &spec.ResourceTraitsSpec{
 				CPU:         "500m",
 				Memory:      "512Mi",
 				CPULimit:    "1000m",
@@ -726,12 +726,12 @@ func TestResourcesProcessor_WithSidecar(t *testing.T) {
 		Name:      "test-component",
 		Namespace: "test-namespace",
 		Traits: toJSONStruct(model.Traits{
-			Sidecar: []model.SidecarSpec{
+			Sidecar: []spec.SidecarTraitsSpec{
 				{
 					Name:  "my-sidecar",
 					Image: "sidecar:v1",
 					Traits: model.Traits{
-						Resources: &model.ResourceSpec{
+						Resources: &spec.ResourceTraitsSpec{
 							CPU:    "200m",
 							Memory: "256Mi",
 						},
@@ -778,13 +778,13 @@ func TestResourcesProcessor_WithSidecar(t *testing.T) {
 func TestApplyTraits_SidecarTrait_WithNestedTraits(t *testing.T) {
 	// 1. Define the input component with a sidecar that has its own storage.
 	traitsStruct := &model.Traits{
-		Sidecar: []model.SidecarSpec{
+		Sidecar: []spec.SidecarTraitsSpec{
 			{
 				Name:  "my-sidecar",
 				Image: "sidecar:v1",
 				Env:   map[string]string{"SIDECAR_VAR": "value1"},
 				Traits: model.Traits{
-					Storage: []model.StorageTrait{
+					Storage: []spec.StorageTraitSpec{
 						{
 							Name:      "sidecar-data",
 							Type:      "ephemeral",

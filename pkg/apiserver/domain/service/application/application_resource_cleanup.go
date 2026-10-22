@@ -554,10 +554,9 @@ func (c *applicationsServiceImpl) deleteIngress(ctx context.Context, namespace, 
 }
 
 func (c *applicationsServiceImpl) deleteNamespaced(ctx context.Context, namespace string, fn func(context.Context, string) error) error {
-	ns := namespace
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 	defer cancel()
-	err := fn(opCtx, ns)
+	err := fn(opCtx, namespace)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}

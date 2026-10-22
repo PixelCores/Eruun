@@ -76,8 +76,6 @@ type ConvertApplicationsResponse struct {
 
 type CreateComponentRequest = spec.Component
 
-type TemplateRef = spec.TemplateRef
-
 type CreateWorkflowStepRequest struct {
 	SchedulingClass string                         `json:"schedulingClass,omitempty"`
 	Name            string                         `json:"name"`

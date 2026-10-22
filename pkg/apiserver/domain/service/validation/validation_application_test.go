@@ -433,7 +433,7 @@ func TestValidationService_TryApplication_ResolvesTemplateBeforeComponentValidat
 		Name:      "game",
 		Namespace: "default",
 		Components: []apisv1.CreateComponentRequest{{
-			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "api"},
+			Template: &spec.TemplateRef{ID: "tmpl-1", Target: "api"},
 		}},
 		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-step",
@@ -469,7 +469,7 @@ func TestValidationService_TryApplication_TemplateResolveErrorSkipsStubValidatio
 		Name:      "game",
 		Namespace: "default",
 		Components: []apisv1.CreateComponentRequest{{
-			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "missing"},
+			Template: &spec.TemplateRef{ID: "tmpl-1", Target: "missing"},
 		}},
 	})
 
@@ -1076,7 +1076,7 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 				Namespace: "default",
 				Components: []apisv1.CreateComponentRequest{{
 					Name:       "component",
-					Template:   &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
+					Template:   &spec.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 					Properties: apisv1.Properties{FailurePolicy: tt.policy},
 					Traits:     traits,
 				}},
@@ -1139,7 +1139,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesNormalizedCompon
 			components: []apisv1.CreateComponentRequest{
 				{
 					Name:       "sql-job",
-					Template:   &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
+					Template:   &spec.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
 					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupAll)},
 				},
 				directComponent("direct-job"),
@@ -1152,7 +1152,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesNormalizedCompon
 				directComponent("direct-before"),
 				{
 					Name:       "api",
-					Template:   &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-api"},
+					Template:   &spec.TemplateRef{ID: "tmpl-source-index", Target: "template-api"},
 					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer("")},
 				},
 				directComponent("direct-after"),
@@ -1165,7 +1165,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesNormalizedCompon
 				directComponent("direct-before"),
 				{
 					Name:       "sql-job",
-					Template:   &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
+					Template:   &spec.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
 					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed)},
 				},
 				directComponent("direct-after"),
@@ -1234,7 +1234,7 @@ func TestValidationService_TryApplication_TemplateInputErrorKeepsLocatableSpec(t
 		Components: []apisv1.CreateComponentRequest{
 			direct("direct-before"),
 			{
-				Name: "api", Template: &apisv1.TemplateRef{ID: "tmpl-nested", Target: "template-api"},
+				Name: "api", Template: &spec.TemplateRef{ID: "tmpl-nested", Target: "template-api"},
 				Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{
 					Name: "migrate", Properties: spec.Properties{FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed)},
 				}}},

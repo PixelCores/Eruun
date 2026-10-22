@@ -94,7 +94,7 @@ func TestDeleteWorkflowScheduleEndpoint(t *testing.T) {
 func TestListApplicationComponentsIncludesStatusAndLinks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	traits := model.Traits{
-		Sidecar: []model.SidecarSpec{
+		Sidecar: []spec.SidecarTraitsSpec{
 			{
 				Name:  "log-agent",
 				Image: "vector:0.36",

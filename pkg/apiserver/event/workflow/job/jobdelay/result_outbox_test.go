@@ -31,10 +31,9 @@ import (
 )
 
 type resultOutboxTestStore struct {
-	mu                sync.Mutex
-	outboxes          map[string]*model.JobResultOutbox
-	jobInfos          map[int]*model.JobInfo
-	rejectTransitions map[string]int
+	mu       sync.Mutex
+	outboxes map[string]*model.JobResultOutbox
+	jobInfos map[int]*model.JobInfo
 }
 
 // These result/dispatcher tests assume available scheduler capacity. Admission
@@ -141,16 +140,9 @@ func (s *delayFencingStore) Get(ctx context.Context, entity datastore.Entity) er
 
 func newResultOutboxTestStore() *resultOutboxTestStore {
 	return &resultOutboxTestStore{
-		outboxes:          make(map[string]*model.JobResultOutbox),
-		jobInfos:          make(map[int]*model.JobInfo),
-		rejectTransitions: make(map[string]int),
+		outboxes: make(map[string]*model.JobResultOutbox),
+		jobInfos: make(map[int]*model.JobInfo),
 	}
-}
-
-func (s *resultOutboxTestStore) rejectNextTransition(from, to config.JobResultOutboxState) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.rejectTransitions[jobtest.OutboxTransitionKey(from, to)]++
 }
 
 func (s *resultOutboxTestStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -460,11 +452,6 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 		default:
 			return false, datastore.ErrEntityInvalid
 		}
-	}
-	toState, _ := updates["state"].(config.JobResultOutboxState)
-	if count := s.rejectTransitions[jobtest.OutboxTransitionKey(current.State, toState)]; count > 0 {
-		s.rejectTransitions[jobtest.OutboxTransitionKey(current.State, toState)] = count - 1
-		return false, nil
 	}
 	jobtest.ApplyOutboxUpdates(current, updates)
 	current.UpdateTime = time.Now()
