@@ -36,7 +36,7 @@ func (c *ScheduledJobCtl) Clean(ctx context.Context) {
 	c.CleanCreatedBatchJobs(ctx, "")
 	c.CleanCreated(ctx, domainspec.ResourceCronJob, "cronjob", func(ctx context.Context, namespace, name string) error {
 		return c.Client.BatchV1().CronJobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "")
+	}, "")
 }
 
 func (c *ScheduledJobCtl) Run(ctx context.Context) error {

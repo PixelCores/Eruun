@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -43,7 +42,7 @@ func NewDeploySecretJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLo
 func (c *DeploySecretJobCtl) Clean(ctx context.Context) {
 	c.CleanCreated(ctx, spec.ResourceSecret, "secret", func(ctx context.Context, namespace, name string) error {
 		return c.Client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "after job failure")
+	}, "after job failure")
 }
 
 func (c *DeploySecretJobCtl) Run(ctx context.Context) error {

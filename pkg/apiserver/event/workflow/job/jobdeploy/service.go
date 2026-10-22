@@ -42,7 +42,7 @@ func NewDeployServiceJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareL
 func (c *DeployServiceJobCtl) Clean(ctx context.Context) {
 	c.CleanCreated(ctx, spec.ResourceService, "service", func(ctx context.Context, namespace, name string) error {
 		return c.Client.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "after job failure")
+	}, "after job failure")
 }
 
 func (c *DeployServiceJobCtl) Run(ctx context.Context) error {
