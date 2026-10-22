@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/rest"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -22,12 +21,9 @@ import (
 var ErrArchiveUploaderNotConfigured = errors.New("archive uploader is not configured")
 
 var (
-	archiveUploaderMu       sync.RWMutex
-	defaultArchiveUploader  jobexec.ArchiveUploader
-	archivePodPathForUpload archivePodPathFunc = kube.ArchivePodPathAsZip
+	archiveUploaderMu      sync.RWMutex
+	defaultArchiveUploader jobexec.ArchiveUploader
 )
-
-type archivePodPathFunc func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error)
 
 // SetArchiveUploader configures the default uploader used by workflow archive jobs.
 func SetArchiveUploader(uploader jobexec.ArchiveUploader) {
@@ -115,7 +111,7 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 		return err
 	}
 
-	archive, err := archivePodPathForUpload(ctx, c.Runtime.KubeConfig, target.Namespace, target.PodName, target.ContainerName, targetPath)
+	archive, err := kube.ArchivePodPathAsZip(ctx, c.Runtime.KubeConfig, target.Namespace, target.PodName, target.ContainerName, targetPath)
 	if err != nil {
 		return err
 	}

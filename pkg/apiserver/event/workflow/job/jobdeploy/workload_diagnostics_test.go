@@ -2,8 +2,12 @@ package jobdeploy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -11,8 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -24,7 +32,7 @@ import (
 )
 
 func TestDeployJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
-	restoreWorkloadPodLogReader(t, func(_ context.Context, _ kubernetes.Interface, _, podName, container string, previous bool) (string, error) {
+	logs := podLogs(func(_ context.Context, podName, container string, previous bool) (string, error) {
 		if previous {
 			return fmt.Sprintf("panic: startup failed\nat %s/%s", podName, container), nil
 		}
@@ -43,7 +51,7 @@ func TestDeployJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 				AppID:     "app-1",
 				Timeout:   1,
 			},
-			Client:         fake.NewSimpleClientset(pod, diagnosticEventForPod(pod)),
+			Client:         newDiagnosticsClient(t, logs, pod, diagnosticEventForPod(pod)),
 			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
@@ -71,7 +79,7 @@ func TestDeployJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 }
 
 func TestDeployStatefulSetJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
-	restoreWorkloadPodLogReader(t, func(_ context.Context, _ kubernetes.Interface, _, _, _ string, previous bool) (string, error) {
+	logs := podLogs(func(_ context.Context, _, _ string, previous bool) (string, error) {
 		if previous {
 			return "previous mysql stack", nil
 		}
@@ -90,7 +98,7 @@ func TestDeployStatefulSetJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 				AppID:     "app-1",
 				Timeout:   1,
 			},
-			Client:         fake.NewSimpleClientset(pod),
+			Client:         newDiagnosticsClient(t, logs, pod),
 			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
@@ -143,14 +151,12 @@ func TestWorkloadWaitErrorPreservesCancellationCause(t *testing.T) {
 }
 
 func TestWorkloadWaitErrorFallsBackWhenDiagnosticsTimeout(t *testing.T) {
-	previousTimeout := workloadDiagnosticsTimeout
-	workloadDiagnosticsTimeout = 20 * time.Millisecond
-	t.Cleanup(func() {
-		workloadDiagnosticsTimeout = previousTimeout
-	})
+	// The caller's deadline bounds diagnostics below workloadDiagnosticsTimeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
 
 	logReadStarted := make(chan struct{})
-	restoreWorkloadPodLogReader(t, func(ctx context.Context, _ kubernetes.Interface, _, _, _ string, _ bool) (string, error) {
+	logs := podLogs(func(ctx context.Context, _, _ string, _ bool) (string, error) {
 		select {
 		case <-logReadStarted:
 		default:
@@ -188,8 +194,8 @@ func TestWorkloadWaitErrorFallsBackWhenDiagnosticsTimeout(t *testing.T) {
 
 	start := time.Now()
 	err := workloadWaitError(
-		context.Background(),
-		fake.NewSimpleClientset(pod),
+		ctx,
+		newDiagnosticsClient(t, logs, pod),
 		&model.JobTask{AppID: "app-1"},
 		"Deployment",
 		"default",
@@ -213,7 +219,7 @@ func TestWorkloadWaitErrorFallsBackWhenDiagnosticsTimeout(t *testing.T) {
 }
 
 func TestWorkloadFailureDiagnosticsKeepsOriginalErrorWhenLogsFail(t *testing.T) {
-	restoreWorkloadPodLogReader(t, func(_ context.Context, _ kubernetes.Interface, _, _, _ string, previous bool) (string, error) {
+	logs := podLogs(func(_ context.Context, _, _ string, previous bool) (string, error) {
 		if previous {
 			return "", errors.New("previous log unavailable")
 		}
@@ -223,7 +229,7 @@ func TestWorkloadFailureDiagnosticsKeepsOriginalErrorWhenLogsFail(t *testing.T) 
 	pod := newWaitTestPod("app-1", "api", "CrashLoopBackOff")
 	diagnostics := collectWorkloadFailureDiagnostics(
 		context.Background(),
-		fake.NewSimpleClientset(pod),
+		newDiagnosticsClient(t, logs, pod),
 		&model.JobTask{AppID: "app-1"},
 		"Deployment",
 		"default",
@@ -240,14 +246,14 @@ func TestWorkloadFailureDiagnosticsKeepsOriginalErrorWhenLogsFail(t *testing.T) 
 }
 
 func TestWorkloadFailureDiagnosticsTruncatesLongOutput(t *testing.T) {
-	restoreWorkloadPodLogReader(t, func(_ context.Context, _ kubernetes.Interface, _, _, _ string, _ bool) (string, error) {
+	logs := podLogs(func(_ context.Context, _, _ string, _ bool) (string, error) {
 		return strings.Repeat("x", workloadDiagnosticsLimitBytes*2), nil
 	})
 
 	pod := newWaitTestPod("app-1", "api", "CrashLoopBackOff")
 	diagnostics := collectWorkloadFailureDiagnostics(
 		context.Background(),
-		fake.NewSimpleClientset(pod),
+		newDiagnosticsClient(t, logs, pod),
 		&model.JobTask{AppID: "app-1"},
 		"Deployment",
 		"default",
@@ -262,7 +268,7 @@ func TestWorkloadFailureDiagnosticsTruncatesLongOutput(t *testing.T) {
 }
 
 func TestWorkloadFailureDiagnosticsPrefersAbnormalPodsBeforeLimit(t *testing.T) {
-	restoreWorkloadPodLogReader(t, func(_ context.Context, _ kubernetes.Interface, _, podName, _ string, previous bool) (string, error) {
+	logs := podLogs(func(_ context.Context, podName, _ string, previous bool) (string, error) {
 		if podName == "failing-old" {
 			if previous {
 				return "panic from failing-old", nil
@@ -279,7 +285,7 @@ func TestWorkloadFailureDiagnosticsPrefersAbnormalPodsBeforeLimit(t *testing.T) 
 			Message: "back-off",
 		},
 	}, false)
-	client := fake.NewSimpleClientset(
+	client := newDiagnosticsClient(t, logs,
 		newDiagnosticSelectionPod("healthy-new-1", now.Add(5*time.Minute), corev1.ContainerState{
 			Running: &corev1.ContainerStateRunning{},
 		}, true),
@@ -328,7 +334,7 @@ func TestWorkloadFailureDiagnosticsPrefersAbnormalPodsBeforeLimit(t *testing.T) 
 }
 
 func TestWorkloadFailureDiagnosticsPrefersCurrentNotReadyPodsBeforeRecoveredRestarts(t *testing.T) {
-	restoreWorkloadPodLogReader(t, func(_ context.Context, _ kubernetes.Interface, _, podName, _ string, previous bool) (string, error) {
+	logs := podLogs(func(_ context.Context, podName, _ string, previous bool) (string, error) {
 		if podName == "pending-old" {
 			if previous {
 				return "previous log from pending-old", nil
@@ -346,7 +352,7 @@ func TestWorkloadFailureDiagnosticsPrefersCurrentNotReadyPodsBeforeRecoveredRest
 		},
 	}, false)
 	pendingOld.Spec.Containers = []corev1.Container{{Name: "app"}}
-	client := fake.NewSimpleClientset(
+	client := newDiagnosticsClient(t, logs,
 		markDiagnosticRestart(newDiagnosticSelectionPod("recovered-new-1", now.Add(5*time.Minute), corev1.ContainerState{
 			Running: &corev1.ContainerStateRunning{},
 		}, true)),
@@ -468,19 +474,6 @@ func newDiagnosticSelectionPod(name string, created time.Time, state corev1.Cont
 	}
 }
 
-func restoreWorkloadPodLogReader(t *testing.T, reader workloadPodLogReader) {
-	t.Helper()
-	workloadPodLogReaderMu.Lock()
-	previous := readWorkloadPodLogs
-	readWorkloadPodLogs = reader
-	workloadPodLogReaderMu.Unlock()
-	t.Cleanup(func() {
-		workloadPodLogReaderMu.Lock()
-		readWorkloadPodLogs = previous
-		workloadPodLogReaderMu.Unlock()
-	})
-}
-
 func newWorkloadTestObserver(t *testing.T, pods ...*corev1.Pod) *informer.KubernetesWorkloadObserver {
 	t.Helper()
 	client := fake.NewSimpleClientset()
@@ -489,4 +482,76 @@ func newWorkloadTestObserver(t *testing.T, pods ...*corev1.Pod) *informer.Kubern
 		require.NoError(t, err)
 	}
 	return jobtest.StartWorkloadTestObserver(t, client)
+}
+
+type podLogs func(ctx context.Context, pod, container string, previous bool) (string, error)
+
+// newDiagnosticsClient serves the pod list, event list and pod log reads that
+// failure diagnostics make, behind a real typed client.
+func newDiagnosticsClient(t *testing.T, logs podLogs, objects ...runtime.Object) kubernetes.Interface {
+	t.Helper()
+	var pods []corev1.Pod
+	var events []corev1.Event
+	for _, object := range objects {
+		switch typed := object.(type) {
+		case *corev1.Pod:
+			pods = append(pods, *typed)
+		case *corev1.Event:
+			events = append(events, *typed)
+		default:
+			t.Fatalf("unsupported diagnostics object %T", object)
+		}
+	}
+	writeJSON := func(w http.ResponseWriter, status int, value any) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		require.NoError(t, json.NewEncoder(w).Encode(value))
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// api/v1/namespaces/<namespace>/<resource>[/<name>/log]
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) < 5 || parts[2] != "namespaces" {
+			http.NotFound(w, r)
+			return
+		}
+		namespace, query := parts[3], r.URL.Query()
+		switch {
+		case len(parts) == 5 && parts[4] == "pods":
+			selector, err := labels.Parse(query.Get("labelSelector"))
+			require.NoError(t, err)
+			list := &corev1.PodList{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "PodList"}}
+			for _, pod := range pods {
+				if pod.Namespace == namespace && selector.Matches(labels.Set(pod.Labels)) {
+					list.Items = append(list.Items, pod)
+				}
+			}
+			writeJSON(w, http.StatusOK, list)
+		case len(parts) == 5 && parts[4] == "events":
+			selector, err := fields.ParseSelector(query.Get("fieldSelector"))
+			require.NoError(t, err)
+			list := &corev1.EventList{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "EventList"}}
+			for _, event := range events {
+				if selector.Matches(fields.Set{"involvedObject.name": event.InvolvedObject.Name, "involvedObject.namespace": event.InvolvedObject.Namespace}) {
+					list.Items = append(list.Items, event)
+				}
+			}
+			writeJSON(w, http.StatusOK, list)
+		case len(parts) == 7 && parts[4] == "pods" && parts[6] == "log":
+			text, err := logs(r.Context(), parts[5], query.Get("container"), query.Get("previous") == "true")
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, &metav1.Status{
+					TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
+					Status:   metav1.StatusFailure, Code: http.StatusInternalServerError, Message: err.Error(),
+				})
+				return
+			}
+			_, _ = io.WriteString(w, text)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	client, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
+	require.NoError(t, err)
+	return client
 }

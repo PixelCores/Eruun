@@ -14,10 +14,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
-var archiveComponentPodPathAsZip = kube.ArchivePodPathAsZip
-var execComponentPodShellScript = kube.ExecPodShellScript
-var streamComponentPodShellScript = kube.StreamPodShellScript
-
 type componentPodTarget struct {
 	PodState      kube.ComponentLogPodState
 	Namespace     string
@@ -63,7 +59,7 @@ func (c *applicationsServiceImpl) ExportComponentFilesZip(ctx context.Context, a
 	if err != nil {
 		return nil, err
 	}
-	archive, err := archiveComponentPodPathAsZip(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Path)
+	archive, err := kube.ArchivePodPathAsZip(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Path)
 	if err != nil {
 		if kube.IsArchivePathInvalidError(err) || kube.IsArchivePathLookupError(err) {
 			return nil, bcode.ErrComponentFilePathInvalid
@@ -109,7 +105,7 @@ func (c *applicationsServiceImpl) execComponentShellScriptLocked(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	result, err := execComponentPodShellScript(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
+	result, err := kube.ExecPodShellScript(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +140,7 @@ func (c *applicationsServiceImpl) StreamComponentShellScript(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	events, err := streamComponentPodShellScript(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
+	events, err := kube.StreamPodShellScript(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
 	if err != nil {
 		return nil, err
 	}

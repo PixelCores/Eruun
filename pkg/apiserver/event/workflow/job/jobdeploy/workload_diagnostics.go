@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,14 +27,7 @@ const (
 	diagnosticsTruncatedMarker    = "[diagnostics truncated]"
 )
 
-var workloadDiagnosticsTimeout = 10 * time.Second
-
-type workloadPodLogReader func(ctx context.Context, client kubernetes.Interface, namespace, podName, container string, previous bool) (string, error)
-
-var (
-	workloadPodLogReaderMu sync.RWMutex
-	readWorkloadPodLogs    workloadPodLogReader = jobexec.ReadPodContainerLogsWithMode
-)
+const workloadDiagnosticsTimeout = 10 * time.Second
 
 func workloadWaitError(ctx context.Context, client kubernetes.Interface, task *model.JobTask, kind, namespace, name, componentName string, cause error) error {
 	if cause == nil {
@@ -52,12 +44,7 @@ func workloadWaitError(ctx context.Context, client kubernetes.Interface, task *m
 }
 
 func collectWorkloadFailureDiagnosticsWithTimeout(ctx context.Context, client kubernetes.Interface, task *model.JobTask, kind, namespace, name, componentName string, cause error) string {
-	timeout := workloadDiagnosticsTimeout
-	if timeout <= 0 {
-		return collectWorkloadFailureDiagnostics(ctx, client, task, kind, namespace, name, componentName, cause)
-	}
-
-	diagnosticsCtx, cancel := context.WithTimeout(ctx, timeout)
+	diagnosticsCtx, cancel := context.WithTimeout(ctx, workloadDiagnosticsTimeout)
 	defer cancel()
 
 	result := make(chan string, 1)
@@ -351,10 +338,7 @@ func appendLogsSection(ctx context.Context, builder *strings.Builder, client kub
 		for _, container := range diagnosticContainerNames(&pod) {
 			wrote = true
 			builder.WriteString(fmt.Sprintf("  === Pod: %s (container: %s) ===\n", pod.Name, container))
-			workloadPodLogReaderMu.RLock()
-			logReader := readWorkloadPodLogs
-			workloadPodLogReaderMu.RUnlock()
-			logText, err := logReader(ctx, client, namespace, pod.Name, container, previous)
+			logText, err := jobexec.ReadPodContainerLogsWithMode(ctx, client, namespace, pod.Name, container, previous)
 			if err != nil {
 				mode := "current"
 				if previous {

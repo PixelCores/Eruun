@@ -3,19 +3,17 @@ package application
 import (
 	"context"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/rest"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube/kubetest"
 )
 
 func TestDownloadLogArchiveReturnsComponentArchiveStream(t *testing.T) {
@@ -33,22 +31,8 @@ func TestDownloadLogArchiveReturnsComponentArchiveStream(t *testing.T) {
 	pod := newComponentLogPod("pod-worker", config.DefaultNamespace, "app-1", "worker", []corev1.Container{{Name: "worker"}})
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := archiveComponentPodPathAsZip
-	defer func() { archiveComponentPodPathAsZip = orig }()
-	var gotNamespace, gotPod, gotContainer, gotPath string
-	archiveComponentPodPathAsZip = func(_ context.Context, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
-		gotNamespace = namespace
-		gotPod = podName
-		gotContainer = container
-		gotPath = targetPath
-		return &kube.PodPathArchiveStream{
-			Reader:      io.NopCloser(strings.NewReader("zip")),
-			FileName:    "worker.zip",
-			ContentType: "application/zip",
-		}, nil
-	}
+	var got kubetest.ExecRequest
+	svc.KubeConfig = tarExecServer(t, func(req kubetest.ExecRequest) { got = req })
 
 	stream, err := svc.DownloadLogArchive(context.Background(), "app-1", apisv1.LogArchiveDownloadRequest{
 		Components: []string{"worker"},
@@ -59,12 +43,15 @@ func TestDownloadLogArchiveReturnsComponentArchiveStream(t *testing.T) {
 	require.NotNil(t, stream)
 	require.Equal(t, "pod-worker", stream.PodName)
 	require.Equal(t, "worker", stream.ContainerName)
-	require.Equal(t, "worker.zip", stream.FileName)
+	require.Equal(t, "archive.zip", stream.FileName)
 	require.Equal(t, "application/zip", stream.ContentType)
-	require.Equal(t, config.DefaultNamespace, gotNamespace)
-	require.Equal(t, "pod-worker", gotPod)
-	require.Equal(t, "worker", gotContainer)
-	require.Equal(t, "/data/logs/archive", gotPath)
+	_, err = io.ReadAll(stream.Reader)
+	require.NoError(t, err)
+	require.NoError(t, stream.Reader.Close())
+	require.Equal(t, config.DefaultNamespace, got.Namespace)
+	require.Equal(t, "pod-worker", got.Pod)
+	require.Equal(t, "worker", got.Container)
+	require.Equal(t, []string{"tar", "-C", "/data/logs", "-cf", "-", "--", "archive"}, got.Command)
 }
 
 func TestDownloadLogArchiveRejectsNonPodComponent(t *testing.T) {
@@ -79,15 +66,7 @@ func TestDownloadLogArchiveRejectsNonPodComponent(t *testing.T) {
 	}
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset()
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := archiveComponentPodPathAsZip
-	defer func() { archiveComponentPodPathAsZip = orig }()
-	called := false
-	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
-		called = true
-		return nil, nil
-	}
+	svc.KubeConfig = rejectingExecServer(t)
 
 	stream, err := svc.DownloadLogArchive(context.Background(), "app-1", apisv1.LogArchiveDownloadRequest{
 		Components: []string{"config"},
@@ -95,7 +74,6 @@ func TestDownloadLogArchiveRejectsNonPodComponent(t *testing.T) {
 	})
 	require.Nil(t, stream)
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-	require.False(t, called)
 }
 
 func TestDownloadLogArchiveRejectsInvalidRequest(t *testing.T) {
@@ -129,7 +107,7 @@ func TestDownloadLogArchiveRejectsInvalidRequest(t *testing.T) {
 			}
 			svc := newMockServiceWithStore(store)
 			svc.KubeClient = k8sfake.NewSimpleClientset()
-			svc.KubeConfig = &rest.Config{Host: "https://example.test"}
+			svc.KubeConfig = rejectingExecServer(t)
 
 			stream, err := svc.DownloadLogArchive(context.Background(), tt.appID, apisv1.LogArchiveDownloadRequest{
 				Components: tt.components,
