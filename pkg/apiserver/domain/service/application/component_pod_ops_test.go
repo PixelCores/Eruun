@@ -249,15 +249,22 @@ func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
 	var got kubetest.ExecRequest
+	release := make(chan struct{})
 	svc.KubeConfig = kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
 		got = req
-		// Output after the application lock is released must still stream.
-		time.Sleep(50 * time.Millisecond)
+		// Output produced after the method returns, and therefore after the
+		// application lock is released, must still stream.
+		select {
+		case <-release:
+		case <-req.Context.Done():
+			return req.Context.Err()
+		}
 		_, err := io.WriteString(req.Stdout, "done\n")
 		return err
 	})
 
 	stream, err := svc.StreamComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done", Container: "api"})
+	close(release)
 	require.NoError(t, err)
 	require.NotNil(t, stream)
 	require.Equal(t, "pod-api", stream.PodName)

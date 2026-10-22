@@ -427,3 +427,44 @@ func TestBuildPodExecURLAvoidsDuplicateDefaultAPIPathWhenHostHasAPI(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, "/k8s-proxy/api/v1/namespaces/default/pods/pod-api/exec", execURL.Path)
 }
+
+// blockingWriter models a pipe whose reader has stopped reading.
+type blockingWriter struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (w *blockingWriter) Write(p []byte) (int, error) {
+	select {
+	case w.entered <- struct{}{}:
+	default:
+	}
+	<-w.release
+	return len(p), nil
+}
+
+func TestStreamPodCommandReturnsOnCancelWhileOutputIsBlocked(t *testing.T) {
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		_, _ = io.WriteString(req.Stdout, strings.Repeat("x", 1024))
+		<-req.Context.Done()
+		return req.Context.Err()
+	})
+	stdout := &blockingWriter{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	t.Cleanup(func() { close(stdout.release) })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- streamPodCommand(ctx, config, "default", "pod-api", "api", []string{"cat"}, nil, stdout, io.Discard, false)
+	}()
+
+	<-stdout.entered
+	cancel()
+	// Callers such as archivePodPathWithTar close their pipe only after this
+	// returns; cancellation alone must be enough to get here.
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("streamPodCommand did not return after cancellation while stdout was blocked")
+	}
+}
