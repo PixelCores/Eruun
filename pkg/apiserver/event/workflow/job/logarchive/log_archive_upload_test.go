@@ -1,8 +1,11 @@
 package logarchive
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -18,7 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube/kubetest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -55,27 +58,32 @@ func TestLogArchiveUploadJobCtlFailsWhenUploaderNotConfigured(t *testing.T) {
 }
 
 func TestLogArchiveUploadJobCtlUploadsZipAndWritesResultInfo(t *testing.T) {
-	oldArchive := archivePodPathForUpload
-	t.Cleanup(func() { archivePodPathForUpload = oldArchive })
-	archivePodPathForUpload = func(_ context.Context, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
-		require.Equal(t, "default", namespace)
-		require.Equal(t, "api-pod", podName)
-		require.Equal(t, "api", container)
-		require.Equal(t, "/var/log/app", targetPath)
-		return &kube.PodPathArchiveStream{
-			Reader:      io.NopCloser(strings.NewReader("zip-bytes")),
-			FileName:    "api-logs.zip",
-			ContentType: "application/zip",
-		}, nil
-	}
+	var got kubetest.ExecRequest
+	kubeConfig := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if isTarProbe(req.Command) {
+			return nil
+		}
+		got = req
+		tw := tar.NewWriter(req.Stdout)
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: "app/api.log", Mode: 0644, Size: 4, Typeflag: tar.TypeReg}))
+		_, _ = tw.Write([]byte("logs"))
+		return tw.Close()
+	})
 	uploader := &mockArchiveUploader{}
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &jobexec.Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}, ArchiveUploader: uploader})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &jobexec.Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: kubeConfig, ArchiveUploader: uploader})
 
 	err := ctl.run(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 1, uploader.called)
-	require.Equal(t, "zip-bytes", uploader.body)
-	require.Equal(t, "api-logs.zip", uploader.input.FileName)
+	require.Equal(t, "default", got.Namespace)
+	require.Equal(t, "api-pod", got.Pod)
+	require.Equal(t, "api", got.Container)
+	require.Equal(t, []string{"tar", "-C", "/var/log", "-cf", "-", "--", "app"}, got.Command)
+	archive, err := zip.NewReader(strings.NewReader(uploader.body), int64(len(uploader.body)))
+	require.NoError(t, err)
+	require.Len(t, archive.File, 1)
+	require.Equal(t, "app/api.log", archive.File[0].Name)
+	require.Equal(t, "app.zip", uploader.input.FileName)
 	require.Equal(t, "application/zip", uploader.input.ContentType)
 	require.Equal(t, "app-1", uploader.input.AppID)
 	require.Equal(t, "workflow-1", uploader.input.WorkflowID)
@@ -94,22 +102,20 @@ func TestLogArchiveUploadJobCtlUploadsZipAndWritesResultInfo(t *testing.T) {
 	require.Equal(t, "api-pod", result.PodName)
 	require.Equal(t, "api", result.ContainerName)
 	require.Equal(t, "/var/log/app", result.Path)
-	require.Equal(t, "api-logs.zip", result.FileName)
-	require.Equal(t, int64(len("zip-bytes")), result.SizeBytes)
+	require.Equal(t, "app.zip", result.FileName)
+	require.Equal(t, int64(len(uploader.body)), result.SizeBytes)
 }
 
 func TestLogArchiveUploadJobCtlRejectsNonZipArchive(t *testing.T) {
-	oldArchive := archivePodPathForUpload
-	t.Cleanup(func() { archivePodPathForUpload = oldArchive })
-	archivePodPathForUpload = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
-		return &kube.PodPathArchiveStream{
-			Reader:      io.NopCloser(strings.NewReader("multipart")),
-			FileName:    "api-logs.multipart",
-			ContentType: "multipart/mixed; boundary=abc",
-		}, nil
-	}
+	// Without tar in the container the archive falls back to multipart.
+	kubeConfig := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if isTarProbe(req.Command) {
+			return kubetest.ExitCode(1)
+		}
+		return nil
+	})
 	uploader := &mockArchiveUploader{}
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &jobexec.Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}, ArchiveUploader: uploader})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &jobexec.Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: kubeConfig, ArchiveUploader: uploader})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)
@@ -118,21 +124,17 @@ func TestLogArchiveUploadJobCtlRejectsNonZipArchive(t *testing.T) {
 }
 
 func TestLogArchiveUploadJobCtlRejectsInvalidRequestedContainer(t *testing.T) {
-	oldArchive := archivePodPathForUpload
-	t.Cleanup(func() { archivePodPathForUpload = oldArchive })
-	archiveCalled := false
-	archivePodPathForUpload = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
-		archiveCalled = true
-		return nil, nil
-	}
+	kubeConfig := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		t.Errorf("unexpected exec %v", req.Command)
+		return fmt.Errorf("unexpected exec")
+	})
 	task := logArchiveUploadTask("api")
 	task.JobInfo.(*LogArchiveUploadJobInfo).Container = "missing"
-	ctl := NewLogArchiveUploadJobCtl(task, &jobexec.Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}, ArchiveUploader: &mockArchiveUploader{}})
+	ctl := NewLogArchiveUploadJobCtl(task, &jobexec.Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: kubeConfig, ArchiveUploader: &mockArchiveUploader{}})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `container "missing" not found`)
-	require.False(t, archiveCalled)
 }
 
 func logArchiveUploadTask(componentName string) *model.JobTask {
@@ -181,4 +183,8 @@ func logArchiveUploadPod(componentName string) *corev1.Pod {
 			}},
 		},
 	}
+}
+
+func isTarProbe(command []string) bool {
+	return len(command) == 3 && command[2] == "command -v tar >/dev/null 2>&1"
 }

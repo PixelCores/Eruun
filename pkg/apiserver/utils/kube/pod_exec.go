@@ -23,10 +23,6 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
-var newRemoteExecutor = func(config *rest.Config, method string, execURL *url.URL) (remotecommand.Executor, error) {
-	return remotecommand.NewSPDYExecutor(config, method, execURL)
-}
-
 const (
 	syncExecOutputLimitBytes       = 1 << 20 // 1 MiB
 	syncExecOutputTruncatedSuffix  = "\n...[truncated]"
@@ -377,7 +373,7 @@ func streamPodCommand(ctx context.Context, restConfig *rest.Config, namespace, p
 	if err != nil {
 		return err
 	}
-	executor, err := newRemoteExecutor(restConfig, httputil.MethodPost, execURL)
+	executor, err := remotecommand.NewSPDYExecutor(restConfig, httputil.MethodPost, execURL)
 	if err != nil {
 		return fmt.Errorf("create remote executor: %w", err)
 	}

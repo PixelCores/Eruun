@@ -1,10 +1,11 @@
 package application
 
 import (
+	"archive/tar"
+	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +21,31 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube/kubetest"
 )
+
+// rejectingExecServer fails the test when an operation reaches pods/exec.
+func rejectingExecServer(t *testing.T) *rest.Config {
+	return kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		t.Errorf("unexpected exec %v", req.Command)
+		return fmt.Errorf("unexpected exec")
+	})
+}
+
+// tarExecServer answers the tar probe and streams a one-file tar archive,
+// reporting each archive request to record.
+func tarExecServer(t *testing.T, record func(kubetest.ExecRequest)) *rest.Config {
+	return kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if len(req.Command) == 3 && req.Command[2] == "command -v tar >/dev/null 2>&1" {
+			return nil
+		}
+		record(req)
+		tw := tar.NewWriter(req.Stdout)
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: "out/file.txt", Mode: 0644, Size: 4, Typeflag: tar.TypeReg}))
+		_, _ = tw.Write([]byte("data"))
+		return tw.Close()
+	})
+}
 
 func TestExportComponentFilesZipSelectsLatestReadyPod(t *testing.T) {
 	store := newInMemoryAppStore()
@@ -38,34 +63,23 @@ func TestExportComponentFilesZipSelectsLatestReadyPod(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(podOld, podNew)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := archiveComponentPodPathAsZip
-	defer func() { archiveComponentPodPathAsZip = orig }()
-	var gotNamespace, gotPod, gotContainer, gotPath string
-	archiveComponentPodPathAsZip = func(_ context.Context, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
-		gotNamespace = namespace
-		gotPod = podName
-		gotContainer = container
-		gotPath = targetPath
-		return &kube.PodPathArchiveStream{
-			Reader:      io.NopCloser(strings.NewReader("zip")),
-			FileName:    "api.zip",
-			ContentType: "application/zip",
-		}, nil
-	}
+	var got kubetest.ExecRequest
+	svc.KubeConfig = tarExecServer(t, func(req kubetest.ExecRequest) { got = req })
 
 	stream, err := svc.ExportComponentFilesZip(context.Background(), "app-1", "api", apisv1.ExportComponentFilesRequest{Path: "/tmp/out", Container: "api"})
 	require.NoError(t, err)
 	require.NotNil(t, stream)
 	require.Equal(t, "pod-new", stream.PodName)
 	require.Equal(t, "api", stream.ContainerName)
-	require.Equal(t, "api.zip", stream.FileName)
+	require.Equal(t, "out.zip", stream.FileName)
 	require.Equal(t, "application/zip", stream.ContentType)
-	require.Equal(t, config.DefaultNamespace, gotNamespace)
-	require.Equal(t, "pod-new", gotPod)
-	require.Equal(t, "api", gotContainer)
-	require.Equal(t, "/tmp/out", gotPath)
+	_, err = io.ReadAll(stream.Reader)
+	require.NoError(t, err)
+	require.NoError(t, stream.Reader.Close())
+	require.Equal(t, config.DefaultNamespace, got.Namespace)
+	require.Equal(t, "pod-new", got.Pod)
+	require.Equal(t, "api", got.Container)
+	require.Equal(t, []string{"tar", "-C", "/tmp", "-cf", "-", "--", "out"}, got.Command)
 }
 
 func TestExportComponentFilesZipPendingPodReturnsPendingError(t *testing.T) {
@@ -91,40 +105,14 @@ func TestExportComponentFilesZipPendingPodReturnsPendingError(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := archiveComponentPodPathAsZip
-	defer func() { archiveComponentPodPathAsZip = orig }()
-	called := false
-	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
-		called = true
-		return nil, nil
-	}
+	svc.KubeConfig = rejectingExecServer(t)
 
 	stream, err := svc.ExportComponentFilesZip(context.Background(), "app-1", "api", apisv1.ExportComponentFilesRequest{Path: "/tmp/out"})
 	require.Nil(t, stream)
 	require.ErrorIs(t, err, bcode.ErrComponentPendingScheduling)
-	require.False(t, called)
 }
 
 func TestComponentPodOperationsRejectCompletedPods(t *testing.T) {
-	origArchive, origExec, origStream := archiveComponentPodPathAsZip, execComponentPodShellScript, streamComponentPodShellScript
-	t.Cleanup(func() {
-		archiveComponentPodPathAsZip, execComponentPodShellScript, streamComponentPodShellScript = origArchive, origExec, origStream
-	})
-	backendCalls := 0
-	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
-		backendCalls++
-		return nil, fmt.Errorf("unexpected archive call")
-	}
-	execComponentPodShellScript = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodExecResult, error) {
-		backendCalls++
-		return nil, fmt.Errorf("unexpected exec call")
-	}
-	streamComponentPodShellScript = func(context.Context, *rest.Config, string, string, string, string) (<-chan kube.PodShellStreamEvent, error) {
-		backendCalls++
-		return nil, fmt.Errorf("unexpected stream call")
-	}
 	for _, phase := range []corev1.PodPhase{corev1.PodSucceeded, corev1.PodFailed} {
 		t.Run(string(phase), func(t *testing.T) {
 			store := newInMemoryAppStore()
@@ -136,7 +124,7 @@ func TestComponentPodOperationsRejectCompletedPods(t *testing.T) {
 			pod.Status.Phase = phase
 			svc := newMockServiceWithStore(store)
 			svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-			svc.KubeConfig = &rest.Config{Host: "https://example.test"}
+			svc.KubeConfig = rejectingExecServer(t)
 
 			archive, err := svc.ExportComponentFilesZip(context.Background(), "app-1", "api", apisv1.ExportComponentFilesRequest{Path: "/tmp/out"})
 			require.Nil(t, archive)
@@ -147,7 +135,6 @@ func TestComponentPodOperationsRejectCompletedPods(t *testing.T) {
 			stream, err := svc.StreamComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done"})
 			require.Nil(t, stream)
 			require.ErrorIs(t, err, bcode.ErrComponentPodUnavailable)
-			require.Zero(t, backendCalls)
 		})
 	}
 }
@@ -163,14 +150,14 @@ func TestExportComponentFilesZipMapsInvalidArchivePathError(t *testing.T) {
 	pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{{Name: "api"}})
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
+	svc.KubeConfig = rejectingExecServer(t)
 
 	stream, err := svc.ExportComponentFilesZip(context.Background(), "app-1", "api", apisv1.ExportComponentFilesRequest{Path: "/"})
 	require.Nil(t, stream)
 	require.ErrorIs(t, err, bcode.ErrComponentFilePathInvalid)
 }
 
-func TestExportComponentFilesZipMapsArchivePathLookupError(t *testing.T) {
+func TestExportComponentFilesZipReportsArchivePathLookupErrorOnRead(t *testing.T) {
 	store := newInMemoryAppStore()
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
@@ -181,17 +168,21 @@ func TestExportComponentFilesZipMapsArchivePathLookupError(t *testing.T) {
 	pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{{Name: "api"}})
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
+	svc.KubeConfig = kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if len(req.Command) == 3 && req.Command[2] == "command -v tar >/dev/null 2>&1" {
+			return nil
+		}
+		_, _ = io.WriteString(req.Stderr, "tar: out: cannot stat: no such file or directory")
+		return kubetest.ExitCode(2)
+	})
 
-	orig := archiveComponentPodPathAsZip
-	defer func() { archiveComponentPodPathAsZip = orig }()
-	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
-		return nil, fmt.Errorf("archive pod path: exit error: tar: out: cannot stat: no such file or directory")
-	}
-
+	// tar runs while the caller reads, so a missing path surfaces on the first
+	// read, where the HTTP and gRPC handlers map it to ErrComponentFilePathInvalid.
 	stream, err := svc.ExportComponentFilesZip(context.Background(), "app-1", "api", apisv1.ExportComponentFilesRequest{Path: "/tmp/out"})
-	require.Nil(t, stream)
-	require.ErrorIs(t, err, bcode.ErrComponentFilePathInvalid)
+	require.NoError(t, err)
+	defer stream.Reader.Close()
+	_, err = bufio.NewReader(stream.Reader).Peek(1)
+	require.True(t, kube.IsArchivePathLookupError(err), "got %v", err)
 }
 
 func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
@@ -206,17 +197,13 @@ func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 	pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{{Name: "api"}})
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := execComponentPodShellScript
-	defer func() { execComponentPodShellScript = orig }()
-	var gotPod, gotContainer, gotScript string
-	execComponentPodShellScript = func(_ context.Context, _ *rest.Config, _, podName, container, script string) (*kube.PodExecResult, error) {
-		gotPod = podName
-		gotContainer = container
-		gotScript = script
-		return &kube.PodExecResult{Stdout: "done", Stderr: "failed", ExitCode: 9}, nil
-	}
+	var got kubetest.ExecRequest
+	svc.KubeConfig = kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		got = req
+		_, _ = io.WriteString(req.Stdout, "done")
+		_, _ = io.WriteString(req.Stderr, "failed")
+		return kubetest.ExitCode(9)
+	})
 
 	resp, err := svc.ExecComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done", Container: "api"})
 	require.NoError(t, err)
@@ -225,9 +212,9 @@ func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 	require.Equal(t, "api", resp.ContainerName)
 	require.Equal(t, 9, resp.ExitCode)
 	require.False(t, resp.Succeeded)
-	require.Equal(t, "echo done", gotScript)
-	require.Equal(t, "pod-api", gotPod)
-	require.Equal(t, "api", gotContainer)
+	require.Equal(t, []string{"/bin/sh", "-c", "echo done"}, got.Command)
+	require.Equal(t, "pod-api", got.Pod)
+	require.Equal(t, "api", got.Container)
 }
 
 func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
@@ -242,20 +229,11 @@ func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
 	pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{{Name: "api"}})
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := execComponentPodShellScript
-	defer func() { execComponentPodShellScript = orig }()
-	called := false
-	execComponentPodShellScript = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodExecResult, error) {
-		called = true
-		return nil, nil
-	}
+	svc.KubeConfig = rejectingExecServer(t)
 
 	resp, err := svc.ExecComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done", Container: "sidecar"})
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, bcode.ErrComponentContainerInvalid)
-	require.False(t, called)
 }
 
 func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
@@ -270,35 +248,32 @@ func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 	pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{{Name: "api"}})
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = k8sfake.NewSimpleClientset(pod)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	orig := streamComponentPodShellScript
-	defer func() { streamComponentPodShellScript = orig }()
-	var gotPod, gotContainer, gotScript string
-	streamComponentPodShellScript = func(_ context.Context, _ *rest.Config, _, podName, container, script string) (<-chan kube.PodShellStreamEvent, error) {
-		gotPod = podName
-		gotContainer = container
-		gotScript = script
-		events := make(chan kube.PodShellStreamEvent, 1)
-		events <- kube.PodShellStreamEvent{Type: kube.PodShellStreamEventExit, ExitCode: 0, Succeeded: true}
-		close(events)
-		return events, nil
-	}
+	var got kubetest.ExecRequest
+	svc.KubeConfig = kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		got = req
+		// Output after the application lock is released must still stream.
+		time.Sleep(50 * time.Millisecond)
+		_, err := io.WriteString(req.Stdout, "done\n")
+		return err
+	})
 
 	stream, err := svc.StreamComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done", Container: "api"})
 	require.NoError(t, err)
 	require.NotNil(t, stream)
 	require.Equal(t, "pod-api", stream.PodName)
 	require.Equal(t, "api", stream.ContainerName)
-	require.Equal(t, "echo done", gotScript)
-	require.Equal(t, "pod-api", gotPod)
-	require.Equal(t, "api", gotContainer)
 
 	received, ok := <-stream.Events
+	require.True(t, ok)
+	require.Equal(t, kube.PodShellStreamEvent{Type: kube.PodShellStreamEventStdout, Chunk: "done\n"}, received)
+	received, ok = <-stream.Events
 	require.True(t, ok)
 	require.Equal(t, kube.PodShellStreamEventExit, received.Type)
 	require.Equal(t, 0, received.ExitCode)
 	require.True(t, received.Succeeded)
 	_, ok = <-stream.Events
 	require.False(t, ok)
+	require.Equal(t, []string{"/bin/sh", "-c", "echo done"}, got.Command)
+	require.Equal(t, "pod-api", got.Pod)
+	require.Equal(t, "api", got.Container)
 }

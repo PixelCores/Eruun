@@ -10,7 +10,6 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
-	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,54 +17,38 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/remotecommand"
-	utilexec "k8s.io/utils/exec"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube/kubetest"
 )
 
-type fakeExecutor struct {
-	streamWithContext func(context.Context, remotecommand.StreamOptions) error
+var tarProbeCommand = []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}
+
+func isShellCommand(command []string, contains string) bool {
+	return len(command) >= 3 && command[0] == "/bin/sh" && command[1] == "-c" && strings.Contains(command[2], contains)
 }
 
-func (f fakeExecutor) Stream(options remotecommand.StreamOptions) error {
-	return f.streamWithContext(context.Background(), options)
+func writeTar(t *testing.T, w io.Writer, write func(*tar.Writer)) {
+	t.Helper()
+	tw := tar.NewWriter(w)
+	write(tw)
+	require.NoError(t, tw.Close())
 }
-
-func (f fakeExecutor) StreamWithContext(ctx context.Context, options remotecommand.StreamOptions) error {
-	return f.streamWithContext(ctx, options)
-}
-
-type fakeExitError struct {
-	status int
-}
-
-func (e fakeExitError) Error() string   { return "exit error" }
-func (e fakeExitError) String() string  { return e.Error() }
-func (e fakeExitError) Exited() bool    { return true }
-func (e fakeExitError) ExitStatus() int { return e.status }
-
-var _ utilexec.ExitError = fakeExitError{}
 
 func TestExecPodShellScriptBuildsShellCommandAndCapturesOutput(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	var gotCommands []string
-	var gotContainer string
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		gotCommands = append([]string(nil), execURL.Query()["command"]...)
-		gotContainer = execURL.Query().Get("container")
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			_, _ = io.WriteString(options.Stdout, "hello")
-			_, _ = io.WriteString(options.Stderr, "warn")
-			return nil
-		}}, nil
-	}
+	var got kubetest.ExecRequest
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		got = req
+		_, _ = io.WriteString(req.Stdout, "hello")
+		_, _ = io.WriteString(req.Stderr, "warn")
+		return nil
+	})
 
 	result, err := ExecPodShellScript(context.Background(), config, "default", "pod-api", "api", "echo hello")
 	require.NoError(t, err)
-	require.Equal(t, []string{"/bin/sh", "-c", "echo hello"}, gotCommands)
-	require.Equal(t, "api", gotContainer)
+	require.Equal(t, []string{"/bin/sh", "-c", "echo hello"}, got.Command)
+	require.Equal(t, "api", got.Container)
+	require.Equal(t, "default", got.Namespace)
+	require.Equal(t, "pod-api", got.Pod)
 	require.Equal(t, "hello", result.Stdout)
 	require.Equal(t, "warn", result.Stderr)
 	require.Equal(t, 0, result.ExitCode)
@@ -73,39 +56,25 @@ func TestExecPodShellScriptBuildsShellCommandAndCapturesOutput(t *testing.T) {
 }
 
 func TestExecPodShellScriptCapsOutput(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
 	stdoutRaw := strings.Repeat("o", syncExecOutputLimitBytes+128)
 	stderrRaw := strings.Repeat("e", syncExecOutputLimitBytes+256)
-	newRemoteExecutor = func(_ *rest.Config, _ string, _ *url.URL) (remotecommand.Executor, error) {
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			_, _ = io.WriteString(options.Stdout, stdoutRaw)
-			_, _ = io.WriteString(options.Stderr, stderrRaw)
-			return nil
-		}}, nil
-	}
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		_, _ = io.WriteString(req.Stdout, stdoutRaw)
+		_, _ = io.WriteString(req.Stderr, stderrRaw)
+		return nil
+	})
 
 	result, err := ExecPodShellScript(context.Background(), config, "default", "pod-api", "api", "echo hello")
 	require.NoError(t, err)
-	require.True(t, strings.HasSuffix(result.Stdout, syncExecOutputTruncatedSuffix))
-	require.True(t, strings.HasSuffix(result.Stderr, syncExecOutputTruncatedSuffix))
 	require.Equal(t, strings.Repeat("o", syncExecOutputLimitBytes)+syncExecOutputTruncatedSuffix, result.Stdout)
 	require.Equal(t, strings.Repeat("e", syncExecOutputLimitBytes)+syncExecOutputTruncatedSuffix, result.Stderr)
 }
 
 func TestExecPodShellScriptReturnsExitCodeOnCommandFailure(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, _ *url.URL) (remotecommand.Executor, error) {
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			_, _ = io.WriteString(options.Stderr, "boom")
-			return fakeExitError{status: 17}
-		}}, nil
-	}
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		_, _ = io.WriteString(req.Stderr, "boom")
+		return kubetest.ExitCode(17)
+	})
 
 	result, err := ExecPodShellScript(context.Background(), config, "default", "pod-api", "api", "exit 17")
 	require.NoError(t, err)
@@ -115,17 +84,11 @@ func TestExecPodShellScriptReturnsExitCodeOnCommandFailure(t *testing.T) {
 }
 
 func TestStreamPodShellScriptEmitsEventsAndExit(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, _ *url.URL) (remotecommand.Executor, error) {
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			_, _ = io.WriteString(options.Stdout, "hello\n")
-			_, _ = io.WriteString(options.Stderr, "warn\n")
-			return fakeExitError{status: 5}
-		}}, nil
-	}
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		_, _ = io.WriteString(req.Stdout, "hello\n")
+		_, _ = io.WriteString(req.Stderr, "warn\n")
+		return kubetest.ExitCode(5)
+	})
 
 	events, err := StreamPodShellScript(context.Background(), config, "default", "pod-api", "api", "echo hello")
 	require.NoError(t, err)
@@ -134,41 +97,29 @@ func TestStreamPodShellScriptEmitsEventsAndExit(t *testing.T) {
 		got = append(got, event)
 	}
 	require.Len(t, got, 3)
-	require.Equal(t, PodShellStreamEventStdout, got[0].Type)
-	require.Equal(t, "hello\n", got[0].Chunk)
-	require.Equal(t, PodShellStreamEventStderr, got[1].Type)
-	require.Equal(t, "warn\n", got[1].Chunk)
+	// stdout and stderr arrive on separate streams, so only the exit is ordered.
+	chunks := map[PodShellStreamEventType]string{got[0].Type: got[0].Chunk, got[1].Type: got[1].Chunk}
+	require.Equal(t, map[PodShellStreamEventType]string{PodShellStreamEventStdout: "hello\n", PodShellStreamEventStderr: "warn\n"}, chunks)
 	require.Equal(t, PodShellStreamEventExit, got[2].Type)
 	require.Equal(t, 5, got[2].ExitCode)
 	require.False(t, got[2].Succeeded)
 }
 
 func TestArchivePodPathAsZipCreatesZipStream(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
 	var gotTarCommand []string
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		commands := append([]string(nil), execURL.Query()["command"]...)
-		if reflect.DeepEqual(commands, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}) {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return nil
-			}}, nil
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if reflect.DeepEqual(req.Command, tarProbeCommand) {
+			return nil
 		}
-		gotTarCommand = append([]string(nil), commands...)
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			buf := &bytes.Buffer{}
-			tw := tar.NewWriter(buf)
+		gotTarCommand = append([]string(nil), req.Command...)
+		writeTar(t, req.Stdout, func(tw *tar.Writer) {
 			require.NoError(t, tw.WriteHeader(&tar.Header{Name: "out", Mode: 0755, Typeflag: tar.TypeDir}))
 			data := []byte("payload")
 			require.NoError(t, tw.WriteHeader(&tar.Header{Name: "out/file.txt", Mode: 0644, Size: int64(len(data)), Typeflag: tar.TypeReg}))
 			_, _ = tw.Write(data)
-			require.NoError(t, tw.Close())
-			_, _ = options.Stdout.Write(buf.Bytes())
-			return nil
-		}}, nil
-	}
+		})
+		return nil
+	})
 
 	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
@@ -194,39 +145,27 @@ func TestArchivePodPathAsZipCreatesZipStream(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipFallsBackToMultipartWhenTarMissing(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		commands := append([]string(nil), execURL.Query()["command"]...)
-		if reflect.DeepEqual(commands, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}) {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return fakeExitError{status: 1}
-			}}, nil
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		switch {
+		case reflect.DeepEqual(req.Command, tarProbeCommand):
+			return kubetest.ExitCode(1)
+		case isShellCommand(req.Command, "find"):
+			_, _ = io.WriteString(req.Stdout, "./out/a.txt\n./out/nested/b.txt\n")
+			return nil
+		case isShellCommand(req.Command, "cat"):
+			switch target := req.Command[len(req.Command)-1]; target {
+			case "out/a.txt", "./out/a.txt":
+				_, _ = io.WriteString(req.Stdout, "A")
+			case "out/nested/b.txt", "./out/nested/b.txt":
+				_, _ = io.WriteString(req.Stdout, "B")
+			default:
+				return fmt.Errorf("unexpected cat target: %s", target)
+			}
+			return nil
+		default:
+			return fmt.Errorf("unexpected command sequence: %v", req.Command)
 		}
-		if len(commands) >= 3 && commands[0] == "/bin/sh" && commands[1] == "-c" && strings.Contains(commands[2], "find") {
-			return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-				_, _ = io.WriteString(options.Stdout, "./out/a.txt\n./out/nested/b.txt\n")
-				return nil
-			}}, nil
-		}
-		if len(commands) >= 3 && commands[0] == "/bin/sh" && commands[1] == "-c" && strings.Contains(commands[2], "cat") {
-			target := commands[len(commands)-1]
-			return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-				switch target {
-				case "out/a.txt", "./out/a.txt":
-					_, _ = io.WriteString(options.Stdout, "A")
-				case "out/nested/b.txt", "./out/nested/b.txt":
-					_, _ = io.WriteString(options.Stdout, "B")
-				default:
-					return fmt.Errorf("unexpected cat target: %s", target)
-				}
-				return nil
-			}}, nil
-		}
-		return nil, fmt.Errorf("unexpected command sequence: %v", commands)
-	}
+	})
 
 	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
@@ -258,22 +197,13 @@ func TestArchivePodPathAsZipFallsBackToMultipartWhenTarMissing(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipReturnsReadErrorOnMalformedTar(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		commands := append([]string(nil), execURL.Query()["command"]...)
-		if reflect.DeepEqual(commands, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}) {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return nil
-			}}, nil
-		}
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			_, _ = options.Stdout.Write([]byte("not-a-tar"))
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if reflect.DeepEqual(req.Command, tarProbeCommand) {
 			return nil
-		}}, nil
-	}
+		}
+		_, _ = req.Stdout.Write([]byte("not-a-tar"))
+		return nil
+	})
 
 	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
@@ -284,22 +214,13 @@ func TestArchivePodPathAsZipReturnsReadErrorOnMalformedTar(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipMarksLookupErrors(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		commands := append([]string(nil), execURL.Query()["command"]...)
-		if reflect.DeepEqual(commands, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}) {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return nil
-			}}, nil
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if reflect.DeepEqual(req.Command, tarProbeCommand) {
+			return nil
 		}
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			_, _ = io.WriteString(options.Stderr, "tar: out: cannot stat: no such file or directory")
-			return fakeExitError{status: 2}
-		}}, nil
-	}
+		_, _ = io.WriteString(req.Stderr, "tar: out: cannot stat: no such file or directory")
+		return kubetest.ExitCode(2)
+	})
 
 	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
@@ -350,7 +271,7 @@ func TestSanitizeArchiveEntryName(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipRejectsParentRelativePath(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
+	config := &rest.Config{Host: "https://example.invalid"}
 
 	for _, targetPath := range []string{"..", "../..", "../out", "a/../../b"} {
 		targetPath := targetPath
@@ -364,30 +285,19 @@ func TestArchivePodPathAsZipRejectsParentRelativePath(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipSupportsHardLinkEntry(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		commands := append([]string(nil), execURL.Query()["command"]...)
-		if reflect.DeepEqual(commands, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}) {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return nil
-			}}, nil
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if reflect.DeepEqual(req.Command, tarProbeCommand) {
+			return nil
 		}
-		return fakeExecutor{streamWithContext: func(_ context.Context, options remotecommand.StreamOptions) error {
-			buf := &bytes.Buffer{}
-			tw := tar.NewWriter(buf)
+		writeTar(t, req.Stdout, func(tw *tar.Writer) {
 			require.NoError(t, tw.WriteHeader(&tar.Header{Name: "out", Mode: 0755, Typeflag: tar.TypeDir}))
 			regular := []byte("base")
 			require.NoError(t, tw.WriteHeader(&tar.Header{Name: "out/base.txt", Mode: 0644, Size: int64(len(regular)), Typeflag: tar.TypeReg}))
 			_, _ = tw.Write(regular)
 			require.NoError(t, tw.WriteHeader(&tar.Header{Name: "out/hard.txt", Mode: 0644, Typeflag: tar.TypeLink, Linkname: "out/base.txt"}))
-			require.NoError(t, tw.Close())
-			_, _ = options.Stdout.Write(buf.Bytes())
-			return nil
-		}}, nil
-	}
+		})
+		return nil
+	})
 
 	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
@@ -408,6 +318,48 @@ func TestArchivePodPathAsZipSupportsHardLinkEntry(t *testing.T) {
 	}
 	require.Equal(t, "base", contents["out/base.txt"])
 	require.Equal(t, "base", contents["out/hard.txt"])
+}
+
+func TestArchivePodPathAsZipMultipartFailureCancelsFindCommand(t *testing.T) {
+	findCanceled := make(chan struct{}, 1)
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		switch {
+		case reflect.DeepEqual(req.Command, tarProbeCommand):
+			return kubetest.ExitCode(1)
+		case isShellCommand(req.Command, "find"):
+			if _, err := io.WriteString(req.Stdout, "./out/a.txt\n"); err != nil {
+				return err
+			}
+			select {
+			case <-req.Context.Done():
+				select {
+				case findCanceled <- struct{}{}:
+				default:
+				}
+				return req.Context.Err()
+			case <-time.After(2 * time.Second):
+				return fmt.Errorf("find command not canceled")
+			}
+		case isShellCommand(req.Command, "cat"):
+			return fmt.Errorf("permission denied")
+		default:
+			return fmt.Errorf("unexpected command sequence: %v", req.Command)
+		}
+	})
+
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
+	require.NoError(t, err)
+	defer stream.Close()
+
+	_, err = io.ReadAll(stream.Reader)
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "read pod file content") || strings.Contains(err.Error(), "list pod files"))
+
+	select {
+	case <-findCanceled:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("find command was not canceled after multipart failure")
+	}
 }
 
 func TestCopyTarHardLinkToZipUsesResolverOnCacheMiss(t *testing.T) {
@@ -443,59 +395,6 @@ func TestCopyTarHardLinkToZipUsesResolverOnCacheMiss(t *testing.T) {
 	require.Equal(t, "fallback-payload", string(payload))
 	_, exists := cache.Get("out/base.txt")
 	require.False(t, exists)
-}
-
-func TestArchivePodPathAsZipMultipartFailureCancelsFindCommand(t *testing.T) {
-	config := &rest.Config{Host: "https://example.test"}
-
-	findCanceled := make(chan struct{}, 1)
-	orig := newRemoteExecutor
-	defer func() { newRemoteExecutor = orig }()
-	newRemoteExecutor = func(_ *rest.Config, _ string, execURL *url.URL) (remotecommand.Executor, error) {
-		commands := append([]string(nil), execURL.Query()["command"]...)
-		if reflect.DeepEqual(commands, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}) {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return fakeExitError{status: 1}
-			}}, nil
-		}
-		if len(commands) >= 3 && commands[0] == "/bin/sh" && commands[1] == "-c" && strings.Contains(commands[2], "find") {
-			return fakeExecutor{streamWithContext: func(ctx context.Context, options remotecommand.StreamOptions) error {
-				if _, err := io.WriteString(options.Stdout, "./out/a.txt\n"); err != nil {
-					return err
-				}
-				select {
-				case <-ctx.Done():
-					select {
-					case findCanceled <- struct{}{}:
-					default:
-					}
-					return ctx.Err()
-				case <-time.After(2 * time.Second):
-					return fmt.Errorf("find command not canceled")
-				}
-			}}, nil
-		}
-		if len(commands) >= 3 && commands[0] == "/bin/sh" && commands[1] == "-c" && strings.Contains(commands[2], "cat") {
-			return fakeExecutor{streamWithContext: func(_ context.Context, _ remotecommand.StreamOptions) error {
-				return fmt.Errorf("permission denied")
-			}}, nil
-		}
-		return nil, fmt.Errorf("unexpected command sequence: %v", commands)
-	}
-
-	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
-	require.NoError(t, err)
-	defer stream.Close()
-
-	_, err = io.ReadAll(stream.Reader)
-	require.Error(t, err)
-	require.True(t, strings.Contains(err.Error(), "read pod file content") || strings.Contains(err.Error(), "list pod files"))
-
-	select {
-	case <-findCanceled:
-	case <-time.After(1 * time.Second):
-		t.Fatalf("find command was not canceled after multipart failure")
-	}
 }
 
 func TestBuildPodExecURLPreservesHostPathPrefix(t *testing.T) {
