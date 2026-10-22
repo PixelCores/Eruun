@@ -231,6 +231,23 @@ func TestArchivePodPathAsZipMarksLookupErrors(t *testing.T) {
 	require.True(t, IsArchivePathLookupError(err))
 }
 
+func TestArchivePodPathAsZipMarksLookupErrorsAfterLongStderr(t *testing.T) {
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if reflect.DeepEqual(req.Command, tarProbeCommand) {
+			return nil
+		}
+		_, _ = io.WriteString(req.Stderr, strings.Repeat("x", syncExecOutputLimitBytes)+"\ntar: out: permission denied\n")
+		return kubetest.ExitCode(2)
+	})
+
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
+	require.NoError(t, err)
+	defer stream.Close()
+
+	_, err = bufio.NewReader(stream.Reader).Peek(1)
+	require.ErrorIs(t, err, errArchivePathLookup)
+}
+
 func TestIsArchivePathLookupErrorIgnoresToolNotFound(t *testing.T) {
 	err := fmt.Errorf("read pod file content: exit error: /bin/sh: cat: not found")
 	require.False(t, IsArchivePathLookupError(err))
@@ -452,12 +469,19 @@ func TestStreamPodCommandReturnsOnCancelWhileOutputIsBlocked(t *testing.T) {
 	stdout := &blockingWriter{entered: make(chan struct{}, 1), release: make(chan struct{})}
 	t.Cleanup(func() { close(stdout.release) })
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan error, 1)
 	go func() {
 		done <- streamPodCommand(ctx, config, "default", "pod-api", "api", []string{"cat"}, nil, stdout, io.Discard, false)
 	}()
 
-	<-stdout.entered
+	select {
+	case <-stdout.entered:
+	case err := <-done:
+		t.Fatalf("streamPodCommand returned before writing output: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("stdout was not written")
+	}
 	cancel()
 	// Callers such as archivePodPathWithTar close their pipe only after this
 	// returns; cancellation alone must be enough to get here.

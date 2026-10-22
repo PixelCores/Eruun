@@ -204,7 +204,7 @@ func archivePodPathWithTar(ctx context.Context, restConfig *rest.Config, namespa
 	zipReader, zipWriter := io.Pipe()
 
 	go func() {
-		stderr := newCappedBuffer(syncExecOutputLimitBytes)
+		stderr := &lockedBuffer{}
 		err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"tar", "-C", archiveDir, "-cf", "-", "--", archiveBase}, nil, tarWriter, stderr, false)
 		if err != nil {
 			_ = tarWriter.CloseWithError(wrapArchivePathCommandError("archive pod path", err, stderr.String()))
@@ -264,7 +264,7 @@ func writeMultipartFromPodPath(ctx context.Context, restConfig *rest.Config, nam
 	defer func() { _ = findReader.Close() }()
 	findErrChan := make(chan error, 1)
 	go func() {
-		stderr := newCappedBuffer(syncExecOutputLimitBytes)
+		stderr := &lockedBuffer{}
 		command := []string{
 			"/bin/sh",
 			"-c",
@@ -332,7 +332,7 @@ func createMultipartFilePart(multipartWriter *multipart.Writer, relativePath str
 }
 
 func writePodFileContentToWriter(ctx context.Context, restConfig *rest.Config, namespace, podName, container, archiveDir, filePath string, writer io.Writer) error {
-	stderr := newCappedBuffer(syncExecOutputLimitBytes)
+	stderr := &lockedBuffer{}
 	command := []string{
 		"/bin/sh",
 		"-c",
@@ -348,7 +348,7 @@ func writePodFileContentToWriter(ctx context.Context, restConfig *rest.Config, n
 }
 
 func podHasTar(ctx context.Context, restConfig *rest.Config, namespace, podName, container string) (bool, error) {
-	stderr := newCappedBuffer(syncExecOutputLimitBytes)
+	stderr := &lockedBuffer{}
 	err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}, nil, io.Discard, stderr, false)
 	if err == nil {
 		return true, nil
@@ -801,6 +801,26 @@ func (w *podStreamEventWriter) Write(data []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 	return len(data), nil
+}
+
+// lockedBuffer keeps all stderr of a command: path lookup errors are
+// classified from its full text. It is safe for the late writes client-go may
+// issue after a cancelled exec returns.
+type lockedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(data)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
 }
 
 // cappedBuffer is safe for the late writes client-go may issue after a
