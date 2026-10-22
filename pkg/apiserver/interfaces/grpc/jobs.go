@@ -361,10 +361,6 @@ func (s *JobsServer) GetJobResults(ctx context.Context, req *eruunv1.JobTaskRequ
 	return &eruunv1.JobResults{CollectionState: detail.CollectionState, Artifacts: items, Deliveries: jobDeliveriesOutput(detail.Deliveries), ExecutionKey: detail.ExecutionKey}, rpcError(err)
 }
 
-func (s *JobsServer) resultTask(ctx context.Context, taskID, requestedKey string) (*model.WorkflowQueue, string, error) {
-	return s.Jobs.ResolveResultTask(ctx, taskID, requestedKey)
-}
-
 func (s *JobsServer) RetryJobDelivery(ctx context.Context, req *eruunv1.JobDeliveryRequest) (*emptypb.Empty, error) {
 	if req == nil || req.TaskId == "" || req.Target == "" {
 		return nil, rpcError(bcode.ErrJobInput)
@@ -373,7 +369,7 @@ func (s *JobsServer) RetryJobDelivery(ctx context.Context, req *eruunv1.JobDeliv
 	if err == nil {
 		var task *model.WorkflowQueue
 		var key string
-		task, key, err = s.resultTask(ctx, req.TaskId, req.ExecutionKey)
+		task, key, err = s.Jobs.ResolveResultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err == nil {
 			err = s.Jobs.Artifacts.Retry(ctx, task.WorkspaceID, task.TaskID, req.Target, key)
 		}
@@ -389,7 +385,7 @@ func (s *JobsServer) SetJobRetention(ctx context.Context, req *eruunv1.SetJobRet
 	if err == nil {
 		var task *model.WorkflowQueue
 		var key string
-		task, key, err = s.resultTask(ctx, req.TaskId, req.ExecutionKey)
+		task, key, err = s.Jobs.ResolveResultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err == nil {
 			err = s.Jobs.Artifacts.SetRetention(ctx, task.WorkspaceID, task.TaskID, int(req.RetentionDays), key)
 		}
@@ -625,7 +621,7 @@ func (s *JobsServer) DownloadJobResult(req *eruunv1.JobArtifactRequest, stream e
 		return rpcError(bcode.ErrJobInput)
 	}
 	return streamArchive(stream.Context(), stream, func(ctx context.Context, w io.Writer) error {
-		task, key, err := s.resultTask(ctx, req.TaskId, req.ExecutionKey)
+		task, key, err := s.Jobs.ResolveResultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err != nil {
 			return err
 		}
@@ -645,7 +641,7 @@ func (s *JobsServer) DownloadJobDelivery(req *eruunv1.JobDeliveryRequest, stream
 		return rpcError(bcode.ErrJobInput)
 	}
 	return streamArchive(stream.Context(), stream, func(ctx context.Context, w io.Writer) error {
-		task, key, err := s.resultTask(ctx, req.TaskId, req.ExecutionKey)
+		task, key, err := s.Jobs.ResolveResultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err != nil {
 			return err
 		}

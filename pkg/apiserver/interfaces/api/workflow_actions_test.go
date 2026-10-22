@@ -6,23 +6,24 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
 func TestWorkflowTaskAllowedActionsAreExecutableDescriptors(t *testing.T) {
-	active := workflowTaskAllowedActions("task-1", "app-1", string(config.StatusRunning), "")
+	active := apis.WorkflowTaskAllowedActions("task-1", "app-1", string(config.StatusRunning), "")
 	require.Len(t, active, 1)
 	require.Equal(t, "cancel", active[0].Name)
 	require.Equal(t, "POST", active[0].Method)
 	require.Equal(t, "/api/v1/applications/app-1/workflow/cancel", active[0].Path)
 	require.Equal(t, "task-1", active[0].Body["taskId"])
 
-	approval := workflowTaskAllowedActions("task-2", "app-1", string(config.StatusWaitingApprove), "approve-release")
+	approval := apis.WorkflowTaskAllowedActions("task-2", "app-1", string(config.StatusWaitingApprove), "approve-release")
 	require.Len(t, approval, 2)
 	require.Equal(t, "continue", approval[0].Name)
 	require.Equal(t, "cancel", approval[1].Name)
 	require.Equal(t, "/api/v1/workflow/tasks/task-2/approval", approval[0].Path)
 
-	terminal := workflowTaskAllowedActions("task-3", "app-1", string(config.StatusCompleted), "")
+	terminal := apis.WorkflowTaskAllowedActions("task-3", "app-1", string(config.StatusCompleted), "")
 	require.Empty(t, terminal)
 	require.NotNil(t, terminal)
 }
@@ -47,7 +48,7 @@ func TestWorkflowTaskAllowedActionsPreserveLifecycleBoundaries(t *testing.T) {
 		{name: "terminal ignores stale approval step", taskID: "task", appID: "app", status: string(config.StatusCompleted), pending: "approve"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			actions := workflowTaskAllowedActions(tt.taskID, tt.appID, tt.status, tt.pending)
+			actions := apis.WorkflowTaskAllowedActions(tt.taskID, tt.appID, tt.status, tt.pending)
 			require.NotNil(t, actions)
 			require.Len(t, actions, len(tt.actions))
 			for i, name := range tt.actions {

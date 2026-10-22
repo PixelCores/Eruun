@@ -9,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -41,7 +42,7 @@ func (c *applicationsServiceImpl) ListComponentContainers(ctx context.Context, a
 		ComponentType: component.ComponentType,
 		Pods:          make([]apisv1.ComponentPodContainers, 0),
 	}
-	if !componentUsesPods(component.ComponentType) {
+	if !config.ComponentTypeUsesPods(component.ComponentType) {
 		return resp, nil
 	}
 	if c.KubeClient == nil {

@@ -123,7 +123,7 @@ func (c *applicationsServiceImpl) markComponentCleaning(ctx context.Context, com
 	if component == nil {
 		return
 	}
-	if !componentUsesPods(component.ComponentType) {
+	if !config.ComponentTypeUsesPods(component.ComponentType) {
 		return
 	}
 	c.updateComponentCleanupStatus(ctx, component, config.ComponentStatusCleaning)
@@ -134,14 +134,10 @@ func (c *applicationsServiceImpl) finalizeComponentCleanupStatus(ctx context.Con
 		return
 	}
 	status := config.ComponentStatusNotDeploy
-	if componentUsesPods(component.ComponentType) && c.shouldKeepCleaning(ctx, component) {
+	if config.ComponentTypeUsesPods(component.ComponentType) && c.shouldKeepCleaning(ctx, component) {
 		status = config.ComponentStatusCleaning
 	}
 	c.updateComponentCleanupStatus(ctx, component, status)
-}
-
-func componentUsesPods(componentType config.JobType) bool {
-	return config.ComponentTypeUsesPods(componentType)
 }
 
 func (c *applicationsServiceImpl) shouldKeepCleaning(ctx context.Context, component *model.ApplicationComponent) bool {
@@ -210,7 +206,7 @@ func (c *applicationsServiceImpl) shouldSkipSharedComponentCleanup(ctx context.C
 	if !shared {
 		return false, ""
 	}
-	if !componentUsesPods(component.ComponentType) {
+	if !config.ComponentTypeUsesPods(component.ComponentType) {
 		return true, fmt.Sprintf("strategy=%s non-pod component", strategy)
 	}
 

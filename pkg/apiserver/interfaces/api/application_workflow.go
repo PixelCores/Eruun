@@ -56,7 +56,7 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 		return
 	}
 	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
-	normalizeWorkflowSteps(req.Workflow)
+	apis.NormalizeWorkflowSteps(req.Workflow)
 	if err := validate.Struct(req); err != nil {
 		apiresponse.ReturnError(c, bcode.ErrWorkflowConfig)
 		return
@@ -112,10 +112,6 @@ func (app *applicationWorkflows) deleteWorkflowSchedule(c *gin.Context) {
 	apiresponse.ReturnSuccess(c, apis.DeleteWorkflowScheduleResponse{WorkflowID: workflowID})
 }
 
-func normalizeWorkflowSteps(steps []apis.CreateWorkflowStepRequest) {
-	apis.NormalizeWorkflowSteps(steps)
-}
-
 func (app *applicationWorkflows) execApplicationWorkflow(c *gin.Context) {
 	idempotencyKey, ok := bindIdempotencyKey(c, bcode.ErrWorkflowConfig)
 	if !ok {
@@ -128,7 +124,7 @@ func (app *applicationWorkflows) execApplicationWorkflow(c *gin.Context) {
 		func(ctx context.Context, appID string, req *apis.ExecWorkflowRequest) (*apis.ExecWorkflowResponse, error) {
 			resp, err := app.WorkflowService.ExecWorkflowTaskForApp(ctx, appID, req.WorkflowID, req.ExecuteAt, idempotencyKey)
 			if resp != nil {
-				resp.AllowedActions = workflowTaskAllowedActions(resp.TaskID, appID, resp.Status, resp.PendingApprovalStep)
+				resp.AllowedActions = apis.WorkflowTaskAllowedActions(resp.TaskID, appID, resp.Status, resp.PendingApprovalStep)
 			}
 			return resp, err
 		},
@@ -211,7 +207,7 @@ func (app *applications) listApplicationTasks(c *gin.Context) {
 			TaskRevoker:         task.TaskRevoker,
 			CreateTime:          task.CreateTime,
 			UpdateTime:          task.UpdateTime,
-			AllowedActions:      workflowTaskAllowedActions(task.TaskID, task.AppID, string(task.Status), task.PendingApprovalStep),
+			AllowedActions:      apis.WorkflowTaskAllowedActions(task.TaskID, task.AppID, string(task.Status), task.PendingApprovalStep),
 		})
 	}
 	apiresponse.ReturnSuccess(c, apis.ListApplicationTasksResponse{Tasks: resp})
@@ -221,7 +217,7 @@ func (app *applicationWorkflows) getWorkflowTaskStatus(c *gin.Context) {
 	handlePathResult(c, taskIDPathParam, func(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error) {
 		resp, err := app.WorkflowService.GetTaskStatus(ctx, taskID)
 		if resp != nil {
-			resp.AllowedActions = workflowTaskAllowedActions(resp.TaskID, resp.AppID, resp.Status, resp.PendingApprovalStep)
+			resp.AllowedActions = apis.WorkflowTaskAllowedActions(resp.TaskID, resp.AppID, resp.Status, resp.PendingApprovalStep)
 		}
 		return resp, err
 	})
@@ -231,7 +227,7 @@ func (app *applicationWorkflows) getWorkflowTaskStages(c *gin.Context) {
 	handlePathResult(c, taskIDPathParam, func(ctx context.Context, taskID string) (*apis.TaskStagesResponse, error) {
 		resp, err := app.WorkflowService.GetTaskStages(ctx, taskID)
 		if resp != nil {
-			resp.AllowedActions = workflowTaskAllowedActions(resp.TaskID, resp.AppID, resp.Status, resp.PendingApprovalStep)
+			resp.AllowedActions = apis.WorkflowTaskAllowedActions(resp.TaskID, resp.AppID, resp.Status, resp.PendingApprovalStep)
 		}
 		return resp, err
 	})
@@ -287,7 +283,7 @@ func (app *applications) tryApplication(c *gin.Context) {
 	for i := range req.Components {
 		req.Components[i].Name = strings.ToLower(strings.TrimSpace(req.Components[i].Name))
 	}
-	normalizeWorkflowSteps(req.Workflow)
+	apis.NormalizeWorkflowSteps(req.Workflow)
 
 	ctx := c.Request.Context()
 	klog.V(2).InfoS("try application validation request received", "name", req.Name, "components", len(req.Components), "workflows", len(req.Workflow))
@@ -321,7 +317,7 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 	}
 
 	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
-	normalizeWorkflowSteps(req.Workflow)
+	apis.NormalizeWorkflowSteps(req.Workflow)
 	tryReq := apis.TryWorkflowRequest{
 		WorkflowID:       req.WorkflowID,
 		Name:             req.Name,

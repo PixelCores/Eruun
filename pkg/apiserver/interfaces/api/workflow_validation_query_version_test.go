@@ -255,7 +255,7 @@ func TestNormalizeWorkflowStepsAppliesNodeRulesToStepsAndSubSteps(t *testing.T) 
 		},
 	}
 
-	normalizeWorkflowSteps(steps)
+	apis.NormalizeWorkflowSteps(steps)
 
 	require.Equal(t, "deploy-api", steps[0].Name)
 	require.Equal(t, config.WorkflowStepTypeComponent, steps[0].StepType)

@@ -144,7 +144,7 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 
 - 组件读路径与缓存：`pkg/apiserver/domain/service/application/application_query.go`、`pkg/apiserver/domain/service/application/application_cache.go`
 - 组件 API 组装与 credential 解析：`pkg/apiserver/interfaces/api/assembler/v1/component.go`
-- 状态同步：`pkg/apiserver/infrastructure/informer/waiter.go`、`pkg/apiserver/domain/service/application/component_status_sync.go`；`pkg/apiserver/server_status_sync.go` 仅提供 5 秒有界回调
+- 状态同步：`pkg/apiserver/infrastructure/informer/status_sync.go`、`pkg/apiserver/domain/service/application/component_status_sync.go`；`pkg/apiserver/server_status_sync.go` 仅提供 5 秒有界回调
 - 应用调度事务和执行 ownership：`pkg/apiserver/domain/repository/application_scheduling.go`、`pkg/apiserver/domain/repository/workflow_lease.go`
 - 直接版本更新中的资源清理：`pkg/apiserver/domain/service/application/application_update_version_phases.go` 中的 `commitDirectVersionUpdate`
 - 空间删除：`pkg/apiserver/domain/service/account/workspaces.go` 中的 `DeleteWorkspace`、`teamMutation`

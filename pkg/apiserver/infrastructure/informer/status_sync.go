@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -24,8 +22,8 @@ const (
 	podOwnerKindReplicaSet  = "ReplicaSet"
 )
 
-// ResourceReadyWaiter synchronizes Controller Pod snapshots and restart events.
-type ResourceReadyWaiter struct {
+// ComponentStatusSyncer synchronizes Controller Pod snapshots and restart events.
+type ComponentStatusSyncer struct {
 	// statusSyncFunc 状态同步回调（更新数据库）
 	statusSyncFunc StatusSyncFunc
 	// statusSyncQueue serializes each component while two workers bound callbacks.
@@ -125,9 +123,9 @@ func (t *podRestartTracker) reset() {
 	t.pods = make(map[string]*podRestartState)
 }
 
-// NewResourceReadyWaiter creates the Controller Pod event handler.
-func NewResourceReadyWaiter() *ResourceReadyWaiter {
-	waiter := &ResourceReadyWaiter{
+// NewComponentStatusSyncer creates the Controller Pod event handler.
+func NewComponentStatusSyncer() *ComponentStatusSyncer {
+	syncer := &ComponentStatusSyncer{
 		pods:             newPodTracker(),
 		podRestarts:      newPodRestartTracker(),
 		statusSyncQueue:  workqueue.NewTyped[componentStatusSyncKey](),
@@ -135,15 +133,15 @@ func NewResourceReadyWaiter() *ResourceReadyWaiter {
 		statusSyncStop:   make(chan struct{}),
 		now:              time.Now,
 	}
-	waiter.statusSyncWG.Add(2)
+	syncer.statusSyncWG.Add(2)
 	for range 2 {
-		go waiter.runStatusSyncWorker()
+		go syncer.runStatusSyncWorker()
 	}
-	return waiter
+	return syncer
 }
 
-// Close releases async resources created by waiter.
-func (w *ResourceReadyWaiter) Close() {
+// Close releases async resources created by syncer.
+func (w *ComponentStatusSyncer) Close() {
 	if w == nil {
 		return
 	}
@@ -155,7 +153,7 @@ func (w *ResourceReadyWaiter) Close() {
 	})
 }
 
-func (w *ResourceReadyWaiter) beginPodSnapshotGeneration() uint64 {
+func (w *ComponentStatusSyncer) beginPodSnapshotGeneration() uint64 {
 	if w == nil {
 		return 0
 	}
@@ -167,7 +165,7 @@ func (w *ResourceReadyWaiter) beginPodSnapshotGeneration() uint64 {
 	return w.podGeneration
 }
 
-func (w *ResourceReadyWaiter) endPodSnapshotGeneration(generation uint64) {
+func (w *ComponentStatusSyncer) endPodSnapshotGeneration(generation uint64) {
 	if w == nil || generation == 0 {
 		return
 	}
@@ -181,7 +179,7 @@ func (w *ResourceReadyWaiter) endPodSnapshotGeneration(generation uint64) {
 	w.resetPodSnapshotsLocked()
 }
 
-func (w *ResourceReadyWaiter) fencePodSnapshotGenerations() {
+func (w *ComponentStatusSyncer) fencePodSnapshotGenerations() {
 	if w == nil {
 		return
 	}
@@ -192,24 +190,24 @@ func (w *ResourceReadyWaiter) fencePodSnapshotGenerations() {
 	w.resetPodSnapshotsLocked()
 }
 
-func (w *ResourceReadyWaiter) resetPodSnapshotsLocked() {
+func (w *ComponentStatusSyncer) resetPodSnapshotsLocked() {
 	w.resetStatusSyncGeneration()
 	w.pods.reset()
 	w.podRestarts.reset()
 }
 
 // SetStatusSyncFunc 设置状态同步回调函数
-func (w *ResourceReadyWaiter) SetStatusSyncFunc(fn StatusSyncFunc) {
+func (w *ComponentStatusSyncer) SetStatusSyncFunc(fn StatusSyncFunc) {
 	w.statusSyncFunc = fn
 }
 
 // SetPodRestartMonitorConfigFunc 设置 Pod 重启监控配置读取回调。
-func (w *ResourceReadyWaiter) SetPodRestartMonitorConfigFunc(fn PodRestartMonitorConfigFunc) {
+func (w *ComponentStatusSyncer) SetPodRestartMonitorConfigFunc(fn PodRestartMonitorConfigFunc) {
 	w.podRestartConfigFn = fn
 }
 
 // SetDeploymentPodRestartTriggerFunc 设置 Deployment Pod 重启阈值触发回调。
-func (w *ResourceReadyWaiter) SetDeploymentPodRestartTriggerFunc(fn DeploymentPodRestartTriggerFunc) {
+func (w *ComponentStatusSyncer) SetDeploymentPodRestartTriggerFunc(fn DeploymentPodRestartTriggerFunc) {
 	w.podRestartTrigger = fn
 }
 
@@ -221,7 +219,7 @@ func buildComponentKey(appID, componentName string) string {
 	return fmt.Sprintf("%s/%s", appID, componentName)
 }
 
-func (w *ResourceReadyWaiter) onPodAddForGeneration(generation uint64, pod *corev1.Pod) {
+func (w *ComponentStatusSyncer) onPodAddForGeneration(generation uint64, pod *corev1.Pod) {
 	if !w.lockPodSnapshotHandler(generation, true) {
 		return
 	}
@@ -229,7 +227,7 @@ func (w *ResourceReadyWaiter) onPodAddForGeneration(generation uint64, pod *core
 	w.onPodUpdate(nil, pod)
 }
 
-func (w *ResourceReadyWaiter) onPodUpdateForGeneration(generation uint64, oldPod, newPod *corev1.Pod) {
+func (w *ComponentStatusSyncer) onPodUpdateForGeneration(generation uint64, oldPod, newPod *corev1.Pod) {
 	if !w.lockPodSnapshotHandler(generation, true) {
 		return
 	}
@@ -237,7 +235,7 @@ func (w *ResourceReadyWaiter) onPodUpdateForGeneration(generation uint64, oldPod
 	w.onPodUpdate(oldPod, newPod)
 }
 
-func (w *ResourceReadyWaiter) onPodUpdate(oldPod, newPod *corev1.Pod) {
+func (w *ComponentStatusSyncer) onPodUpdate(oldPod, newPod *corev1.Pod) {
 	if newPod == nil {
 		return
 	}
@@ -264,7 +262,7 @@ func (w *ResourceReadyWaiter) onPodUpdate(oldPod, newPod *corev1.Pod) {
 	w.handlePodRestartUpdate(oldPod, newPod, podKey, appID, componentName, componentID)
 }
 
-func (w *ResourceReadyWaiter) onPodDeleteForGeneration(generation uint64, pod *corev1.Pod) {
+func (w *ComponentStatusSyncer) onPodDeleteForGeneration(generation uint64, pod *corev1.Pod) {
 	if !w.lockPodSnapshotHandler(generation, true) {
 		return
 	}
@@ -272,7 +270,7 @@ func (w *ResourceReadyWaiter) onPodDeleteForGeneration(generation uint64, pod *c
 	w.onPodDelete(pod)
 }
 
-func (w *ResourceReadyWaiter) onPodDelete(pod *corev1.Pod) {
+func (w *ComponentStatusSyncer) onPodDelete(pod *corev1.Pod) {
 	if pod == nil {
 		return
 	}
@@ -281,7 +279,7 @@ func (w *ResourceReadyWaiter) onPodDelete(pod *corev1.Pod) {
 	w.clearPodRestartStatus(podKey)
 }
 
-func (w *ResourceReadyWaiter) lockPodSnapshotHandler(generation uint64, scoped bool) bool {
+func (w *ComponentStatusSyncer) lockPodSnapshotHandler(generation uint64, scoped bool) bool {
 	if w == nil {
 		return false
 	}
@@ -331,7 +329,7 @@ func isPodReady(pod *corev1.Pod) bool {
 	return false
 }
 
-func (w *ResourceReadyWaiter) handlePodRestartUpdate(oldPod, newPod *corev1.Pod, podKey, appID, componentName string, componentID int) {
+func (w *ComponentStatusSyncer) handlePodRestartUpdate(oldPod, newPod *corev1.Pod, podKey, appID, componentName string, componentID int) {
 	if w == nil || w.podRestarts == nil || newPod == nil {
 		return
 	}
@@ -392,7 +390,7 @@ func (w *ResourceReadyWaiter) handlePodRestartUpdate(oldPod, newPod *corev1.Pod,
 	)
 }
 
-func (w *ResourceReadyWaiter) loadPodRestartMonitorConfig(namespace, podName string) (PodRestartMonitorConfig, bool) {
+func (w *ComponentStatusSyncer) loadPodRestartMonitorConfig(namespace, podName string) (PodRestartMonitorConfig, bool) {
 	if w == nil || w.podRestartConfigFn == nil {
 		return PodRestartMonitorConfig{}, false
 	}
@@ -414,7 +412,7 @@ func (w *ResourceReadyWaiter) loadPodRestartMonitorConfig(namespace, podName str
 	return cfg, true
 }
 
-func (w *ResourceReadyWaiter) clearPodRestartStatus(podKey string) {
+func (w *ComponentStatusSyncer) clearPodRestartStatus(podKey string) {
 	if w == nil || w.podRestarts == nil {
 		return
 	}
@@ -548,7 +546,7 @@ func pruneRestartTimes(in []time.Time, cutoff time.Time) []time.Time {
 	return out
 }
 
-func (w *ResourceReadyWaiter) updatePodStatus(podKey string, info *podStatusInfo) {
+func (w *ComponentStatusSyncer) updatePodStatus(podKey string, info *podStatusInfo) {
 	if w.pods == nil {
 		return
 	}
@@ -632,103 +630,7 @@ func (t *podTracker) snapshotLocked(componentKey string) (componentSnapshot, boo
 	return snapshot, found
 }
 
-func normalizeComponentReadyWaitOptions(options ComponentReadyWaitOptions) ComponentReadyWaitOptions {
-	return ComponentReadyWaitOptions{
-		ExpectedImages:      utils.UniqueTrimmed(options.ExpectedImages),
-		ExpectedAnnotations: normalizeExpectedAnnotations(options.ExpectedAnnotations),
-	}
-}
-
-func normalizeExpectedAnnotations(annotations map[string]string) map[string]string {
-	if len(annotations) == 0 {
-		return nil
-	}
-	normalized := make(map[string]string, len(annotations))
-	for key, value := range annotations {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		normalized[key] = value
-	}
-	if len(normalized) == 0 {
-		return nil
-	}
-	return normalized
-}
-
-func podImageSet(pod *corev1.Pod) map[string]struct{} {
-	if pod == nil {
-		return nil
-	}
-	images := make(map[string]struct{})
-	addImage := func(image string) {
-		image = strings.TrimSpace(image)
-		if image != "" {
-			images[image] = struct{}{}
-		}
-	}
-	for _, container := range pod.Spec.InitContainers {
-		addImage(container.Image)
-	}
-	for _, container := range pod.Spec.Containers {
-		addImage(container.Image)
-	}
-	if len(images) == 0 {
-		return nil
-	}
-	return images
-}
-
-func podAnnotations(pod *corev1.Pod) map[string]string {
-	if pod == nil || len(pod.Annotations) == 0 {
-		return nil
-	}
-	annotations := make(map[string]string, len(pod.Annotations))
-	for key, value := range pod.Annotations {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		annotations[key] = value
-	}
-	if len(annotations) == 0 {
-		return nil
-	}
-	return annotations
-}
-
-func podImagesContainAll(images map[string]struct{}, expectedImages []string) bool {
-	if len(expectedImages) == 0 {
-		return true
-	}
-	if len(images) == 0 {
-		return false
-	}
-	for _, image := range expectedImages {
-		if _, ok := images[image]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func podAnnotationsContainAll(annotations map[string]string, expectedAnnotations map[string]string) bool {
-	if len(expectedAnnotations) == 0 {
-		return true
-	}
-	if len(annotations) == 0 {
-		return false
-	}
-	for key, value := range expectedAnnotations {
-		if annotations[key] != value {
-			return false
-		}
-	}
-	return true
-}
-
-func (w *ResourceReadyWaiter) syncComponentSnapshot(snapshot componentSnapshot) {
+func (w *ComponentStatusSyncer) syncComponentSnapshot(snapshot componentSnapshot) {
 	if w == nil || w.statusSyncFunc == nil {
 		return
 	}
@@ -761,7 +663,7 @@ func buildStatusUpdate(snapshot componentSnapshot) *model.ComponentStatusUpdate 
 	}
 }
 
-func (w *ResourceReadyWaiter) executeStatusSync(update *model.ComponentStatusUpdate) {
+func (w *ComponentStatusSyncer) executeStatusSync(update *model.ComponentStatusUpdate) {
 	if w == nil || w.statusSyncFunc == nil || update == nil {
 		return
 	}
@@ -779,7 +681,7 @@ func (w *ResourceReadyWaiter) executeStatusSync(update *model.ComponentStatusUpd
 	w.statusSyncFunc(update)
 }
 
-func (w *ResourceReadyWaiter) runStatusSyncWorker() {
+func (w *ComponentStatusSyncer) runStatusSyncWorker() {
 	defer w.statusSyncWG.Done()
 	for {
 		key, shutdown := w.statusSyncQueue.Get()
@@ -801,7 +703,7 @@ func (w *ResourceReadyWaiter) runStatusSyncWorker() {
 	}
 }
 
-func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *model.ComponentStatusUpdate, epoch uint64) {
+func (w *ComponentStatusSyncer) executeStatusSyncIfCurrent(update *model.ComponentStatusUpdate, epoch uint64) {
 	if w == nil {
 		return
 	}
@@ -812,7 +714,7 @@ func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *model.Component
 	}
 }
 
-func (w *ResourceReadyWaiter) takeLatestStatusSync(key componentStatusSyncKey) (*model.ComponentStatusUpdate, uint64, bool) {
+func (w *ComponentStatusSyncer) takeLatestStatusSync(key componentStatusSyncKey) (*model.ComponentStatusUpdate, uint64, bool) {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
 	latest, ok := w.statusSyncLatest[key]
@@ -820,13 +722,13 @@ func (w *ResourceReadyWaiter) takeLatestStatusSync(key componentStatusSyncKey) (
 	return latest.update, latest.epoch, ok
 }
 
-func (w *ResourceReadyWaiter) isCurrentStatusSyncEpoch(epoch uint64) bool {
+func (w *ComponentStatusSyncer) isCurrentStatusSyncEpoch(epoch uint64) bool {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
 	return epoch == w.statusSyncEpoch
 }
 
-func (w *ResourceReadyWaiter) resetStatusSyncGeneration() {
+func (w *ComponentStatusSyncer) resetStatusSyncGeneration() {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
 	w.statusSyncEpoch++

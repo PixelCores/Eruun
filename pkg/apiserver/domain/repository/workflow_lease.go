@@ -52,7 +52,7 @@ func ClaimWorkflowTaskForDispatch(ctx context.Context, store datastore.DataStore
 		"status":         config.StatusWaiting,
 		"run_generation": task.RunGeneration,
 	}
-	updated, err := compareWorkflowTaskWithConditions(ctx, store, task.TaskID, conditions, updates)
+	updated, err := UpdateTaskFieldsIfConditions(ctx, store, task.TaskID, conditions, updates)
 	if err != nil || !updated {
 		return nil, updated, err
 	}
@@ -94,7 +94,7 @@ func ClaimWorkflowTaskForExecution(ctx context.Context, store datastore.DataStor
 		"lease_expires_at":  expiresAt,
 		"scheduling_reason": "worker claimed dispatch",
 	}
-	updated, err := compareWorkflowTaskWithConditions(ctx, store, taskID, conditions, updates)
+	updated, err := UpdateTaskFieldsIfConditions(ctx, store, taskID, conditions, updates)
 	if err != nil || !updated {
 		return nil, updated, err
 	}
@@ -125,7 +125,7 @@ func RenewWorkflowTaskLease(ctx context.Context, store datastore.DataStore, task
 	if err != nil {
 		return false, err
 	}
-	return compareWorkflowTaskWithConditions(ctx, store, taskID, map[string]interface{}{
+	return UpdateTaskFieldsIfConditions(ctx, store, taskID, map[string]interface{}{
 		"status":         config.StatusRunning,
 		"run_generation": generation,
 		"run_token":      token,
@@ -152,7 +152,7 @@ func RenewCancelledWorkflowTaskLease(ctx context.Context, store datastore.DataSt
 	if err != nil {
 		return false, err
 	}
-	return compareWorkflowTaskWithConditions(ctx, store, taskID, map[string]interface{}{
+	return UpdateTaskFieldsIfConditions(ctx, store, taskID, map[string]interface{}{
 		"status":         config.StatusCancelled,
 		"run_generation": generation,
 		"run_token":      token,
@@ -173,7 +173,7 @@ func ExpireWorkflowTaskLease(ctx context.Context, store datastore.DataStore, tas
 	if err != nil {
 		return false, err
 	}
-	return compareWorkflowTaskWithConditions(ctx, store, taskID, map[string]interface{}{
+	return UpdateTaskFieldsIfConditions(ctx, store, taskID, map[string]interface{}{
 		"status":         config.StatusRunning,
 		"run_generation": generation,
 		"run_token":      token,
@@ -205,7 +205,7 @@ func PersistApprovalCheckpoint(ctx context.Context, store datastore.DataStore, t
 		}
 		deadline = now.Add(timeout)
 	}
-	return compareWorkflowTaskWithConditions(ctx, store, task.TaskID, map[string]interface{}{
+	return UpdateTaskFieldsIfConditions(ctx, store, task.TaskID, map[string]interface{}{
 		"status":         config.StatusRunning,
 		"current_step":   stepIndex,
 		"run_generation": task.RunGeneration,
@@ -258,7 +258,7 @@ func ExpireApprovalDeadlines(ctx context.Context, store datastore.DataStore, lim
 			task.ApprovalDeadline == nil || !task.ApprovalDeadline.Before(now) {
 			continue
 		}
-		updated, err := compareWorkflowTaskWithConditions(ctx, store, task.TaskID, map[string]interface{}{
+		updated, err := UpdateTaskFieldsIfConditions(ctx, store, task.TaskID, map[string]interface{}{
 			"status":                config.StatusWaitingApprove,
 			"approval_pending":      true,
 			"current_step":          task.CurrentStep,
@@ -300,11 +300,7 @@ func UpdateTaskFieldsIfOwned(ctx context.Context, store datastore.DataStore, tas
 		"run_token":      task.RunToken,
 		"worker_id":      task.WorkerID,
 	}
-	return compareWorkflowTaskWithConditions(ctx, store, task.TaskID, conditions, updates)
-}
-
-func UpdateTaskFieldsIfConditions(ctx context.Context, store datastore.DataStore, taskID string, conditions, updates map[string]interface{}) (bool, error) {
-	return compareWorkflowTaskWithConditions(ctx, store, taskID, conditions, updates)
+	return UpdateTaskFieldsIfConditions(ctx, store, task.TaskID, conditions, updates)
 }
 
 // WithWorkflowTaskOwnership serializes a fenced side-effect write with ownership
@@ -344,7 +340,7 @@ func WithWorkflowTaskOwnership(
 		if expectedStatus == "" {
 			expectedStatus = config.StatusRunning
 		}
-		owned, err := compareWorkflowTaskWithConditions(ctx, tx, task.TaskID, map[string]interface{}{
+		owned, err := UpdateTaskFieldsIfConditions(ctx, tx, task.TaskID, map[string]interface{}{
 			"status":         expectedStatus,
 			"run_generation": task.RunGeneration,
 			"run_token":      task.RunToken,
@@ -367,7 +363,7 @@ func ReleaseWorkflowDispatchClaim(ctx context.Context, store datastore.DataStore
 	if err := validateWorkflowExecutionIdentity(task.TaskID, task.RunGeneration, task.RunToken); err != nil {
 		return false, err
 	}
-	return compareWorkflowTaskWithConditions(ctx, store, task.TaskID, map[string]interface{}{
+	return UpdateTaskFieldsIfConditions(ctx, store, task.TaskID, map[string]interface{}{
 		"status":         config.StatusQueued,
 		"run_generation": task.RunGeneration,
 		"run_token":      task.RunToken,
@@ -430,7 +426,7 @@ func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore,
 		if task.LeaseExpiresAt.After(now) {
 			continue
 		}
-		updated, updateErr := compareWorkflowTaskWithConditions(ctx, store, task.TaskID, map[string]interface{}{
+		updated, updateErr := UpdateTaskFieldsIfConditions(ctx, store, task.TaskID, map[string]interface{}{
 			"status":           task.Status,
 			"run_generation":   task.RunGeneration,
 			"run_token":        task.RunToken,
@@ -498,7 +494,7 @@ func RecoverExpiredCancelledWorkflowTasks(ctx context.Context, store datastore.D
 				"worker_id":        task.WorkerID,
 				"lease_expires_at": *task.LeaseExpiresAt,
 			}
-			owned, err := compareWorkflowTaskWithConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{})
+			owned, err := UpdateTaskFieldsIfConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{})
 			if err != nil {
 				return err
 			}
@@ -508,7 +504,7 @@ func RecoverExpiredCancelledWorkflowTasks(ctx context.Context, store datastore.D
 			if err := TerminalizeCancelledWorkflowJobs(ctx, tx, task.TaskID, "worker cleanup lease expired", ""); err != nil {
 				return err
 			}
-			cleared, err := compareWorkflowTaskWithConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{
+			cleared, err := UpdateTaskFieldsIfConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{
 				"run_token": "", "worker_id": "", "lease_expires_at": nil,
 			})
 			if err != nil {
@@ -616,7 +612,7 @@ func validateWorkflowExecutionIdentity(taskID string, generation uint64, token s
 	return nil
 }
 
-func compareWorkflowTaskWithConditions(ctx context.Context, store datastore.DataStore, taskID string, conditions, updates map[string]interface{}) (bool, error) {
+func UpdateTaskFieldsIfConditions(ctx context.Context, store datastore.DataStore, taskID string, conditions, updates map[string]interface{}) (bool, error) {
 	if taskID == "" {
 		return false, datastore.ErrPrimaryEmpty
 	}

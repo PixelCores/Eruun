@@ -104,7 +104,7 @@ func (w *workflowServiceImpl) shouldCancelTaskWithStore(ctx context.Context, sto
 	if task.Status != config.StatusCancelled {
 		return false, nil
 	}
-	return taskHasActiveJobs(ctx, store, task.TaskID)
+	return TaskHasActiveJobs(ctx, store, task.TaskID)
 }
 
 func (w *workflowServiceImpl) CancelDelayedVersionTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error {

@@ -25,7 +25,7 @@ func (w *workflowServiceImpl) WaitingTasks(ctx context.Context) ([]*model.Workfl
 }
 
 func (w *workflowServiceImpl) enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
-	if err := validateWorkflowTaskEnqueue(ctx, store, workflow, true); err != nil {
+	if err := ValidateWorkflowTaskEnqueue(ctx, store, workflow, true); err != nil {
 		return nil, err
 	}
 
@@ -36,7 +36,7 @@ func (w *workflowServiceImpl) enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx 
 	return &apis.ExecWorkflowResponse{TaskID: workflowTask.TaskID, Status: string(workflowTask.Status)}, nil
 }
 
-func validateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, requireComponentInventory bool) error {
+func ValidateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, requireComponentInventory bool) error {
 	if workflow == nil || workflow.Steps == nil {
 		return bcode.ErrExecWorkflow
 	}
@@ -92,10 +92,6 @@ func validateWorkflowTaskJobTypes(workflow *model.Workflow) error {
 		}
 	}
 	return nil
-}
-
-func ValidateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, requireComponentInventory bool) error {
-	return validateWorkflowTaskEnqueue(ctx, store, workflow, requireComponentInventory)
 }
 
 // QueueTaskOptions contains the optional scheduling and execution snapshots for a task.
@@ -175,7 +171,7 @@ func EnsureAppWorkflowIdle(ctx context.Context, store datastore.DataStore, appID
 			continue
 		}
 		if current.Status == config.StatusWaiting && current.ExecuteAt > now {
-			activeJobs, err := taskHasActiveJobs(ctx, store, current.TaskID)
+			activeJobs, err := TaskHasActiveJobs(ctx, store, current.TaskID)
 			if err != nil {
 				return err
 			}
@@ -188,7 +184,7 @@ func EnsureAppWorkflowIdle(ctx context.Context, store datastore.DataStore, appID
 			return bcode.ErrWorkflowTaskRunning
 		}
 		if current.Status == config.StatusCancelled {
-			cancelling, err := taskHasActiveJobs(ctx, store, current.TaskID)
+			cancelling, err := TaskHasActiveJobs(ctx, store, current.TaskID)
 			if err != nil {
 				return err
 			}
@@ -200,7 +196,7 @@ func EnsureAppWorkflowIdle(ctx context.Context, store datastore.DataStore, appID
 	return nil
 }
 
-func normalizeExecuteAt(executeAt int64) (int64, error) {
+func NormalizeExecuteAt(executeAt int64) (int64, error) {
 	if executeAt < 0 {
 		return 0, bcode.ErrWorkflowConfig
 	}
@@ -214,11 +210,7 @@ func normalizeExecuteAt(executeAt int64) (int64, error) {
 	return executeAt, nil
 }
 
-func NormalizeExecuteAt(executeAt int64) (int64, error) {
-	return normalizeExecuteAt(executeAt)
-}
-
-func taskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
+func TaskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
 	taskID = strings.TrimSpace(taskID)
 	if store == nil {
 		return false, fmt.Errorf("check active jobs: datastore is nil")
@@ -240,10 +232,6 @@ func taskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID st
 		}
 	}
 	return false, nil
-}
-
-func TaskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
-	return taskHasActiveJobs(ctx, store, taskID)
 }
 
 var terminalJobStatuses = map[config.Status]struct{}{

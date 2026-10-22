@@ -16,10 +16,6 @@ const (
 	templateApplicationListCacheKey = "app:template:list:v5"
 )
 
-func applicationComponentsCacheKey(appID string) string {
-	return cacheutil.ApplicationComponentsKey(appID)
-}
-
 func (c *applicationsServiceImpl) cacheEnabled() bool {
 	return c.Cache != nil
 }
@@ -79,7 +75,7 @@ func (c *applicationsServiceImpl) invalidateApplicationComponentsCache(ctx conte
 	if appID == "" {
 		return
 	}
-	c.invalidateCacheKey(ctx, applicationComponentsCacheKey(appID))
+	c.invalidateCacheKey(ctx, cacheutil.ApplicationComponentsKey(appID))
 }
 
 func scopedListCacheKey(ctx context.Context, key string) string {

@@ -283,7 +283,7 @@ func TestBeginControllerRunStopsPreviousInformerRuntimeSynchronously(t *testing.
 	manager := informer.NewManager(fake.NewSimpleClientset(), "")
 	t.Cleanup(func() {
 		manager.Stop()
-		manager.GetWaiter().Close()
+		manager.StatusSyncer().Close()
 	})
 
 	previousRun := newWorkerRun(context.Background())

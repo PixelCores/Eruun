@@ -397,12 +397,8 @@ func defaultComponentStatus(taskStatus config.Status) string {
 }
 
 func (w *workflowServiceImpl) ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
-	return w.execWorkflowTaskForAppLocked(ctx, appID, workflowID, executeAt, idempotencyKey)
-}
-
-func (w *workflowServiceImpl) execWorkflowTaskForAppLocked(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
 	requestedExecuteAt := executeAt
-	normalized, err := normalizeExecuteAt(executeAt)
+	normalized, err := NormalizeExecuteAt(executeAt)
 	if err != nil {
 		return nil, err
 	}

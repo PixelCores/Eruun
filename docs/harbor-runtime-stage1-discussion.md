@@ -199,7 +199,7 @@ Eruun 当前默认 `KubeQPS=100`、`KubeBurst=300`，对应 `--kube-api-qps` 和
   → 仅持久化有意义的状态变化，使用数据库条件更新
 ```
 
-当前应用组件状态同步已经有按组件键合并的 lane 和 2 个 worker、256 个 executor 队列项，可作为复用边界的参考；这条路径尚不是独立 eval 的 Job/Sandbox 观察实现，而且 executor 队列长度不限制全部 lane 的数量。实现应先评估现有机制和 tracker 的全量扫描成本，再决定最小修改，不能简单宣称现有队列已具备万级容量。[组件状态同步](../pkg/apiserver/infrastructure/informer/waiter.go)、[写库路径](../pkg/apiserver/server_status_sync.go)。
+当前应用组件状态同步已经有按组件键合并的 lane 和 2 个 worker、256 个 executor 队列项，可作为复用边界的参考；这条路径尚不是独立 eval 的 Job/Sandbox 观察实现，而且 executor 队列长度不限制全部 lane 的数量。实现应先评估现有机制和 tracker 的全量扫描成本，再决定最小修改，不能简单宣称现有队列已具备万级容量。[组件状态同步](../pkg/apiserver/infrastructure/informer/status_sync.go)、[写库路径](../pkg/apiserver/server_status_sync.go)。
 
 - **按资源集合观察。** 不为每个 Job 单独建立 Watch。同一资源类型、观察范围和过滤条件尽量复用流；也不能把全量数据每次事件都重新遍历一遍。
 - **回调快速返回。** 不在 informer 回调中等待数据库、上传制品或同步执行清理；不为每个事件无上限地创建 goroutine。

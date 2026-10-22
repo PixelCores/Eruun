@@ -278,10 +278,10 @@ func (s *restServer) buildRuntimeQueues(redisClient *redis.Client) (*msg.Runtime
 func (s *restServer) initRuntimeObservers(kubeClient kubernetes.Interface) {
 	// The manager writes observed state only while this node holds leadership.
 	s.InformerManager = informer.NewManager(kubeClient, spec.LabelAppID)
-	waiter := s.InformerManager.GetWaiter()
-	waiter.SetStatusSyncFunc(s.syncComponentStatus)
-	waiter.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)
-	waiter.SetDeploymentPodRestartTriggerFunc(s.handleDeploymentPodRestartThresholdExceeded)
+	syncer := s.InformerManager.StatusSyncer()
+	syncer.SetStatusSyncFunc(s.syncComponentStatus)
+	syncer.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)
+	syncer.SetDeploymentPodRestartTriggerFunc(s.handleDeploymentPodRestartThresholdExceeded)
 	s.resourceObserver = informer.NewKubernetesWorkloadObserver(kubeClient)
 }
 

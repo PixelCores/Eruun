@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -206,3 +208,99 @@ func (o *KubernetesWorkloadObserver) WaitForComponentReadyWithOptions(ctx contex
 }
 
 var _ ComponentReadyObserver = (*KubernetesWorkloadObserver)(nil)
+
+func normalizeComponentReadyWaitOptions(options ComponentReadyWaitOptions) ComponentReadyWaitOptions {
+	return ComponentReadyWaitOptions{
+		ExpectedImages:      utils.UniqueTrimmed(options.ExpectedImages),
+		ExpectedAnnotations: normalizeExpectedAnnotations(options.ExpectedAnnotations),
+	}
+}
+
+func normalizeExpectedAnnotations(annotations map[string]string) map[string]string {
+	if len(annotations) == 0 {
+		return nil
+	}
+	normalized := make(map[string]string, len(annotations))
+	for key, value := range annotations {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		normalized[key] = value
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func podImageSet(pod *corev1.Pod) map[string]struct{} {
+	if pod == nil {
+		return nil
+	}
+	images := make(map[string]struct{})
+	addImage := func(image string) {
+		image = strings.TrimSpace(image)
+		if image != "" {
+			images[image] = struct{}{}
+		}
+	}
+	for _, container := range pod.Spec.InitContainers {
+		addImage(container.Image)
+	}
+	for _, container := range pod.Spec.Containers {
+		addImage(container.Image)
+	}
+	if len(images) == 0 {
+		return nil
+	}
+	return images
+}
+
+func podAnnotations(pod *corev1.Pod) map[string]string {
+	if pod == nil || len(pod.Annotations) == 0 {
+		return nil
+	}
+	annotations := make(map[string]string, len(pod.Annotations))
+	for key, value := range pod.Annotations {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		annotations[key] = value
+	}
+	if len(annotations) == 0 {
+		return nil
+	}
+	return annotations
+}
+
+func podImagesContainAll(images map[string]struct{}, expectedImages []string) bool {
+	if len(expectedImages) == 0 {
+		return true
+	}
+	if len(images) == 0 {
+		return false
+	}
+	for _, image := range expectedImages {
+		if _, ok := images[image]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func podAnnotationsContainAll(annotations map[string]string, expectedAnnotations map[string]string) bool {
+	if len(expectedAnnotations) == 0 {
+		return true
+	}
+	if len(annotations) == 0 {
+		return false
+	}
+	for key, value := range expectedAnnotations {
+		if annotations[key] != value {
+			return false
+		}
+	}
+	return true
+}

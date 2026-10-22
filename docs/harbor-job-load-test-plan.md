@@ -12,7 +12,7 @@
 
 ## 环境和负载准备
 
-1. 使用专用集群、数据库/schema、Redis 或 Kafka、空间和对象存储。记录 Eruun 与 Runner 镜像 digest、Harbor 版本、节点数量及可分配 CPU/内存、Kubernetes API/etcd 与 CNI、MySQL 连接池及磁盘、队列后端、统一节点副本数、当前 Leader 与 Worker 分布和资源限制、空间 ResourceQuota，以及监控采样间隔。所有节点必须配置同一 Harbor Runner；先完成 schema 升级。隔离环境不应混入其他任务。
+1. 使用专用集群、数据库/schema、Redis、空间和对象存储。记录 Eruun 与 Runner 镜像 digest、Harbor 版本、节点数量及可分配 CPU/内存、Kubernetes API/etcd 与 CNI、MySQL 连接池及磁盘、队列后端、统一节点副本数、当前 Leader 与 Worker 分布和资源限制、空间 ResourceQuota，以及监控采样间隔。所有节点必须配置同一 Harbor Runner；先完成 schema 升级。隔离环境不应混入其他任务。
 2. 按 [合成负载示例](../examples/agent-evaluation/load-test/README.md) 构建并推送 `task/environment/Dockerfile` 的镜像，最好在运行记录中固定 digest。把任务目录复制到临时位置，替换 `task.toml` 的占位 `docker_image`，打包并上传原生任务。`oracle` 参考解执行镜像内的线程休眠程序；verifier 检查五个线程均完成，并把每个 Job 的计划/实际时长写入 `load-timing.json` 制品。`[agent].timeout_sec=360`，外层评测预算仍需覆盖镜像拉取、Harbor 启动、verifier 和归档。先运行一个 Job，验证 reward 1、完整采集和保存成功，且制品报告的时长落在 60–300 秒；不满足则排查镜像和任务包后再开始压测。
 3. 只上传 **一次** 原生 tar.gz 任务包，保存返回的 `data.id`，1000 个 Job 都复用该 `taskPackageId`。批量提交器使用 [合成请求模板](../examples/agent-evaluation/load-test/evaluation.json)：`traits.eval.agent=oracle`，不填写 model/credentials；`traits.eval.attempts=1`、`concurrency=1`；`traits.eval.timeoutSeconds=900`，给最长 300 秒的合成等待之外的准备和 verifier 留预算，Runner 另有 360 秒采集/停止余量。明确使用隔离数据库上的 `retentionDays=1`、`database/full`，让结果保存也接受压力；数据库完整副本不会因为源归档保留期结束而自动删除，实验结束后由隔离环境的清理流程处理。保持同一策略贯穿可比较的轮次。
 4. 使用有 member 权限的空间 Bearer Token，提交时带 `X-Eruun-Workspace-ID`；修改 `workflow_scheduler` 需要系统管理员 Token。驱动程序不得把 Token、Runner 凭据或响应中的敏感信息写入日志。先读取并备份 `GET /api/v1/settings/workflow_scheduler` 的 `data.value`；只在专用环境通过 `PUT /api/v1/settings/workflow_scheduler` 的 `{ "value": { ... } }` 调整两个并发上限，每轮记录生效值，结束后恢复原值。降低上限不会终止已有 Job，必须排空后再切换轮次。
