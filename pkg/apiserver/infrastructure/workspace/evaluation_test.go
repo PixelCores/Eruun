@@ -13,8 +13,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/ptr"
 )
 
 type evaluationTransport func(*http.Request) (*http.Response, error)
@@ -122,6 +124,21 @@ func TestEnsureEvaluationRunnerPreservesRestrictedNamespace(t *testing.T) {
 	ns, err := client.CoreV1().Namespaces().Get(ctx, space.Namespace, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "restricted", ns.Labels["pod-security.kubernetes.io/enforce"])
+}
+
+func TestEnsureEvaluationRunnerRefusesForeignObjects(t *testing.T) {
+	ctx := context.Background()
+	space := &model.Workspace{ID: "space-id", Namespace: "space"}
+	foreign := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: EvaluationRunnerName, Namespace: space.Namespace, Labels: map[string]string{OwnerLabel: "other"}}, AutomountServiceAccountToken: ptr.To(true)}
+	client := fake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: space.Namespace, Labels: map[string]string{OwnerLabel: space.ID}}}, foreign)
+	manager := &Manager{Client: client}
+	require.ErrorIs(t, manager.EnsureEvaluationRunner(ctx, space, spec.JobRunnerEgress{CIDR: "192.0.2.1/32", Port: 443}), bcode.ErrForbidden)
+	sa, err := client.CoreV1().ServiceAccounts(space.Namespace).Get(ctx, EvaluationRunnerName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "other", sa.Labels[OwnerLabel])
+	require.True(t, *sa.AutomountServiceAccountToken)
+	_, err = client.RbacV1().Roles(space.Namespace).Get(ctx, EvaluationRunnerName, metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err))
 }
 
 func TestEvaluationTransportScopesMultipleWorkflowJobs(t *testing.T) {
