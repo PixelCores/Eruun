@@ -14,7 +14,7 @@ require (
 	github.com/go-redsync/redsync/v4 v4.18.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/google/uuid v1.6.0
-	github.com/minio/minio-go/v7 v7.3.0
+	github.com/minio/minio-go/v7 v7.4.1
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/robfig/cron/v3 v3.0.1
