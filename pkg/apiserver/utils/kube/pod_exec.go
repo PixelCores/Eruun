@@ -45,6 +45,16 @@ var archivePathLookupErrorMarkers = []string{
 	"permission denied",
 }
 
+// archivePathLookupMarkerCarry is one byte short of the longest marker: the
+// most of a marker that can end one write and continue in the next.
+var archivePathLookupMarkerCarry = func() int {
+	longest := 0
+	for _, marker := range archivePathLookupErrorMarkers {
+		longest = max(longest, len(marker))
+	}
+	return longest - 1
+}()
+
 // PodExecResult captures synchronous shell execution output from a Pod.
 type PodExecResult struct {
 	Stdout   string
@@ -204,10 +214,10 @@ func archivePodPathWithTar(ctx context.Context, restConfig *rest.Config, namespa
 	zipReader, zipWriter := io.Pipe()
 
 	go func() {
-		stderr := &lockedBuffer{}
+		stderr := newArchiveStderr()
 		err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"tar", "-C", archiveDir, "-cf", "-", "--", archiveBase}, nil, tarWriter, stderr, false)
 		if err != nil {
-			_ = tarWriter.CloseWithError(wrapArchivePathCommandError("archive pod path", err, stderr.String()))
+			_ = tarWriter.CloseWithError(wrapArchivePathCommandError("archive pod path", err, stderr))
 			return
 		}
 		_ = tarWriter.Close()
@@ -264,7 +274,7 @@ func writeMultipartFromPodPath(ctx context.Context, restConfig *rest.Config, nam
 	defer func() { _ = findReader.Close() }()
 	findErrChan := make(chan error, 1)
 	go func() {
-		stderr := &lockedBuffer{}
+		stderr := newArchiveStderr()
 		command := []string{
 			"/bin/sh",
 			"-c",
@@ -275,7 +285,7 @@ func writeMultipartFromPodPath(ctx context.Context, restConfig *rest.Config, nam
 		}
 		err := streamPodCommand(listCtx, restConfig, namespace, podName, container, command, nil, findWriter, stderr, false)
 		if err != nil {
-			wrapped := wrapArchivePathCommandError("list pod files", err, stderr.String())
+			wrapped := wrapArchivePathCommandError("list pod files", err, stderr)
 			_ = findWriter.CloseWithError(wrapped)
 			findErrChan <- wrapped
 			return
@@ -332,7 +342,7 @@ func createMultipartFilePart(multipartWriter *multipart.Writer, relativePath str
 }
 
 func writePodFileContentToWriter(ctx context.Context, restConfig *rest.Config, namespace, podName, container, archiveDir, filePath string, writer io.Writer) error {
-	stderr := &lockedBuffer{}
+	stderr := newArchiveStderr()
 	command := []string{
 		"/bin/sh",
 		"-c",
@@ -342,13 +352,13 @@ func writePodFileContentToWriter(ctx context.Context, restConfig *rest.Config, n
 		filePath,
 	}
 	if err := streamPodCommand(ctx, restConfig, namespace, podName, container, command, nil, writer, stderr, false); err != nil {
-		return wrapArchivePathCommandError("read pod file content", err, stderr.String())
+		return wrapArchivePathCommandError("read pod file content", err, stderr)
 	}
 	return nil
 }
 
 func podHasTar(ctx context.Context, restConfig *rest.Config, namespace, podName, container string) (bool, error) {
-	stderr := &lockedBuffer{}
+	stderr := newCappedBuffer(syncExecOutputLimitBytes)
 	err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}, nil, io.Discard, stderr, false)
 	if err == nil {
 		return true, nil
@@ -713,23 +723,15 @@ func wrapPodCommandError(action string, err error, stderr string) error {
 	return fmt.Errorf("%s: %w: %s", action, err, stderr)
 }
 
-func wrapArchivePathCommandError(action string, err error, stderr string) error {
-	wrapped := wrapPodCommandError(action, err, stderr)
-	if isArchivePathLookupFailure(err, stderr) {
+// wrapArchivePathCommandError classifies a non-zero exit as a path lookup
+// failure from all of stderr, while the message carries only its capped text.
+func wrapArchivePathCommandError(action string, err error, stderr *archiveStderr) error {
+	wrapped := wrapPodCommandError(action, err, stderr.String())
+	var exitErr utilexec.ExitError
+	if errors.As(err, &exitErr) && stderr.reportsPathLookup() {
 		return fmt.Errorf("%w: %w", errArchivePathLookup, wrapped)
 	}
 	return wrapped
-}
-
-func isArchivePathLookupFailure(err error, stderr string) bool {
-	if err == nil {
-		return false
-	}
-	var exitErr utilexec.ExitError
-	if !errors.As(err, &exitErr) {
-		return false
-	}
-	return containsArchivePathLookupMarker(stderr)
 }
 
 func containsArchivePathLookupMarker(text string) bool {
@@ -803,24 +805,40 @@ func (w *podStreamEventWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-// lockedBuffer keeps all stderr of a command: path lookup errors are
-// classified from its full text. It is safe for the late writes client-go may
+// archiveStderr keeps a capped copy of an archive command's stderr for error
+// messages and records whether any of it, including bytes past the cap,
+// reports a path lookup failure. It is safe for the late writes client-go may
 // issue after a cancelled exec returns.
-type lockedBuffer struct {
-	mu     sync.Mutex
-	buffer bytes.Buffer
+type archiveStderr struct {
+	text       *cappedBuffer
+	mu         sync.Mutex
+	carry      []byte // tail of the previous write, so a marker split across writes is still seen
+	pathLookup bool
 }
 
-func (b *lockedBuffer) Write(data []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buffer.Write(data)
+func newArchiveStderr() *archiveStderr {
+	return &archiveStderr{text: newCappedBuffer(syncExecOutputLimitBytes)}
 }
 
-func (b *lockedBuffer) String() string {
+func (b *archiveStderr) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.buffer.String()
+	if !b.pathLookup && len(data) > 0 {
+		window := append(b.carry, data...)
+		b.pathLookup = containsArchivePathLookupMarker(string(window))
+		b.carry = bytes.Clone(window[max(0, len(window)-archivePathLookupMarkerCarry):])
+	}
+	return b.text.Write(data)
+}
+
+func (b *archiveStderr) String() string {
+	return b.text.String()
+}
+
+func (b *archiveStderr) reportsPathLookup() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pathLookup
 }
 
 // cappedBuffer is safe for the late writes client-go may issue after a

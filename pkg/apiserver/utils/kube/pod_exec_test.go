@@ -248,6 +248,40 @@ func TestArchivePodPathAsZipMarksLookupErrorsAfterLongStderr(t *testing.T) {
 	require.ErrorIs(t, err, errArchivePathLookup)
 }
 
+func TestArchivePodPathAsZipBoundsStderrAndKeepsLookupClassification(t *testing.T) {
+	config := kubetest.NewExecServer(t, func(req kubetest.ExecRequest) error {
+		if reflect.DeepEqual(req.Command, tarProbeCommand) {
+			return nil
+		}
+		junk := strings.Repeat("x", 64<<10)
+		for range 64 { // 4 MiB of stderr before the marker
+			if _, err := io.WriteString(req.Stderr, junk); err != nil {
+				return err
+			}
+		}
+		_, _ = io.WriteString(req.Stderr, "\ntar: out: permission denied\n")
+		return kubetest.ExitCode(2)
+	})
+
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
+	require.NoError(t, err)
+	defer stream.Close()
+
+	_, err = bufio.NewReader(stream.Reader).Peek(1)
+	require.ErrorIs(t, err, errArchivePathLookup)
+	require.Less(t, len(err.Error()), syncExecOutputLimitBytes+4096)
+	require.Contains(t, err.Error(), syncExecOutputTruncatedSuffix)
+}
+
+func TestArchiveStderrFindsMarkerSplitAcrossWrites(t *testing.T) {
+	stderr := newArchiveStderr()
+	_, _ = stderr.Write([]byte("tar: out: Permission de"))
+	require.False(t, stderr.reportsPathLookup())
+	_, _ = stderr.Write([]byte("nied\n"))
+	require.True(t, stderr.reportsPathLookup())
+	require.Equal(t, "tar: out: Permission denied\n", stderr.String())
+}
+
 func TestIsArchivePathLookupErrorIgnoresToolNotFound(t *testing.T) {
 	err := fmt.Errorf("read pod file content: exit error: /bin/sh: cat: not found")
 	require.False(t, IsArchivePathLookupError(err))
