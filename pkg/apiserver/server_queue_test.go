@@ -3,11 +3,12 @@ package apiserver
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -631,66 +632,28 @@ func TestBuildRedisQueueRequiresClient(t *testing.T) {
 }
 
 func TestInitRedisClientForConfiguredBackendsFailsRedisCache(t *testing.T) {
-	expectedErr := errors.New("redis unavailable")
-	oldNewRedisClient := newRedisClient
-	newRedisClient = func(config.RedisCacheConfig) (*redis.Client, error) {
-		return nil, expectedErr
-	}
-	t.Cleanup(func() {
-		newRedisClient = oldNewRedisClient
-	})
+	unavailable := miniredis.RunT(t)
+	host, port := unavailable.Host(), unavailable.Port()
+	unavailable.Close()
+	portNumber, err := strconv.Atoi(port)
+	require.NoError(t, err)
 
-	server := &restServer{
-		cfg: config.Config{
-			Cache: config.RedisCacheConfig{},
-		},
-	}
+	server := &restServer{cfg: config.Config{Cache: config.RedisCacheConfig{CacheHost: host, CacheProt: portNumber}}}
 	client, err := server.initRedisClientForConfiguredBackends()
 	require.Nil(t, client)
-	require.ErrorIs(t, err, expectedErr)
-	require.Contains(t, err.Error(), "init redis client for configured redis backend")
-}
-
-func TestInitRedisClientForConfiguredBackendsRejectsMissingClient(t *testing.T) {
-	oldNewRedisClient := newRedisClient
-	newRedisClient = func(config.RedisCacheConfig) (*redis.Client, error) {
-		return nil, nil
-	}
-	t.Cleanup(func() {
-		newRedisClient = oldNewRedisClient
-	})
-
-	server := &restServer{
-		cfg: config.Config{
-			Cache: config.RedisCacheConfig{},
-		},
-	}
-	client, err := server.initRedisClientForConfiguredBackends()
-	require.Nil(t, client)
-	require.ErrorContains(t, err, "redis client is not initialized")
+	require.ErrorContains(t, err, "init redis client for configured redis backend")
 }
 
 func TestInitRedisClientForConfiguredBackendsUsesRedisForCache(t *testing.T) {
-	expectedClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"})
-	t.Cleanup(func() {
-		_ = expectedClient.Close()
-	})
-	oldNewRedisClient := newRedisClient
-	newRedisClient = func(config.RedisCacheConfig) (*redis.Client, error) {
-		return expectedClient, nil
-	}
-	t.Cleanup(func() {
-		newRedisClient = oldNewRedisClient
-	})
+	redisServer := miniredis.RunT(t)
+	port, err := strconv.Atoi(redisServer.Port())
+	require.NoError(t, err)
 
-	server := &restServer{
-		cfg: config.Config{
-			Cache: config.RedisCacheConfig{},
-		},
-	}
+	server := &restServer{cfg: config.Config{Cache: config.RedisCacheConfig{CacheHost: redisServer.Host(), CacheProt: port}}}
 	client, err := server.initRedisClientForConfiguredBackends()
 	require.NoError(t, err)
-	require.Same(t, expectedClient, client)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	require.Equal(t, redisServer.Addr(), client.Options().Addr)
 }
 
 func TestServerLifecycleRejectsNilContext(t *testing.T) {

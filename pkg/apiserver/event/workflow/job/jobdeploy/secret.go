@@ -130,9 +130,7 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 		CreateFn: func(ctx context.Context) (*corev1.Secret, error) {
 			return cli.Create(ctx, secret, metav1.CreateOptions{})
 		},
-		OnExisting:      updateSecret,
-		IsNotFound:      k8serrors.IsNotFound,
-		IsAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting: updateSecret,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure secret %q failed: %w", secret.Name, err)

@@ -177,9 +177,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 			}
 			return created, err
 		},
-		OnExisting:      updateDeployment,
-		IsNotFound:      k8serrors.IsNotFound,
-		IsAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting: updateDeployment,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure deployment %q failed: %w", deploy.Name, err)

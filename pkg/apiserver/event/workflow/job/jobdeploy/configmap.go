@@ -109,9 +109,7 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 		CreateFn: func(ctx context.Context) (*corev1.ConfigMap, error) {
 			return cli.Create(ctx, cm, metav1.CreateOptions{})
 		},
-		OnExisting:      updateConfigMap,
-		IsNotFound:      k8serrors.IsNotFound,
-		IsAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting: updateConfigMap,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure configmap %q failed: %w", cm.Name, err)

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -766,7 +765,7 @@ func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernete
 			return nil
 		}
 		return fmt.Errorf("existing delayed job %s/%s belongs to another execution", namespace, jobObj.Name)
-	}, k8serrors.IsNotFound, k8serrors.IsAlreadyExists)
+	})
 	if err != nil {
 		if errors.Is(err, errDelayDispatchNoRetry) {
 			return err

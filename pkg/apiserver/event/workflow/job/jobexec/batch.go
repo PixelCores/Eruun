@@ -604,7 +604,7 @@ func (b *DeployNamespacedResourceJobBase) CreateBatchJob(ctx context.Context, jo
 		return b.Client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})
 	}, func(_ context.Context, existing *batchv1.Job) error {
 		return validateExisting(existing)
-	}, k8serrors.IsNotFound, k8serrors.IsAlreadyExists)
+	})
 	return created, err
 }
 

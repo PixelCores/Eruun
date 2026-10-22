@@ -115,9 +115,7 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 		CreateFn: func(ctx context.Context) (*networkingv1.Ingress, error) {
 			return c.Client.NetworkingV1().Ingresses(ingress.Namespace).Create(ctx, ingress, metav1.CreateOptions{})
 		},
-		OnExisting:      updateIngress,
-		IsNotFound:      k8serrors.IsNotFound,
-		IsAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting: updateIngress,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure ingress %s/%s failed: %w", ingress.Namespace, ingress.Name, err)

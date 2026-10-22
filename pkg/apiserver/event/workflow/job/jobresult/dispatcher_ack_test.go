@@ -398,12 +398,6 @@ func TestResultDispatcherHandleMessageDispatchingClaimLostToQueuedContinuesProce
 }
 
 func TestResultDispatcherHandleMessageRefreshesPersistenceContextAfterLongProcessing(t *testing.T) {
-	oldTimeout := resultOutboxPersistTimeout
-	resultOutboxPersistTimeout = 10 * time.Millisecond
-	t.Cleanup(func() {
-		resultOutboxPersistTimeout = oldTimeout
-	})
-
 	store := &contextCheckingResultOutboxStore{resultOutboxTestStore: newResultOutboxTestStore()}
 	queue := &jobtest.DispatcherAckQueue{}
 	start := metav1.NewTime(time.Now().Add(-time.Minute))
@@ -429,7 +423,7 @@ func TestResultDispatcherHandleMessageRefreshesPersistenceContextAfterLongProces
 	stampTestResultJob(jobObj, "task-outbox-persist-refresh")
 	client := fake.NewSimpleClientset(jobObj, jobtest.ResultTestPod(jobObj))
 	client.Fake.PrependReactor("get", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		time.Sleep(25 * time.Millisecond)
+		time.Sleep(2 * persistenceContextStaleTolerance)
 		return false, nil, nil
 	})
 	dispatcher := &ResultDispatcher{

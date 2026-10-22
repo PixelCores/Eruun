@@ -99,7 +99,7 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 
 	if err := jobexec.TrackResourcePresence(ctx, spec.ResourceService, namespace, name, func(ctx context.Context) (*corev1.Service, error) {
 		return c.Client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
-	}, k8serrors.IsNotFound); err != nil {
+	}); err != nil {
 		return fmt.Errorf("check service existence failed: %w", err)
 	}
 

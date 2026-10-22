@@ -10,14 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/leaderelection"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -102,16 +100,8 @@ func (s *restServer) RuntimeReady() (bool, string) {
 	return true, ""
 }
 
-var (
-	newRedisClient    = clients.NewRedisClient
-	runLeaderElector  = leaderelection.RunOrDie
-	releaseLeaderLock = bestEffortReleaseLeaderLock
-)
-
 const leaderElectionRetryPeriod = 2 * time.Second
 const leaderElectionReleaseTimeout = 5 * time.Second
-
-var leaderElectionRetryDelay = leaderElectionRetryPeriod
 
 func New(cfg config.Config) (a APIServer) {
 	handlers := api.NewHandlers()
