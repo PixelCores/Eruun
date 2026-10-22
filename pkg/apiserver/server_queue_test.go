@@ -632,13 +632,13 @@ func TestBuildRedisQueueRequiresClient(t *testing.T) {
 }
 
 func TestInitRedisClientForConfiguredBackendsFailsRedisCache(t *testing.T) {
-	unavailable := miniredis.RunT(t)
-	host, port := unavailable.Host(), unavailable.Port()
-	unavailable.Close()
-	portNumber, err := strconv.Atoi(port)
+	// A live server that rejects the connection keeps the failure deterministic.
+	redisServer := miniredis.RunT(t)
+	redisServer.RequireAuth("expected-password")
+	port, err := strconv.Atoi(redisServer.Port())
 	require.NoError(t, err)
 
-	server := &restServer{cfg: config.Config{Cache: config.RedisCacheConfig{CacheHost: host, CacheProt: portNumber}}}
+	server := &restServer{cfg: config.Config{Cache: config.RedisCacheConfig{CacheHost: redisServer.Host(), CacheProt: port}}}
 	client, err := server.initRedisClientForConfiguredBackends()
 	require.Nil(t, client)
 	require.ErrorContains(t, err, "init redis client for configured redis backend")

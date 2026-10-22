@@ -177,7 +177,12 @@ func TestLeaderElectionRetriesAfterLoss(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); (&restServer{}).runRuntimeLeaderElection(ctx, election) }()
 
-	lostAt := <-stopped
+	var lostAt time.Time
+	select {
+	case lostAt = <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first leader term was not lost")
+	}
 	getsAtLoss := lock.gets()
 	require.Eventually(t, func() bool { return lock.gets() > getsAtLoss }, 3*leaderElectionRetryPeriod, 10*time.Millisecond, "election was not retried")
 	require.GreaterOrEqual(t, time.Since(lostAt), leaderElectionRetryPeriod, "retry must wait for the retry period")

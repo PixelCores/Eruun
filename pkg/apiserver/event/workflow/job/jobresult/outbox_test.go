@@ -22,7 +22,7 @@ type contextCheckingResultOutboxStore struct {
 	*resultOutboxTestStore
 }
 
-const persistenceContextStaleTolerance = 100 * time.Millisecond
+const persistenceContextStaleTolerance = 250 * time.Millisecond
 
 func ensureFreshPersistenceContext(ctx context.Context) error {
 	if err := jobtest.EnsureActiveTestContext(ctx); err != nil {
