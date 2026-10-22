@@ -19,9 +19,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 )
 
-func TestSetKubeConfigRateLimiter(t *testing.T) {
-	previous := kubeConfig
-	t.Cleanup(func() { kubeConfig = previous })
+func TestWithSharedRateLimiter(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		config  rest.Config
@@ -39,15 +37,12 @@ func TestSetKubeConfigRateLimiter(t *testing.T) {
 		{name: "injected limiter wins", config: rest.Config{QPS: -1, Burst: -1, RateLimiter: flowcontrol.NewTokenBucketRateLimiter(7, 1)}, wantQPS: 7},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			before := kubeConfig
-			err := setKubeConfig(&tc.config)
+			configured, err := withSharedRateLimiter(&tc.config)
 			if tc.wantErr {
 				require.ErrorContains(t, err, "burst must be greater than 0")
-				require.Same(t, before, kubeConfig)
+				require.Nil(t, configured)
 				return
 			}
-			require.NoError(t, err)
-			configured, err := GetKubeConfig()
 			require.NoError(t, err)
 			require.NotSame(t, &tc.config, configured)
 			require.Equal(t, tc.config.QPS, configured.QPS)
@@ -67,11 +62,8 @@ func TestSetKubeConfigRateLimiter(t *testing.T) {
 }
 
 func TestKubeClientsShareRequestBudget(t *testing.T) {
-	previousConfig, previousClient := kubeConfig, kubeClient
-	t.Cleanup(func() { kubeConfig, kubeClient = previousConfig, previousClient })
-	kubeClient = nil
 	var calls atomic.Int32
-	err := setKubeConfig(&rest.Config{
+	primary, base, err := newKubeClient(&rest.Config{
 		Host: "https://kubernetes.example", QPS: 0.000001, Burst: 8,
 		Transport: kubeRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			calls.Add(1)
@@ -83,10 +75,6 @@ func TestKubeClientsShareRequestBudget(t *testing.T) {
 			}, nil
 		}),
 	})
-	require.NoError(t, err)
-	base, err := GetKubeConfig()
-	require.NoError(t, err)
-	primary, err := GetKubeClient()
 	require.NoError(t, err)
 	typed, err := kubernetes.NewForConfig(rest.CopyConfig(base))
 	require.NoError(t, err)
@@ -135,15 +123,4 @@ type kubeRoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f kubeRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
-}
-
-func TestGetKubeClientRequiresInitialization(t *testing.T) {
-	previousConfig, previousClient := kubeConfig, kubeClient
-	t.Cleanup(func() { kubeConfig, kubeClient = previousConfig, previousClient })
-	kubeConfig, kubeClient = nil, nil
-	for range 2 {
-		client, err := GetKubeClient()
-		require.Nil(t, client)
-		require.EqualError(t, err, "please call SetKubeConfig first")
-	}
 }

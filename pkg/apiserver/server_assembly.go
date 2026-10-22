@@ -54,24 +54,13 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err := s.beanContainer.ProvideWithName("runtimeReadiness", api.RuntimeReadiness(s)); err != nil {
 		return fmt.Errorf("fail to provide runtime readiness bean: %w", err)
 	}
-	// 设置KubeConfig
-	err = clients.SetKubeConfig(s.cfg)
-	if err != nil {
-		return err
-	}
-	// 获取k8s的配置文件
-	kubeConfig, err := clients.GetKubeConfig()
+	kubeClient, kubeConfig, err := clients.NewKubeClient(s.cfg)
 	if err != nil {
 		return err
 	}
 	// Sandbox lifecycle uses the platform identity after its own Runner claim
 	// checks. Preserve the shared limiter before APIClient adds tenant transport.
 	sandboxKubeConfig := rest.CopyConfig(kubeConfig)
-	// 获取k8s的连接
-	kubeClient, err := clients.GetKubeClient()
-	if err != nil {
-		return err
-	}
 
 	schemaMode := mysql.SchemaModeMigrate
 	if s.cfg.NormalizedDatastoreSchemaMode() == config.DatastoreSchemaModeValidate {

@@ -11,25 +11,34 @@ import (
 	apiConfig "github.com/PixelCores/Eruun/pkg/apiserver/config"
 )
 
-/*
-这里没有遵从 kubevela的做法,而是直接使用k8s的Clients,初期版本迭代先使用k8s内置的基础资源，所以先使用Clientset
-*/
-
-var kubeClient kubernetes.Interface
-var kubeConfig *rest.Config
-
-// SetKubeClient for test
-func SetKubeClient(c kubernetes.Interface) {
-	kubeClient = c
+// NewKubeClient loads the platform REST config with the configured request
+// budget and builds a client that shares its rate limiter.
+func NewKubeClient(c apiConfig.Config) (kubernetes.Interface, *rest.Config, error) {
+	conf, err := config.GetConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+	conf.Burst = c.KubeBurst
+	conf.QPS = float32(c.KubeQPS)
+	return newKubeClient(conf)
 }
 
-func setKubeConfig(conf *rest.Config) (err error) {
-	if conf == nil {
-		conf, err = config.GetConfig()
-		if err != nil {
-			return err
-		}
+func newKubeClient(conf *rest.Config) (kubernetes.Interface, *rest.Config, error) {
+	conf, err := withSharedRateLimiter(conf)
+	if err != nil {
+		return nil, nil, err
 	}
+	client, err := kubernetes.NewForConfig(conf)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, conf, nil
+}
+
+// withSharedRateLimiter copies conf and installs one token bucket. Config
+// copies used by tenant, typed and dynamic clients retain this limiter, so
+// creating a client does not create another request budget.
+func withSharedRateLimiter(conf *rest.Config) (*rest.Config, error) {
 	conf = rest.CopyConfig(conf)
 	if conf.RateLimiter == nil && conf.QPS >= 0 {
 		qps, burst := conf.QPS, conf.Burst
@@ -40,48 +49,9 @@ func setKubeConfig(conf *rest.Config) (err error) {
 			}
 		}
 		if burst <= 0 {
-			return fmt.Errorf("configure Kubernetes client rate limiter: burst must be greater than 0 when QPS is positive")
+			return nil, fmt.Errorf("configure Kubernetes client rate limiter: burst must be greater than 0 when QPS is positive")
 		}
-		// Config copies used by tenant, typed and dynamic clients retain this
-		// limiter, so creating a client does not create another request budget.
 		conf.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(qps, burst)
 	}
-	kubeConfig = conf
-	return nil
-}
-
-// SetKubeConfig generate the kube config from the config of appserver
-func SetKubeConfig(c apiConfig.Config) error {
-	conf, err := config.GetConfig()
-	if err != nil {
-		return err
-	}
-	conf.Burst = c.KubeBurst
-	conf.QPS = float32(c.KubeQPS)
-	return setKubeConfig(conf)
-}
-
-// GetKubeClient create and return kube runtime rClient
-func GetKubeClient() (kubernetes.Interface, error) {
-	if kubeClient != nil {
-		return kubeClient, nil
-	}
-	if kubeConfig != nil {
-		client, err := kubernetes.NewForConfig(kubeConfig)
-		if err != nil {
-			return nil, err
-		}
-		SetKubeClient(client)
-		return client, nil
-	}
-
-	return nil, fmt.Errorf("please call SetKubeConfig first")
-}
-
-// GetKubeConfig create/get kube runtime config
-func GetKubeConfig() (*rest.Config, error) {
-	if kubeConfig == nil {
-		return nil, fmt.Errorf("please call SetKubeConfig first")
-	}
-	return kubeConfig, nil
+	return conf, nil
 }
