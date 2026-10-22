@@ -32,6 +32,32 @@ type Manager struct {
 	Config     spec.WorkspaceConfig
 }
 
+// objectClient is the part of a typed namespaced client that upsert uses.
+type objectClient[T metav1.Object] interface {
+	Get(context.Context, string, metav1.GetOptions) (T, error)
+	Create(context.Context, T, metav1.CreateOptions) (T, error)
+	Update(context.Context, T, metav1.UpdateOptions) (T, error)
+}
+
+// upsert creates desired, or replaces the existing object of the same name
+// when it belongs to the workspace in desired's OwnerLabel.
+func upsert[T metav1.Object](ctx context.Context, client objectClient[T], desired T) error {
+	existing, err := client.Get(ctx, desired.GetName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = client.Create(ctx, desired, metav1.CreateOptions{})
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if existing.GetLabels()[OwnerLabel] != desired.GetLabels()[OwnerLabel] {
+		return bcode.ErrForbidden
+	}
+	desired.SetResourceVersion(existing.GetResourceVersion())
+	_, err = client.Update(ctx, desired, metav1.UpdateOptions{})
+	return err
+}
+
 func (m *Manager) Ensure(ctx context.Context, w *model.Workspace) error {
 	return retry.OnError(retry.DefaultBackoff, func(err error) bool { return apierrors.IsConflict(err) || apierrors.IsAlreadyExists(err) }, func() error { return m.ensure(ctx, w) })
 }
@@ -42,7 +68,6 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 	if err := m.ensureNamespaceSecurity(ctx, w); err != nil {
 		return err
 	}
-	var err error
 	meta := func(name string) metav1.ObjectMeta {
 		return metav1.ObjectMeta{Name: name, Namespace: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID}}
 	}
@@ -65,63 +90,23 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 		{APIGroups: []string{"batch"}, Resources: []string{"jobs", "cronjobs"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"networking.k8s.io"}, Resources: []string{"ingresses"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 	}}
-	if old, e := m.Client.RbacV1().Roles(w.Namespace).Get(ctx, runnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-		_, err = m.Client.RbacV1().Roles(w.Namespace).Create(ctx, role, metav1.CreateOptions{})
-	} else if e != nil {
-		return e
-	} else {
-		role.ResourceVersion = old.ResourceVersion
-		_, err = m.Client.RbacV1().Roles(w.Namespace).Update(ctx, role, metav1.UpdateOptions{})
-	}
-	if err != nil {
+	if err := upsert(ctx, m.Client.RbacV1().Roles(w.Namespace), role); err != nil {
 		return fmt.Errorf("ensure workspace role: %w", err)
 	}
 	binding := &rbacv1.RoleBinding{ObjectMeta: meta(runnerName), RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: runnerName}, Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: runnerName, Namespace: w.Namespace}}}
-	if old, e := m.Client.RbacV1().RoleBindings(w.Namespace).Get(ctx, runnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-		_, err = m.Client.RbacV1().RoleBindings(w.Namespace).Create(ctx, binding, metav1.CreateOptions{})
-	} else if e != nil {
-		return e
-	} else {
-		binding.ResourceVersion = old.ResourceVersion
-		_, err = m.Client.RbacV1().RoleBindings(w.Namespace).Update(ctx, binding, metav1.UpdateOptions{})
-	}
-	if err != nil {
+	if err := upsert(ctx, m.Client.RbacV1().RoleBindings(w.Namespace), binding); err != nil {
 		return fmt.Errorf("ensure workspace role binding: %w", err)
 	}
 	quota := &corev1.ResourceQuota{ObjectMeta: meta(baselineName), Spec: corev1.ResourceQuotaSpec{Hard: m.Config.Quota}}
-	if old, e := m.Client.CoreV1().ResourceQuotas(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-		_, err = m.Client.CoreV1().ResourceQuotas(w.Namespace).Create(ctx, quota, metav1.CreateOptions{})
-	} else if e != nil {
-		return e
-	} else {
-		quota.ResourceVersion = old.ResourceVersion
-		_, err = m.Client.CoreV1().ResourceQuotas(w.Namespace).Update(ctx, quota, metav1.UpdateOptions{})
-	}
-	if err != nil {
+	if err := upsert(ctx, m.Client.CoreV1().ResourceQuotas(w.Namespace), quota); err != nil {
 		return fmt.Errorf("ensure workspace quota: %w", err)
 	}
 	limits := &corev1.LimitRange{ObjectMeta: meta(baselineName), Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{Type: corev1.LimitTypeContainer, DefaultRequest: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")}, Default: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("512Mi")}}}}}
-	if old, e := m.Client.CoreV1().LimitRanges(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-		_, err = m.Client.CoreV1().LimitRanges(w.Namespace).Create(ctx, limits, metav1.CreateOptions{})
-	} else if e != nil {
-		return e
-	} else {
-		limits.ResourceVersion = old.ResourceVersion
-		_, err = m.Client.CoreV1().LimitRanges(w.Namespace).Update(ctx, limits, metav1.UpdateOptions{})
-	}
-	if err != nil {
+	if err := upsert(ctx, m.Client.CoreV1().LimitRanges(w.Namespace), limits); err != nil {
 		return fmt.Errorf("ensure workspace limit range: %w", err)
 	}
 	policy := m.networkPolicy(w)
-	if old, e := m.Client.NetworkingV1().NetworkPolicies(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-		_, err = m.Client.NetworkingV1().NetworkPolicies(w.Namespace).Create(ctx, policy, metav1.CreateOptions{})
-	} else if e != nil {
-		return e
-	} else {
-		policy.ResourceVersion = old.ResourceVersion
-		_, err = m.Client.NetworkingV1().NetworkPolicies(w.Namespace).Update(ctx, policy, metav1.UpdateOptions{})
-	}
-	if err != nil {
+	if err := upsert(ctx, m.Client.NetworkingV1().NetworkPolicies(w.Namespace), policy); err != nil {
 		return fmt.Errorf("ensure workspace network policy: %w", err)
 	}
 	return nil

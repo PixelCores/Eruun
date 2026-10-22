@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -113,6 +114,28 @@ func TestEnsureWrongOwnerAndPartialFailure(t *testing.T) {
 	require.NoError(t, m.Ensure(ctx, w))
 	_, err := client.NetworkingV1().NetworkPolicies(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{})
 	require.NoError(t, err)
+}
+
+func TestEnsureReplacesOwnedBaselineAndRefusesForeignObjects(t *testing.T) {
+	ctx := context.Background()
+	w := &model.Workspace{ID: "a", Namespace: "eruun-ws-a"}
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID}}}
+	stale := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: runnerName, Namespace: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID}}, Rules: []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}}}}
+	client := fake.NewSimpleClientset(namespace, stale)
+	m := &Manager{Client: client, Config: workspaceConfig(t)}
+	require.NoError(t, m.Ensure(ctx, w))
+	role, err := client.RbacV1().Roles(w.Namespace).Get(ctx, runnerName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Len(t, role.Rules, 4)
+
+	foreign := &corev1.ResourceQuota{ObjectMeta: metav1.ObjectMeta{Name: baselineName, Namespace: w.Namespace, Labels: map[string]string{OwnerLabel: "b"}}}
+	client = fake.NewSimpleClientset(namespace, foreign)
+	m.Client = client
+	require.ErrorIs(t, m.Ensure(ctx, w), bcode.ErrForbidden)
+	quota, err := client.CoreV1().ResourceQuotas(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "b", quota.Labels[OwnerLabel])
+	require.Empty(t, quota.Spec.Hard)
 }
 
 type recordingTransport struct {

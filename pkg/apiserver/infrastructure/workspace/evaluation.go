@@ -92,68 +92,24 @@ func (m *Manager) EnsureEvaluationRunner(ctx context.Context, w *model.Workspace
 		}
 		meta := metav1.ObjectMeta{Name: EvaluationRunnerName, Namespace: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID}}
 		sa := &corev1.ServiceAccount{ObjectMeta: meta, AutomountServiceAccountToken: ptr.To(false)}
-		if old, e := m.Client.CoreV1().ServiceAccounts(w.Namespace).Get(ctx, EvaluationRunnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-			_, err = m.Client.CoreV1().ServiceAccounts(w.Namespace).Create(ctx, sa, metav1.CreateOptions{})
-		} else if e != nil {
-			return e
-		} else {
-			if old.Labels[OwnerLabel] != w.ID {
-				return bcode.ErrForbidden
-			}
-			sa.ResourceVersion = old.ResourceVersion
-			_, err = m.Client.CoreV1().ServiceAccounts(w.Namespace).Update(ctx, sa, metav1.UpdateOptions{})
-		}
-		if err != nil {
+		if err := upsert(ctx, m.Client.CoreV1().ServiceAccounts(w.Namespace), sa); err != nil {
 			return fmt.Errorf("ensure evaluation ServiceAccount: %w", err)
 		}
 		role := &rbacv1.Role{ObjectMeta: meta, Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch", "create", "delete"}},
 			{APIGroups: []string{""}, Resources: []string{"pods/exec"}, Verbs: []string{"get", "create"}},
 		}}
-		if old, e := m.Client.RbacV1().Roles(w.Namespace).Get(ctx, EvaluationRunnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-			_, err = m.Client.RbacV1().Roles(w.Namespace).Create(ctx, role, metav1.CreateOptions{})
-		} else if e != nil {
-			return e
-		} else {
-			if old.Labels[OwnerLabel] != w.ID {
-				return bcode.ErrForbidden
-			}
-			role.ResourceVersion = old.ResourceVersion
-			_, err = m.Client.RbacV1().Roles(w.Namespace).Update(ctx, role, metav1.UpdateOptions{})
-		}
-		if err != nil {
+		if err := upsert(ctx, m.Client.RbacV1().Roles(w.Namespace), role); err != nil {
 			return fmt.Errorf("ensure evaluation Role: %w", err)
 		}
 		binding := &rbacv1.RoleBinding{ObjectMeta: meta, RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: EvaluationRunnerName}, Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: EvaluationRunnerName, Namespace: w.Namespace}}}
-		if old, e := m.Client.RbacV1().RoleBindings(w.Namespace).Get(ctx, EvaluationRunnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-			_, err = m.Client.RbacV1().RoleBindings(w.Namespace).Create(ctx, binding, metav1.CreateOptions{})
-		} else if e != nil {
-			return e
-		} else {
-			if old.Labels[OwnerLabel] != w.ID {
-				return bcode.ErrForbidden
-			}
-			binding.ResourceVersion = old.ResourceVersion
-			_, err = m.Client.RbacV1().RoleBindings(w.Namespace).Update(ctx, binding, metav1.UpdateOptions{})
-		}
-		if err != nil {
+		if err := upsert(ctx, m.Client.RbacV1().RoleBindings(w.Namespace), binding); err != nil {
 			return fmt.Errorf("ensure evaluation RoleBinding: %w", err)
 		}
 		policy := &networkv1.NetworkPolicy{ObjectMeta: meta, Spec: networkv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{EvaluationRunnerLabel: "true"}}, PolicyTypes: []networkv1.PolicyType{networkv1.PolicyTypeEgress}}}
 		for _, rule := range egress {
 			policy.Spec.Egress = append(policy.Spec.Egress, networkv1.NetworkPolicyEgressRule{To: []networkv1.NetworkPolicyPeer{{IPBlock: &networkv1.IPBlock{CIDR: rule.CIDR}}}, Ports: []networkv1.NetworkPolicyPort{{Protocol: ptr.To(corev1.ProtocolTCP), Port: ptr.To(intstr.FromInt32(rule.Port))}}})
 		}
-		if old, e := m.Client.NetworkingV1().NetworkPolicies(w.Namespace).Get(ctx, EvaluationRunnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {
-			_, err = m.Client.NetworkingV1().NetworkPolicies(w.Namespace).Create(ctx, policy, metav1.CreateOptions{})
-		} else if e != nil {
-			return e
-		} else {
-			if old.Labels[OwnerLabel] != w.ID {
-				return bcode.ErrForbidden
-			}
-			policy.ResourceVersion = old.ResourceVersion
-			_, err = m.Client.NetworkingV1().NetworkPolicies(w.Namespace).Update(ctx, policy, metav1.UpdateOptions{})
-		}
-		return err
+		return upsert(ctx, m.Client.NetworkingV1().NetworkPolicies(w.Namespace), policy)
 	})
 }
