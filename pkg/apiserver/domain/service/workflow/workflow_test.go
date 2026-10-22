@@ -68,10 +68,6 @@ func (f *failingDataStore) Count(context.Context, datastore.Entity, *datastore.F
 	return 0, f.err
 }
 
-func (f *failingDataStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, f.err
-}
-
 func (f *failingDataStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, f.err
 }
@@ -341,10 +337,6 @@ func (s *statusDataStore) List(_ context.Context, query datastore.Entity, _ *dat
 
 func (s *statusDataStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
-}
-
-func (s *statusDataStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
 }
 
 func (s *statusDataStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
@@ -880,10 +872,6 @@ func (s *scheduleDataStore) listWorkflowSchedules(q *model.WorkflowSchedule, opt
 
 func (s *scheduleDataStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
-}
-
-func (s *scheduleDataStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
 }
 
 func (s *scheduleDataStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {

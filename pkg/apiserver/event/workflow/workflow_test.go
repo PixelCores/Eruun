@@ -91,10 +91,6 @@ func (f *fakeDataStore) Count(context.Context, datastore.Entity, *datastore.Filt
 	return 0, fmt.Errorf("not implemented")
 }
 
-func (f *fakeDataStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, fmt.Errorf("not implemented")
-}
-
 func (f *fakeDataStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, fmt.Errorf("not implemented")
 }

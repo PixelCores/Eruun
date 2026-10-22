@@ -247,10 +247,6 @@ func (*resultOutboxTestStore) Count(context.Context, datastore.Entity, *datastor
 	return 0, nil
 }
 
-func (*resultOutboxTestStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (*resultOutboxTestStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

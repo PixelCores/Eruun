@@ -911,10 +911,6 @@ func (s *cascadeDeleteStore) Count(ctx context.Context, entity datastore.Entity,
 	}
 }
 
-func (s *cascadeDeleteStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *cascadeDeleteStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }
@@ -1192,10 +1188,6 @@ func (s *nonTransactionalCascadeStore) List(ctx context.Context, query datastore
 
 func (s *nonTransactionalCascadeStore) Count(ctx context.Context, entity datastore.Entity, options *datastore.FilterOptions) (int64, error) {
 	return s.store.Count(ctx, entity, options)
-}
-
-func (s *nonTransactionalCascadeStore) IsExist(ctx context.Context, entity datastore.Entity) (bool, error) {
-	return s.store.IsExist(ctx, entity)
 }
 
 func (s *nonTransactionalCascadeStore) IsExistByCondition(ctx context.Context, table string, cond map[string]interface{}, dest interface{}) (bool, error) {

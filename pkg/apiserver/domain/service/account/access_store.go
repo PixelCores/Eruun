@@ -277,10 +277,6 @@ func (s *Store) Count(ctx context.Context, e datastore.Entity, opts *datastore.F
 	}
 	return s.raw.Count(ctx, e, &o.FilterOptions)
 }
-func (s *Store) IsExist(ctx context.Context, e datastore.Entity) (bool, error) {
-	n, err := s.Count(ctx, e, nil)
-	return n > 0, err
-}
 func (s *Store) IsExistByCondition(ctx context.Context, table string, cond map[string]interface{}, dest interface{}) (bool, error) {
 	e, ok := dest.(datastore.Entity)
 	if !ok {

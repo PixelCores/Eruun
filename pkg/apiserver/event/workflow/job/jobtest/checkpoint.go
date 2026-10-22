@@ -120,9 +120,6 @@ func (s *JobInfoRecordStore) Count(context.Context, datastore.Entity, *datastore
 	return int64(len(s.records)), nil
 }
 
-func (s *JobInfoRecordStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
 func (s *JobInfoRecordStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

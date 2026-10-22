@@ -117,10 +117,6 @@ func (s *workflowAckTestStore) Count(context.Context, datastore.Entity, *datasto
 	return 0, nil
 }
 
-func (s *workflowAckTestStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *workflowAckTestStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

@@ -370,10 +370,6 @@ func (s *componentCacheSyncStore) Count(context.Context, datastore.Entity, *data
 	return 0, nil
 }
 
-func (s *componentCacheSyncStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *componentCacheSyncStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

@@ -193,10 +193,6 @@ func (s *componentStatusStore) Count(context.Context, datastore.Entity, *datasto
 	return 0, nil
 }
 
-func (s *componentStatusStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-
 func (s *componentStatusStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

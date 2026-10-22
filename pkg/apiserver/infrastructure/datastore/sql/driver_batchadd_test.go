@@ -85,9 +85,6 @@ func (s *fakeBatchTxStore) List(context.Context, datastore.Entity, *datastore.Li
 func (s *fakeBatchTxStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
-func (s *fakeBatchTxStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
 func (s *fakeBatchTxStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }

@@ -27,9 +27,6 @@ type repositoryTestStore struct {
 	lastDeleteByFilterEntity datastore.Entity
 	lastDeleteByFilterOpts   *datastore.FilterOptions
 
-	isExistValue bool
-	isExistErr   error
-
 	casSwapped    bool
 	casErr        error
 	casField      string
@@ -99,11 +96,6 @@ func (s *repositoryTestStore) List(_ context.Context, query datastore.Entity, op
 
 func (s *repositoryTestStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, s.countErr
-}
-
-func (s *repositoryTestStore) IsExist(_ context.Context, entity datastore.Entity) (bool, error) {
-	s.getEntity = entity
-	return s.isExistValue, s.isExistErr
 }
 
 func (s *repositoryTestStore) IsExistByCondition(_ context.Context, table string, cond map[string]interface{}, dest interface{}) (bool, error) {
