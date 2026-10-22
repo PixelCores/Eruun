@@ -16,6 +16,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
@@ -380,15 +381,42 @@ func streamPodCommand(ctx context.Context, restConfig *rest.Config, namespace, p
 	if err != nil {
 		return fmt.Errorf("create remote executor: %w", err)
 	}
-	if err := executor.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin:  stdin,
-		Stdout: stdout,
-		Stderr: stderr,
-		Tty:    tty,
-	}); err != nil {
-		return err
+	// On cancellation client-go returns before its copy goroutines finish.
+	// Seal the writers on return so callers can read their buffers safely.
+	options := remotecommand.StreamOptions{Stdin: stdin, Tty: tty}
+	if stdout != nil {
+		sealed := &sealedWriter{w: stdout}
+		defer sealed.seal()
+		options.Stdout = sealed
 	}
-	return nil
+	if stderr != nil {
+		sealed := &sealedWriter{w: stderr}
+		defer sealed.seal()
+		options.Stderr = sealed
+	}
+	return executor.StreamWithContext(ctx, options)
+}
+
+// sealedWriter drops writes that arrive after seal returns.
+type sealedWriter struct {
+	mu     sync.Mutex
+	w      io.Writer
+	sealed bool
+}
+
+func (s *sealedWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sealed {
+		return 0, io.ErrClosedPipe
+	}
+	return s.w.Write(p)
+}
+
+func (s *sealedWriter) seal() {
+	s.mu.Lock()
+	s.sealed = true
+	s.mu.Unlock()
 }
 
 func buildPodExecURL(restConfig *rest.Config, namespace, podName, container string, command []string, stdin, stdout, stderr, tty bool) (*url.URL, error) {
