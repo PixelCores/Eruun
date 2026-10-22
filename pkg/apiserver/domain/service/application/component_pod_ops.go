@@ -129,24 +129,18 @@ func (c *applicationsServiceImpl) StreamComponentShellScript(ctx context.Context
 	if req.Script == "" {
 		return nil, bcode.ErrComponentShellScriptInvalid
 	}
-	var stream *ComponentShellScriptStream
-	_, err := c.withWritableApplicationLock(ctx, appID, "stream-component-shell-script", func(lockCtx context.Context, _ *model.Applications) error {
-		var streamErr error
-		stream, streamErr = c.streamComponentShellScriptLocked(lockCtx, appID, componentName, req)
-		return streamErr
-	})
-	if err != nil {
-		return stream, err
-	}
-	return stream, nil
-}
-
-func (c *applicationsServiceImpl) streamComponentShellScriptLocked(ctx context.Context, appID, componentName string, req apisv1.ExecComponentShellScriptRequest) (*ComponentShellScriptStream, error) {
 	if c.KubeConfig == nil {
 		return nil, fmt.Errorf("kube config is nil")
 	}
-
-	target, err := c.resolveComponentPodTarget(ctx, appID, componentName, req.Container, bcode.ErrComponentContainerInvalid, bcode.ErrComponentPodUnavailable, false)
+	// The lock covers target resolution only. The stream outlives this call, so
+	// it runs on the caller's context instead of the lock's critical context,
+	// which is cancelled as soon as the lock is released.
+	var target *componentPodTarget
+	_, err := c.withWritableApplicationLock(ctx, appID, "stream-component-shell-script", func(lockCtx context.Context, _ *model.Applications) error {
+		var resolveErr error
+		target, resolveErr = c.resolveComponentPodTarget(lockCtx, appID, componentName, req.Container, bcode.ErrComponentContainerInvalid, bcode.ErrComponentPodUnavailable, false)
+		return resolveErr
+	})
 	if err != nil {
 		return nil, err
 	}
