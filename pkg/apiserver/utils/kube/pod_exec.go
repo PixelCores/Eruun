@@ -99,7 +99,7 @@ func ExecPodShellScript(ctx context.Context, restConfig *rest.Config, namespace,
 	stdout := newCappedBuffer(syncExecOutputLimitBytes)
 	stderr := newCappedBuffer(syncExecOutputLimitBytes)
 	result := &PodExecResult{}
-	err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", script}, nil, &stdout, &stderr, false)
+	err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", script}, nil, stdout, stderr, false)
 	result.Stdout = stdout.String()
 	result.Stderr = stderr.String()
 	if err == nil {
@@ -142,6 +142,10 @@ func StreamPodShellScript(ctx context.Context, restConfig *rest.Config, namespac
 			emit:      emit,
 		}
 		err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", script}, nil, stdoutWriter, stderrWriter, false)
+		// emit returns once ctx is done, so sealing never waits on a stalled reader
+		// after cancellation.
+		stdoutWriter.seal()
+		stderrWriter.seal()
 		if err == nil {
 			_ = emit(PodShellStreamEvent{
 				Type:      PodShellStreamEventExit,
@@ -200,8 +204,8 @@ func archivePodPathWithTar(ctx context.Context, restConfig *rest.Config, namespa
 	zipReader, zipWriter := io.Pipe()
 
 	go func() {
-		var stderr bytes.Buffer
-		err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"tar", "-C", archiveDir, "-cf", "-", "--", archiveBase}, nil, tarWriter, &stderr, false)
+		stderr := newCappedBuffer(syncExecOutputLimitBytes)
+		err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"tar", "-C", archiveDir, "-cf", "-", "--", archiveBase}, nil, tarWriter, stderr, false)
 		if err != nil {
 			_ = tarWriter.CloseWithError(wrapArchivePathCommandError("archive pod path", err, stderr.String()))
 			return
@@ -260,7 +264,7 @@ func writeMultipartFromPodPath(ctx context.Context, restConfig *rest.Config, nam
 	defer func() { _ = findReader.Close() }()
 	findErrChan := make(chan error, 1)
 	go func() {
-		var stderr bytes.Buffer
+		stderr := newCappedBuffer(syncExecOutputLimitBytes)
 		command := []string{
 			"/bin/sh",
 			"-c",
@@ -269,7 +273,7 @@ func writeMultipartFromPodPath(ctx context.Context, restConfig *rest.Config, nam
 			archiveDir,
 			archiveBase,
 		}
-		err := streamPodCommand(listCtx, restConfig, namespace, podName, container, command, nil, findWriter, &stderr, false)
+		err := streamPodCommand(listCtx, restConfig, namespace, podName, container, command, nil, findWriter, stderr, false)
 		if err != nil {
 			wrapped := wrapArchivePathCommandError("list pod files", err, stderr.String())
 			_ = findWriter.CloseWithError(wrapped)
@@ -328,7 +332,7 @@ func createMultipartFilePart(multipartWriter *multipart.Writer, relativePath str
 }
 
 func writePodFileContentToWriter(ctx context.Context, restConfig *rest.Config, namespace, podName, container, archiveDir, filePath string, writer io.Writer) error {
-	var stderr bytes.Buffer
+	stderr := newCappedBuffer(syncExecOutputLimitBytes)
 	command := []string{
 		"/bin/sh",
 		"-c",
@@ -337,15 +341,15 @@ func writePodFileContentToWriter(ctx context.Context, restConfig *rest.Config, n
 		archiveDir,
 		filePath,
 	}
-	if err := streamPodCommand(ctx, restConfig, namespace, podName, container, command, nil, writer, &stderr, false); err != nil {
+	if err := streamPodCommand(ctx, restConfig, namespace, podName, container, command, nil, writer, stderr, false); err != nil {
 		return wrapArchivePathCommandError("read pod file content", err, stderr.String())
 	}
 	return nil
 }
 
 func podHasTar(ctx context.Context, restConfig *rest.Config, namespace, podName, container string) (bool, error) {
-	var stderr bytes.Buffer
-	err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}, nil, io.Discard, &stderr, false)
+	stderr := newCappedBuffer(syncExecOutputLimitBytes)
+	err := streamPodCommand(ctx, restConfig, namespace, podName, container, []string{"/bin/sh", "-c", "command -v tar >/dev/null 2>&1"}, nil, io.Discard, stderr, false)
 	if err == nil {
 		return true, nil
 	}
@@ -377,42 +381,15 @@ func streamPodCommand(ctx context.Context, restConfig *rest.Config, namespace, p
 	if err != nil {
 		return fmt.Errorf("create remote executor: %w", err)
 	}
-	// On cancellation client-go returns before its copy goroutines finish.
-	// Seal the writers on return so callers can read their buffers safely.
-	options := remotecommand.StreamOptions{Stdin: stdin, Tty: tty}
-	if stdout != nil {
-		sealed := &sealedWriter{w: stdout}
-		defer sealed.seal()
-		options.Stdout = sealed
-	}
-	if stderr != nil {
-		sealed := &sealedWriter{w: stderr}
-		defer sealed.seal()
-		options.Stderr = sealed
-	}
-	return executor.StreamWithContext(ctx, options)
-}
-
-// sealedWriter drops writes that arrive after seal returns.
-type sealedWriter struct {
-	mu     sync.Mutex
-	w      io.Writer
-	sealed bool
-}
-
-func (s *sealedWriter) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.sealed {
-		return 0, io.ErrClosedPipe
-	}
-	return s.w.Write(p)
-}
-
-func (s *sealedWriter) seal() {
-	s.mu.Lock()
-	s.sealed = true
-	s.mu.Unlock()
+	// On cancellation client-go returns before its copy goroutines finish, so
+	// writers must tolerate late writes: buffers lock internally, pipes are
+	// closed by the caller, and stream event writers seal themselves.
+	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  stdin,
+		Stdout: stdout,
+		Stderr: stderr,
+		Tty:    tty,
+	})
 }
 
 func buildPodExecURL(restConfig *rest.Config, namespace, podName, container string, command []string, stdin, stdout, stderr, tty bool) (*url.URL, error) {
@@ -788,15 +765,30 @@ func IsArchivePathLookupError(err error) bool {
 	return containsArchivePathLookupMarker(lowered)
 }
 
+// podStreamEventWriter is sealed before the events channel closes, so a late
+// write from client-go after cancellation cannot send on a closed channel.
 type podStreamEventWriter struct {
 	ctx       context.Context
 	eventType PodShellStreamEventType
 	emit      func(PodShellStreamEvent) bool
+	mu        sync.Mutex
+	sealed    bool
+}
+
+func (w *podStreamEventWriter) seal() {
+	w.mu.Lock()
+	w.sealed = true
+	w.mu.Unlock()
 }
 
 func (w *podStreamEventWriter) Write(data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.sealed {
+		return 0, io.ErrClosedPipe
 	}
 	chunk := append([]byte(nil), data...)
 	if !w.emit(PodShellStreamEvent{
@@ -811,20 +803,25 @@ func (w *podStreamEventWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
+// cappedBuffer is safe for the late writes client-go may issue after a
+// cancelled exec returns.
 type cappedBuffer struct {
+	mu        sync.Mutex
 	maxBytes  int
 	buffer    bytes.Buffer
 	truncated bool
 }
 
-func newCappedBuffer(maxBytes int) cappedBuffer {
-	return cappedBuffer{maxBytes: maxBytes}
+func newCappedBuffer(maxBytes int) *cappedBuffer {
+	return &cappedBuffer{maxBytes: maxBytes}
 }
 
 func (b *cappedBuffer) Write(data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.maxBytes <= 0 {
 		b.truncated = true
 		return len(data), nil
@@ -843,6 +840,8 @@ func (b *cappedBuffer) Write(data []byte) (int, error) {
 }
 
 func (b *cappedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	out := b.buffer.String()
 	if !b.truncated {
 		return out

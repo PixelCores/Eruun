@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -150,23 +151,8 @@ func TestWorkloadWaitErrorPreservesCancellationCause(t *testing.T) {
 	require.NotContains(t, err.Error(), "summary:")
 }
 
-func TestWorkloadWaitErrorFallsBackWhenDiagnosticsTimeout(t *testing.T) {
-	// The caller's deadline bounds diagnostics below workloadDiagnosticsTimeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-
-	logReadStarted := make(chan struct{})
-	logs := podLogs(func(ctx context.Context, _, _ string, _ bool) (string, error) {
-		select {
-		case <-logReadStarted:
-		default:
-			close(logReadStarted)
-		}
-		<-ctx.Done()
-		return "", ctx.Err()
-	})
-
-	pod := &corev1.Pod{
+func diagnosticTimeoutPod() *corev1.Pod {
+	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "api-0",
 			Namespace: "default",
@@ -180,43 +166,90 @@ func TestWorkloadWaitErrorFallsBackWhenDiagnosticsTimeout(t *testing.T) {
 			Containers: []corev1.Container{{Name: "app"}},
 		},
 		Status: corev1.PodStatus{
-			ContainerStatuses: []corev1.ContainerStatus{
-				{
-					Name: "app",
-					State: corev1.ContainerState{
-						Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"},
-					},
-				},
-			},
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "app",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}},
+			}},
 		},
 	}
+}
+
+func TestWorkloadWaitErrorFallsBackWhenDiagnosticsAreCancelled(t *testing.T) {
+	logReadStarted := make(chan struct{})
+	var startedOnce sync.Once
+	client := newDiagnosticsClient(t, func(ctx context.Context, _, _ string, _ bool) (string, error) {
+		startedOnce.Do(func() { close(logReadStarted) })
+		<-ctx.Done()
+		return "", ctx.Err()
+	}, diagnosticTimeoutPod())
 	cause := errors.New("original wait error")
 
-	start := time.Now()
-	err := workloadWaitError(
-		ctx,
-		newDiagnosticsClient(t, logs, pod),
-		&model.JobTask{AppID: "app-1"},
-		"Deployment",
-		"default",
-		"api",
-		"api",
-		cause,
-	)
-	elapsed := time.Since(start)
-
-	require.ErrorIs(t, err, cause)
-	require.EqualError(t, err, "original wait error")
-	require.Less(t, elapsed, time.Second)
-	require.NotContains(t, err.Error(), "summary:")
-	require.NotContains(t, err.Error(), "previous logs:")
-	require.NotContains(t, err.Error(), context.DeadlineExceeded.Error())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		result <- workloadWaitError(ctx, client, &model.JobTask{AppID: "app-1"}, "Deployment", "default", "api", "api", cause)
+	}()
 	select {
 	case <-logReadStarted:
-	default:
-		t.Fatal("expected diagnostics to reach pod log collection")
+	case <-time.After(5 * time.Second):
+		t.Fatal("diagnostics did not reach pod log collection")
+	}
+	cancel()
+
+	var err error
+	select {
+	case err = <-result:
+	case <-time.After(time.Second):
+		t.Fatal("workloadWaitError did not return after cancellation")
+	}
+	require.ErrorIs(t, err, cause)
+	require.EqualError(t, err, "original wait error")
+}
+
+func TestWorkloadDiagnosticsBoundTheirOwnDuration(t *testing.T) {
+	config := newDiagnosticsConfig(t, func(context.Context, string, string, bool) (string, error) {
+		return "log line", nil
+	}, diagnosticTimeoutPod())
+	// Diagnostics run on their own goroutine, so only record here and assert
+	// on the test goroutine.
+	var mu sync.Mutex
+	var logRequests, withoutDeadline int
+	var remaining []time.Duration
+	config.Wrap(func(next http.RoundTripper) http.RoundTripper {
+		return diagnosticsRoundTripper(func(req *http.Request) (*http.Response, error) {
+			if strings.HasSuffix(req.URL.Path, "/log") {
+				deadline, ok := req.Context().Deadline()
+				mu.Lock()
+				logRequests++
+				if ok {
+					remaining = append(remaining, time.Until(deadline))
+				} else {
+					withoutDeadline++
+				}
+				mu.Unlock()
+			}
+			return next.RoundTrip(req)
+		})
+	})
+	client, err := kubernetes.NewForConfig(config)
+	require.NoError(t, err)
+
+	err = workloadWaitError(context.Background(), client, &model.JobTask{AppID: "app-1"}, "Deployment", "default", "api", "api", errors.New("original wait error"))
+	require.ErrorContains(t, err, "log line")
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotZero(t, logRequests)
+	require.Zero(t, withoutDeadline, "pod log requests must carry the diagnostics deadline")
+	for _, left := range remaining {
+		require.LessOrEqual(t, left, workloadDiagnosticsTimeout)
+		require.Greater(t, left, workloadDiagnosticsTimeout-time.Second)
 	}
 }
+
+type diagnosticsRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f diagnosticsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 func TestWorkloadFailureDiagnosticsKeepsOriginalErrorWhenLogsFail(t *testing.T) {
 	logs := podLogs(func(_ context.Context, _, _ string, previous bool) (string, error) {
@@ -486,9 +519,17 @@ func newWorkloadTestObserver(t *testing.T, pods ...*corev1.Pod) *informer.Kubern
 
 type podLogs func(ctx context.Context, pod, container string, previous bool) (string, error)
 
-// newDiagnosticsClient serves the pod list, event list and pod log reads that
-// failure diagnostics make, behind a real typed client.
+// newDiagnosticsClient returns a real typed client for newDiagnosticsConfig.
 func newDiagnosticsClient(t *testing.T, logs podLogs, objects ...runtime.Object) kubernetes.Interface {
+	t.Helper()
+	client, err := kubernetes.NewForConfig(newDiagnosticsConfig(t, logs, objects...))
+	require.NoError(t, err)
+	return client
+}
+
+// newDiagnosticsConfig serves the pod list, event list and pod log reads that
+// failure diagnostics make and returns a REST config pointing at the server.
+func newDiagnosticsConfig(t *testing.T, logs podLogs, objects ...runtime.Object) *rest.Config {
 	t.Helper()
 	var pods []corev1.Pod
 	var events []corev1.Event
@@ -551,7 +592,5 @@ func newDiagnosticsClient(t *testing.T, logs podLogs, objects ...runtime.Object)
 		}
 	}))
 	t.Cleanup(server.Close)
-	client, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
-	require.NoError(t, err)
-	return client
+	return &rest.Config{Host: server.URL}
 }
