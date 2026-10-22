@@ -69,7 +69,7 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 
 	jobexec.CleanupNamespacedResources(ctx, domainspec.ResourceDeployment, c.Job.Namespace, config.DelTimeOut, "deployment", func(ctx context.Context, namespace, name string) error {
 		return c.Client.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "after job failure")
+	}, "after job failure")
 
 	forceDelete, reason := jobexec.ShouldForceCleanupSharedWorkload(ctx, c.Client, namespace, labels)
 	if !forceDelete {

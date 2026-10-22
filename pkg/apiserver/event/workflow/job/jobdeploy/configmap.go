@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -39,7 +38,7 @@ func NewDeployConfigMapJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shar
 func (c *DeployConfigMapJobCtl) Clean(ctx context.Context) {
 	c.CleanCreated(ctx, spec.ResourceConfigMap, "configmap", func(ctx context.Context, namespace, name string) error {
 		return c.Client.CoreV1().ConfigMaps(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "after job failure")
+	}, "after job failure")
 }
 
 func (c *DeployConfigMapJobCtl) Run(ctx context.Context) error {

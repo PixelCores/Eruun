@@ -64,7 +64,7 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 
 	jobexec.CleanupNamespacedResources(ctx, spec.ResourceStatefulSet, c.Namespace, config.DelTimeOut, "statefulset", func(ctx context.Context, namespace, name string) error {
 		return c.Client.AppsV1().StatefulSets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, errors.IsNotFound, "after job failure")
+	}, "after job failure")
 
 	forceDelete, reason := jobexec.ShouldForceCleanupSharedWorkload(ctx, c.Client, namespace, labels)
 	if !forceDelete {

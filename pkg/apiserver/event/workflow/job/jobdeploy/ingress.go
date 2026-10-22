@@ -37,7 +37,7 @@ func NewDeployIngressJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareL
 func (c *DeployIngressJobCtl) Clean(ctx context.Context) {
 	c.CleanCreated(ctx, domainspec.ResourceIngress, "ingress", func(ctx context.Context, namespace, name string) error {
 		return c.Client.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "after job failure")
+	}, "after job failure")
 }
 
 func (c *DeployIngressJobCtl) Run(ctx context.Context) error {

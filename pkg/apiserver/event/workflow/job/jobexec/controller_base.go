@@ -3,7 +3,6 @@ package jobexec
 import (
 	"context"
 
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -51,11 +50,11 @@ func NewDeployNamespacedResourceJobBase(controllerName string, job *model.JobTas
 	return base, true
 }
 
-func (b *DeployNamespacedResourceJobBase) CleanCreated(ctx context.Context, kind domainspec.ResourceKind, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
+func (b *DeployNamespacedResourceJobBase) CleanCreated(ctx context.Context, kind domainspec.ResourceKind, resourceLabel string, deleteFn deleteNamespacedFunc, successSuffix string) {
 	if b.Client == nil {
 		return
 	}
-	CleanupNamespacedResources(ctx, kind, b.Namespace, config.DelTimeOut, resourceLabel, deleteFn, isNotFound, successSuffix)
+	CleanupNamespacedResources(ctx, kind, b.Namespace, config.DelTimeOut, resourceLabel, deleteFn, successSuffix)
 }
 
 func (b *DeployNamespacedResourceJobBase) SaveInfo(ctx context.Context) error {
@@ -79,5 +78,5 @@ func (b *DeployNamespacedResourceJobBase) CleanCreatedBatchJobs(ctx context.Cont
 		// Garbage collection continues server-side; waiting here would spend the
 		// shared cleanup budget before later created resources are deleted.
 		return deleteJobForeground(ctx, b.Client, namespace, live)
-	}, k8serrors.IsNotFound, successSuffix)
+	}, successSuffix)
 }
