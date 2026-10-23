@@ -196,8 +196,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |
-| `gateway-abstraction-design.md` | Draft / Proposal | Gateway 抽象层草案 |
-| `gateway-trait-implementation-plan.md` | Draft / Proposal | Gateway Trait 实施计划 |
+| [`gateway-trait-design.md`](gateway-trait-design.md) | Draft / Proposal | 以 `traits.gateway` 直接替换 `traits.ingress`：平台选择 Gateway API（含 Istio）或 Ingress 后端，统一 LLM 与 Agent 的对外入口、请求超时与单层 host 命名 |
 | `vectorization-job-design.md` | Draft / Proposal | Provider-neutral 向量化批处理方向 |
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
