@@ -383,7 +383,7 @@ type Config struct {
 }
 ```
 
-`ParentRef.SectionName` 只在 `gatewayapi` 下由服务装配固定为 chart 渲染的 HTTPS 监听器名 `https`，不暴露为 flag。
+`ParentRef.SectionName` 不暴露为 flag，由 `Config.Validate` 在入口处按 provider 派生：`gatewayapi` 时填为 chart 渲染的 HTTPS 监听器名 `https`，其他 provider 保持为空，然后再按规则表校验。启动顺序是 `ApplyEnvOverrides` → `Config.Validate` → `Run` → 服务装配（`buildIoCContainer`），派生若放到服务装配，校验时它仍为空，合法的 `gatewayapi` 配置会被拒绝。这与 `AccountConfig.Validate` 填写 `DNSNamespace` 默认值的做法一致；服务装配只复制已经完整的 `Config.Gateway`。
 
 平台配置随现有的空间策略对象传递，不新增传参链路：
 
@@ -398,7 +398,7 @@ type WorkspaceConfig struct {
 ```
 
 - 现有所有携带 `WorkspaceConfig` 的路径因此自动拿到入口配置，不需要逐个改构造点：`workspace.Manager` 的各构造点（`controller_run.go`、`workflow.go` 等）、`TenantClient` 与 `APIClient` 包装的 `tenantTransport`/`requestTransport`、`PrepareResource` 重新构造的 `tenantTransport`、任务准备阶段的 `PrepareTask`、空间 Role 与 NetworkPolicy 生成。
-- 校验、渲染与展示读 `Config.Gateway`，与 `WorkspaceConfig.Gateway` 是服务装配时赋入的同一个值。
+- 校验、渲染与展示读 `Config.Gateway`；`WorkspaceConfig.Gateway` 是服务装配时从校验完成的 `Config.Gateway` 复制的同一个值。
 - `WorkspaceConfig` 因此是空间策略的运行时视图：`Gateway` 来自服务端配置，其余字段来自账号配置 Secret。
 - 账号配置按现有方式严格解码（`DisallowUnknownFields`）。Secret 中残留 `ingressDomain` 等旧字段，或写入 `gateway` 字段，都会让启动失败，不会被静默忽略。
 
@@ -415,7 +415,7 @@ type WorkspaceConfig struct {
 | `ParentRef`（仅服务端） | 空 | 空 | namespace 为 `gatewayapi.namespace`，name 为 chart 的 Gateway 名，sectionName 为 `https` |
 
 - **Helm**：在现有 `eruun.validateRuntime` 中按整张表 `fail`；`provider` 只能是三个取值之一。
-- **服务端**：`Config.Validate` 按表中进入服务端的字段校验（`provider`、`domain`、`proxyNamespace`、`ingress.className`，以及 `ParentRef` 的三个字段），未知 `provider` 报错。`gatewayapi.className` 与 `tlsSecretName` 只由 chart 使用，服务端看不到，只能由 Helm 校验。
+- **服务端**：`Config.Validate` 按表中进入服务端的字段校验（`provider`、`domain`、`proxyNamespace`、`ingress.className`，以及派生后的 `ParentRef` 三个字段），未知 `provider` 报错。`gatewayapi.className` 与 `tlsSecretName` 只由 chart 使用，服务端看不到，只能由 Helm 校验。
 - 两个校验入口都保留：不经 Helm 启动时需要服务端校验，chart 又有服务端看不到的字段。两者重叠的部分用同一组边界用例测试（§10），防止规则分叉。
 - **禁止覆盖**：`ERUUN_GATEWAY_*` 加入 `eruun.validateRuntime` 现有的禁止覆盖名单，`values.env` 设置它们时渲染失败。`runtime-deployments.yaml` 把 `values.env` 排在内置变量之后，同名变量会覆盖 chart 渲染的值；服务端校验发现不了这种“各自合法、彼此不同”的配置。
 
@@ -642,7 +642,11 @@ stateDiagram-v2
   1. **停止新增执行**：由运维方暂停对外 API 访问（Eruun 没有内置的暂停开关），等待进行中的 Workflow 与 Job 全部结束。窗口内仍可能有 cron 触发的空间 Job，它们会按执行节点的配置调和空间 Role；第 4 步之后由新节点再次调和即恢复一致，前提是第 5 步之前不部署任何入口。
   2. **在旧配置下清理**：旧配置与旧空间 Role 仍然有效时，删除全部应用（或销毁旧集群环境）。空间 Role 按期望规则整体更新，先切配置会移除旧入口资源的删除权限，平台的通用 `list` 只能发现残留，不能清理。
   3. **`helm upgrade` 切换 provider**：从 `gatewayapi` 切走时 chart 会删除平台 Gateway 与重定向路由；切到 `gatewayapi` 时按 §6.4 完成第 1、3–5 步。
-  4. **确认全部节点切换完成**：`kubectl rollout status` 确认所有 runtime Pod 都已是新 revision、旧 Pod 已退出。chart 默认 4 个副本、滚动更新，`helm upgrade` 返回时旧 Pod 可能仍在运行，会按旧 provider 重写空间 Role 与 NetworkPolicy，或用旧配置处理新任务。
+  4. **确认全部节点切换完成**，同时满足两个条件：
+     - `kubectl rollout status` 确认新 revision 滚动完成；
+     - 旧 ReplicaSet 所属的 runtime Pod 全部消失，包括仍处于 Terminating 的 Pod（例如按 `pod-template-hash` 列出旧 revision 的 Pod，直到为空）。
+
+     只看 `rollout status` 不够：它统计的副本不含正在终止的 Pod，旧 Pod 还在 Terminating 时它就可能返回成功。Eruun 的 Worker 停止接单后会让已开始的执行继续（默认 drain 60 秒、终止宽限 90 秒），这些旧执行仍可能经 `Manager.Ensure` 按旧 provider 重写空间 Role 与 NetworkPolicy。chart 默认 4 个副本、滚动更新，`helm upgrade` 返回时旧 Pod 也可能仍在运行。
   5. **恢复执行并重新部署**：首次部署时空间 Role 与 NetworkPolicy 按新配置调和。
 
 ### 7.4 写入边界与权限
@@ -705,7 +709,7 @@ stateDiagram-v2
 - 空间：`tenantTransport` 对 `parentRefs`、`backendRefs`、`filters`、Ingress `tls` 的篡改拒绝；HTTPRoute `hostnames` 省略、`null`、空数组均被拒绝；空间 Role 按 provider 只含一种入口资源。
 - Job 执行：fake dynamic client 下的创建、更新；当前 generation `Accepted=False`、`PartiallyInvalid=True` 立即失败；旧 generation 的 `False`、`Unknown`、`BackendNotFound` 继续等待；超时；失败清理只删除本次新建的对象。
 - Try 与保存：普通 Try 与模板 Try 的 gateway 错误带字段路径；创建与 `/version` 返回的安全消息含字段路径（HTTP 层测试）。
-- 配置：`Config.Validate` 与 Helm `fail` 用同一组边界用例覆盖 §6.1 规则表中两者重叠的部分（各 provider 的缺失、多余与格式错误，未知 provider）；`provider` 为空时 gateway 被拒绝；账号配置 Secret 含 `ingressDomain` 等旧字段或 `gateway` 字段时启动失败；`PrepareResource`、`APIClient` 路径拿到的 `WorkspaceConfig.Gateway` 非空。
+- 配置：`Config.Validate` 与 Helm `fail` 用同一组边界用例覆盖 §6.1 规则表中两者重叠的部分（各 provider 的缺失、多余与格式错误，未知 provider）；`provider` 为空时 gateway 被拒绝；账号配置 Secret 含 `ingressDomain` 等旧字段或 `gateway` 字段时启动失败；`PrepareResource`、`APIClient` 路径拿到的 `WorkspaceConfig.Gateway` 非空；按真实启动顺序（`ApplyEnvOverrides` → `Config.Validate`），只设置 `gatewayapi` 所需 flag 的配置通过校验且 `ParentRef.SectionName` 为 `https`，`ingress` 与空 provider 下它保持为空。
 - Helm 模板：`provider` 为空时不渲染入口规则、Gateway 与 `ERUUN_GATEWAY_*` 中的后端值；`ingress` 只渲染 `ingresses` 规则、不渲染 Gateway；`gatewayapi` 只渲染 `httproutes` 规则，并渲染含 `https`/`http` 监听器、`eruun.io/workspace-id` 选择器的 Gateway 与重定向路由；values 不一致时 `fail`；`values.env` 设置任一 `ERUUN_GATEWAY_*` 时 `fail`；入口规则 verbs 与 `namespace.go` 生成的空间 Role 入口规则相等。
 - 安装器：manifest 与 helm 两种模式都渲染出一致的 `ERUUN_GATEWAY_*` 与入口规则。
 - 启动检查：Discovery 返回 API 缺失时 readiness 失败；返回 403 时报告无法检查。
@@ -716,7 +720,7 @@ stateDiagram-v2
 - Istio（Gateway API 模式）：`helm install` 创建的 Gateway 被 Controller 接受并分配外部地址；HTTP 请求被 301 重定向到 HTTPS；非空间 namespace 的 HTTPRoute 无法挂到 `https` 监听器；HTTPRoute 被接受；部分规则无效时报告失败；先建路由后补 Service 能恢复；`timeout` 到达时请求被终止；`0s` 时持续超过 10 分钟的 SSE 与首个 token 前长时间无输出的请求的实际行为；WebSocket 升级成功；`*.<domain>` 证书在单层 host 上校验通过。
 - ingress-nginx 或其他 Ingress Controller：基础 host/path 转发、默认证书 HTTPS、HTTP 请求的重定向行为符合平台配置。
 - RBAC：用 `kubectl auth can-i --as=system:serviceaccount:<release namespace>:<Eruun ServiceAccount>` 逐个 verb 确认平台身份直接持有入口规则的全部权限（现有 `escalate` 会掩盖缺口，不能只看 Role 创建成功）；ClusterRole 只含所选后端规则时，空间 Role 的创建与绑定成功，空间身份下 HTTPRoute/Ingress 的写入、status 读取与清理正常；空空间删除检查仍能发现入口残留；NetworkPolicy 放行网关 Pod 流量。
-- 后端切换：按 §7.3 的顺序清理后 `helm upgrade` 切换 provider，旧 Gateway 被删除、新空间 Role 只含新入口资源。
+- 后端切换：按 §7.3 的顺序清理后 `helm upgrade` 切换 provider；在旧 revision 的 Pod（含 Terminating）全部消失之前不恢复执行；之后旧 Gateway 已被删除，新空间 Role 只含新入口资源。
 
 ## 11. 后续阶段
 
