@@ -16,6 +16,11 @@ import (
 
 // UpdateVersion 更新应用版本，支持组件的更新、新增、删除操作
 func (c *applicationsServiceImpl) UpdateVersion(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error) {
+	// version is required by the API contract for every transport; checking it
+	// before the lock keeps an invalid request a 400 under lock contention.
+	if req.Version == "" {
+		return nil, bcode.ErrApplicationConfig
+	}
 	var response *apisv1.UpdateVersionResponse
 	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-version", func(lockCtx context.Context, app *model.Applications) error {
 		app, err := c.applicationForRequestedID(lockCtx, appID, app)

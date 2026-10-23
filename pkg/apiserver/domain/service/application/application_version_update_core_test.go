@@ -328,6 +328,29 @@ func TestUpdateVersionRejectsUnsupportedStrategyBeforeWrites(t *testing.T) {
 	}
 }
 
+func TestUpdateVersionRequiresVersionBeforeWrites(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Version: "1.0.0"}
+	store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", Image: "nginx:1.26"}
+	svc := newMockServiceWithStore(store)
+	response, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+		AutoExec:   boolPtr(false),
+		Components: []apisv1.ComponentUpdateSpec{{Name: "web", Image: "nginx:1.27"}},
+	})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Nil(t, response)
+	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
+	require.Equal(t, "nginx:1.26", store.components["web"].Image)
+	require.Empty(t, store.workflows)
+	require.Empty(t, store.tasks)
+
+	// The request check runs before the strategy check and before taking the
+	// application lock, so neither can replace the missing-version error.
+	svc.ScheduleLocker = nil
+	_, err = svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{Strategy: "bogus"})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+}
+
 func TestUpdateVersionNoChanges(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
