@@ -33,7 +33,7 @@ HTTP envelope 与错误映射由 `pkg/apiserver/interfaces/api/response` 统一�
 | `datastore.ErrRecordNotExist` | `404` | `404` | `404 Not Found` |
 | 非业务通用错误 | `500` | `500` | `The service has lapsed.` |
 
-所有 HTTP JSON 请求体都按严格模式解码：未知字段、类型错误或多个 JSON 值都会被拒绝，返回入口对应的 4xx 业务错误，不会静默忽略拼错的字段。必填、名称格式等请求约束由领域服务统一校验，HTTP 与 gRPC 返回相同的业务错误。以下请求检查在获取应用锁、查询应用之前完成，非法请求在锁竞争或锁后端故障时仍返回请求错误，而不是 `409`/`503`：版本更新的 `version` 必填；定时配置的 `workflowId` 与 `cron`；数据库重置的组件列表与 `initSqlUrl`；Workflow 更新的 `workflow`、`workflowType` 与 `failurePolicy`；执行 Workflow 的 `workflowId` 与 `executeAt`。版本更新的 `strategy`、`executeAt`、`executionScope` 和组件动作等其余检查仍在应用锁内执行，锁不可用时先返回 `409`/`503`。
+所有 HTTP JSON 请求体都按严格模式解码：未知字段、类型错误或多个 JSON 值都会被拒绝，返回入口对应的 4xx 业务错误，不会静默忽略拼错的字段。必填、名称格式等请求约束由领域服务统一校验，HTTP 与 gRPC 返回相同的业务错误。通过认证与资源授权后，以下请求检查在领域服务获取应用锁、执行业务查询之前完成，非法请求在锁竞争或锁后端故障时仍返回请求错误，而不是 `409`/`503`：版本更新的 `version` 必填；定时配置的 `workflowId` 与 `cron`；数据库重置的组件列表与 `initSqlUrl`；Workflow 更新的 `workflow`、`workflowType` 与 `failurePolicy`；执行 Workflow 的 `workflowId` 与 `executeAt`。版本更新的 `strategy`、`executeAt`、`executionScope` 和组件动作等其余检查仍在应用锁内执行，锁不可用时先返回 `409`/`503`。HTTP 认证中间件与 gRPC 资源授权会在进入领域服务前按请求中的应用 ID 查询应用，应用不存在时直接返回 not found（HTTP `404`，gRPC 映射 `ErrNotFound`），不会走到上述请求检查。
 
 应用不存在是业务级不存在，响应使用 HTTP `200`，body 中返回 `code=10005`、`message=application not found`；客户端应依赖 body `code` 区分该场景。
 

@@ -142,13 +142,12 @@ func loadPersistedCleanupJobInfos(ctx context.Context, task *model.WorkflowQueue
 		if cleanupComponent.InsertBeforeStepIndex < 0 {
 			return nil, fmt.Errorf("cleanup insert step index is negative")
 		}
-		componentName := strings.TrimSpace(component.Name)
-		record := recordsByName[componentName]
+		record := recordsByName[component.Name]
 		if record == nil {
-			return nil, fmt.Errorf("precreated cleanup job info not found for component %s", componentName)
+			return nil, fmt.Errorf("precreated cleanup job info not found for component %s", component.Name)
 		}
 		if err := validatePersistedCleanupJobContract(cleanupComponent, record); err != nil {
-			return nil, fmt.Errorf("validate cleanup component %s contract: %w", componentName, err)
+			return nil, fmt.Errorf("validate cleanup component %s contract: %w", component.Name, err)
 		}
 		componentCopy := *component
 		componentCopy.ResourceAppName = strings.TrimSpace(cleanupComponent.ResourceAppName)

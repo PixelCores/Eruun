@@ -89,7 +89,7 @@ func convertWorkflowStepByTemplatePhases(components []apisv1.CreateComponentRequ
 	phaseComponents := make([][]string, templatePhaseCount)
 	seen := make(map[string]struct{}, len(components))
 	for _, component := range components {
-		name := strings.TrimSpace(component.Name)
+		name := component.Name
 		if name == "" {
 			continue
 		}
