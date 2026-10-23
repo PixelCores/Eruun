@@ -69,13 +69,6 @@ func buildVersionRestartJobs(
 	if task == nil || len(componentNames) == 0 {
 		return buckets
 	}
-	componentsByName := make(map[string]*model.ApplicationComponent, len(componentMap))
-	for name, component := range componentMap {
-		if name != "" && component != nil {
-			componentsByName[name] = component
-		}
-	}
-
 	seen := make(map[string]struct{}, len(componentNames))
 	for _, name := range componentNames {
 		if name == "" {
@@ -85,7 +78,7 @@ func buildVersionRestartJobs(
 			continue
 		}
 		seen[name] = struct{}{}
-		component := componentsByName[name]
+		component := componentMap[name]
 		if component == nil {
 			continue
 		}

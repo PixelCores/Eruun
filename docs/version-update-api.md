@@ -155,7 +155,7 @@ POST /api/v1/applications/:appID/version/cancel
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `action` | string | 否 | 操作类型：`update`/`add`/`remove`/`restart`，默认 `update` |
-| `name` | string | 是 | 组件名称 |
+| `name` | string | 是 | 组件名称；去除首尾空白并转为小写后匹配已有组件。`add` 的名称须为 2–63 字符的 DNS-1123 label，否则返回 `HTTP 400 / code 10000` |
 | `image` | string | 否 | 新镜像地址 |
 | `replicas` | int32 | 否 | 新副本数；显式提供时必须大于 `0`，`/version` 不支持 scale-to-zero。`webservice` 停服使用 lifecycle stop API；`store` 停服需使用显式维护流程 |
 | `env` | object | 否 | 环境变量覆盖（合并更新） |

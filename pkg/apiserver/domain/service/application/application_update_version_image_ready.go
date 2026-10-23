@@ -35,7 +35,6 @@ func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComp
 	seen := make(map[string]struct{})
 	targets := make([]string, 0)
 	appendTarget := func(name string) {
-		name = strings.TrimSpace(name)
 		if name == "" {
 			return
 		}
@@ -51,7 +50,7 @@ func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComp
 		if err != nil {
 			return nil, err
 		}
-		name := strings.TrimSpace(spec.Name)
+		name := spec.Name
 		switch action {
 		case domainspec.ComponentActionUpdate:
 			comp := componentMap[name]

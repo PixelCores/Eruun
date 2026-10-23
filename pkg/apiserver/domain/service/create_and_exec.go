@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
@@ -37,9 +36,9 @@ func ExecuteCreateAndExecApplication(
 	if created == nil {
 		return nil, fmt.Errorf("create application returned empty response")
 	}
-	workflowID := strings.TrimSpace(req.WorkflowID)
+	workflowID := req.WorkflowID
 	if workflowID == "" {
-		workflowID = strings.TrimSpace(created.WorkflowID)
+		workflowID = created.WorkflowID
 	}
 	resp := &apis.CreateAndExecApplicationResponse{
 		Application: created, WorkflowID: workflowID,

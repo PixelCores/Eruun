@@ -236,7 +236,7 @@ func versionUpdateComponentUpdateSpecsByName(specs []apisv1.ComponentUpdateSpec)
 		}
 		if key := update.Name; key != "" {
 			if _, exists := updates[key]; exists {
-				return nil, fmt.Errorf("%w: component %s cannot be updated more than once in one version update request", bcode.ErrDuplicateComponentName, strings.TrimSpace(update.Name))
+				return nil, fmt.Errorf("%w: component %s cannot be updated more than once in one version update request", bcode.ErrDuplicateComponentName, update.Name)
 			}
 			updates[key] = update
 		}

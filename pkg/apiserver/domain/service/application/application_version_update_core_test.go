@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -378,6 +379,37 @@ func TestUpdateVersionNoChanges(t *testing.T) {
 	require.Empty(t, resp.AddedComponents)
 	require.Empty(t, resp.RemovedComponents)
 	require.NotEmpty(t, resp.TaskID)
+}
+
+// Components added by /version follow the same name rule as components
+// created with the application.
+func TestUpdateVersionAddValidatesComponentName(t *testing.T) {
+	replicas := int32(1)
+	addSpec := func(name string) apisv1.ComponentUpdateSpec {
+		return apisv1.ComponentUpdateSpec{Action: "add", Name: name, ComponentType: config.ServerJob, Image: "nginx:1.27", Replicas: &replicas}
+	}
+	for _, name := range []string{"", "bad_name", "-web", "w", strings.Repeat("a", 64)} {
+		store := newInMemoryAppStore()
+		store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default", Version: "1.0.0"}
+		svc := newMockServiceWithStore(store)
+
+		_, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+			Version: "2.0.0", AutoExec: boolPtr(false), Components: []apisv1.ComponentUpdateSpec{addSpec(name)},
+		})
+		require.ErrorIs(t, err, bcode.ErrApplicationConfig, "name %q", name)
+		require.Empty(t, store.components, "name %q", name)
+		require.Equal(t, "1.0.0", store.apps["app-1"].Version, "name %q", name)
+	}
+
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default", Version: "1.0.0"}
+	svc := newMockServiceWithStore(store)
+	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+		Version: "2.0.0", AutoExec: boolPtr(false), Components: []apisv1.ComponentUpdateSpec{addSpec(" New-Web ")},
+	})
+	require.NoError(t, err)
+	require.Contains(t, resp.AddedComponents, "new-web")
+	require.NotNil(t, findComponentByAppAndName(store, "app-1", "new-web"))
 }
 
 func TestUpdateVersionMatchesComponentNamesInCanonicalForm(t *testing.T) {

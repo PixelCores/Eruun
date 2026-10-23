@@ -131,7 +131,7 @@ func (c *applicationsServiceImpl) applyComponentUpdate(comp *model.ApplicationCo
 
 	// 覆盖完整 Traits（用于差异更新生成的组件补丁）
 	if spec.Traits != nil {
-		if err := validateComponentTraitsForWrite(comp.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
+		if err := validateComponentTraitsForWrite(comp.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", spec.Name)); err != nil {
 			return false, err
 		}
 		equal, err := componentTraitsEqual(comp.Traits, *spec.Traits)
@@ -190,7 +190,7 @@ func newVersionUpdateComponent(app *model.Applications, spec apisv1.ComponentUpd
 
 	// 设置 Traits
 	if spec.Traits != nil {
-		if err := validateComponentTraitsForWrite(spec.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
+		if err := validateComponentTraitsForWrite(spec.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", spec.Name)); err != nil {
 			return nil, err
 		}
 		traits, err := model.NewJSONStructByStruct(spec.Traits)

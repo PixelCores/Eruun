@@ -169,7 +169,7 @@ func versionUpdateCleanupComponentDescriptor(component *model.ApplicationCompone
 	descriptor := &model.ApplicationComponent{
 		ID:              component.ID,
 		AppID:           strings.TrimSpace(component.AppID),
-		Name:            strings.TrimSpace(component.Name),
+		Name:            component.Name,
 		Namespace:       strings.TrimSpace(component.Namespace),
 		ComponentType:   component.ComponentType,
 		ResourceAppName: strings.TrimSpace(component.ResourceAppName),
@@ -386,7 +386,7 @@ func recordVersionUpdateCleanupJobs(
 		if comp == nil {
 			continue
 		}
-		if strings.TrimSpace(comp.Name) == "" {
+		if comp.Name == "" {
 			return fmt.Errorf("cleanup component name is empty")
 		}
 		internalInfo, err := versionUpdateCleanupJobInfoMarker(
@@ -406,7 +406,7 @@ func recordVersionUpdateCleanupJobs(
 			Status:       string(config.StatusQueued),
 			Info:         fmt.Sprintf("cleanup resources: %s/%s", namespace, comp.Name),
 			InternalInfo: internalInfo,
-			ServiceName:  strings.TrimSpace(comp.Name),
+			ServiceName:  comp.Name,
 		}
 		if err := store.Add(ctx, jobInfo); err != nil {
 			return fmt.Errorf("persist cleanup component %s: %w", comp.Name, err)

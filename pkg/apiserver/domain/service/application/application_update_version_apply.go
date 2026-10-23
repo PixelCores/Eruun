@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"k8s.io/klog/v2"
 
@@ -308,7 +307,7 @@ func applyVersionUpdateComponentChanges(
 		case domainspec.ComponentActionUpdate:
 			comp, exists := componentMap[spec.Name]
 			if !exists {
-				return nil, nil, nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return nil, nil, nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, spec.Name)
 			}
 			updated, err := handlers.update(ctx, comp, spec)
 			if err != nil {
@@ -320,7 +319,7 @@ func applyVersionUpdateComponentChanges(
 
 		case domainspec.ComponentActionAdd:
 			if _, exists := componentMap[spec.Name]; exists {
-				return nil, nil, nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
+				return nil, nil, nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, spec.Name)
 			}
 			if err := handlers.add(ctx, spec); err != nil {
 				return nil, nil, nil, versionUpdateAddOrUpdateError("add", spec.Name, err)
@@ -330,7 +329,7 @@ func applyVersionUpdateComponentChanges(
 		case domainspec.ComponentActionRemove:
 			comp, exists := componentMap[spec.Name]
 			if !exists {
-				return nil, nil, nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return nil, nil, nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, spec.Name)
 			}
 			if err := handlers.remove(ctx, comp, spec); err != nil {
 				return nil, nil, nil, fmt.Errorf("%w: remove component %s: %w", bcode.ErrVersionUpdateFailed, spec.Name, err)

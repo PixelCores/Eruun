@@ -94,25 +94,18 @@ func validateLogArchiveUploadWorkflowInputs(steps *model.WorkflowSteps, componen
 	if steps == nil {
 		return nil
 	}
-	componentsByName := make(map[string]*model.ApplicationComponent, len(componentMap))
-	for name, component := range componentMap {
-		if name == "" || component == nil {
-			continue
-		}
-		componentsByName[name] = component
-	}
 	for _, step := range steps.Steps {
 		if step == nil || config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
 			continue
 		}
-		if err := validateLogArchiveUploadStepInputs(step.Name, step.WorkflowType, step.Properties, step.ComponentNames(), componentsByName); err != nil {
+		if err := validateLogArchiveUploadStepInputs(step.Name, step.WorkflowType, step.Properties, step.ComponentNames(), componentMap); err != nil {
 			return err
 		}
 		for _, sub := range step.SubSteps {
 			if sub == nil {
 				continue
 			}
-			if err := validateLogArchiveUploadStepInputs(sub.Name, sub.WorkflowType, sub.Properties, sub.ComponentNames(), componentsByName); err != nil {
+			if err := validateLogArchiveUploadStepInputs(sub.Name, sub.WorkflowType, sub.Properties, sub.ComponentNames(), componentMap); err != nil {
 				return err
 			}
 		}
@@ -120,22 +113,21 @@ func validateLogArchiveUploadWorkflowInputs(steps *model.WorkflowSteps, componen
 	return nil
 }
 
-func validateLogArchiveUploadStepInputs(stepName string, jobType config.JobType, properties []model.Policies, componentNames []string, componentsByName map[string]*model.ApplicationComponent) error {
+func validateLogArchiveUploadStepInputs(stepName string, jobType config.JobType, properties []model.Policies, componentNames []string, componentMap map[string]*model.ApplicationComponent) error {
 	if config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
 		return nil
 	}
 	for _, name := range componentNames {
-		componentName := strings.TrimSpace(name)
-		component := componentsByName[componentName]
+		component := componentMap[name]
 		if component == nil {
-			return fmt.Errorf("workflow step %q references missing component %q for jobType %q", stepName, componentName, jobType)
+			return fmt.Errorf("workflow step %q references missing component %q for jobType %q", stepName, name, jobType)
 		}
 		if !config.ComponentTypeUsesPods(component.ComponentType) {
 			return fmt.Errorf("workflow step %q component %q with type %q does not use pods for jobType %q", stepName, component.Name, component.ComponentType, jobType)
 		}
-		path, _ := logArchiveUploadOptionsForComponent(componentName, properties)
+		path, _ := logArchiveUploadOptionsForComponent(name, properties)
 		if strings.TrimSpace(path) == "" {
-			return fmt.Errorf("workflow step %q requires properties.path for component %q and jobType %q", stepName, componentName, jobType)
+			return fmt.Errorf("workflow step %q requires properties.path for component %q and jobType %q", stepName, name, jobType)
 		}
 	}
 	return nil

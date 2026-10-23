@@ -34,7 +34,7 @@ func parseVersionUpdateResourceActions(specs []domainspec.ComponentUpdateSpec) (
 		if err != nil {
 			return versionUpdateResourceActions{}, err
 		}
-		name := strings.TrimSpace(spec.Name)
+		name := spec.Name
 		switch {
 		case action == domainspec.ComponentActionRemove && name == versionUpdateCleanupAllSentinelName:
 			if actions.fullCleanup {
@@ -81,7 +81,7 @@ func validateVersionUpdateSentinelSpec(spec domainspec.ComponentUpdateSpec) erro
 		spec.ComponentType != "" ||
 		spec.Properties != nil ||
 		spec.Traits != nil {
-		return fmt.Errorf("%w: version resource action %s must not include component fields", bcode.ErrApplicationConfig, strings.TrimSpace(spec.Name))
+		return fmt.Errorf("%w: version resource action %s must not include component fields", bcode.ErrApplicationConfig, spec.Name)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func validateVersionUpdateRestartActions(restartComponents []string, componentMa
 		}
 		comp, exists := componentMap[name]
 		if !exists || comp == nil {
-			return fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(name))
+			return fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, name)
 		}
 		switch comp.ComponentType {
 		case config.ServerJob, config.StoreJob:
@@ -146,7 +146,7 @@ func validateVersionUpdateDeployAllWorkflow(workflow *model.Workflow, components
 		if comp == nil {
 			continue
 		}
-		name := strings.TrimSpace(comp.Name)
+		name := comp.Name
 		if name == "" {
 			continue
 		}
