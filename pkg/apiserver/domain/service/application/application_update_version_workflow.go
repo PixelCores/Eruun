@@ -300,12 +300,12 @@ func hasWorkflowStructureChanges(specs []apisv1.ComponentUpdateSpec, componentMa
 		switch action {
 		case domainspec.ComponentActionAdd:
 			if _, exists := componentMap[spec.Name]; exists {
-				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
+				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, spec.Name)
 			}
 			return true, nil
 		case domainspec.ComponentActionRemove:
 			if _, exists := componentMap[spec.Name]; !exists {
-				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, spec.Name)
 			}
 			return true, nil
 		}

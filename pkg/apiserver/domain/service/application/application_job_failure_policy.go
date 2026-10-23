@@ -2,7 +2,6 @@ package application
 
 import (
 	"fmt"
-	"strings"
 
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 
@@ -30,7 +29,7 @@ func normalizeVersionUpdateJobFailurePolicies(specs []apisv1.ComponentUpdateSpec
 		if action == domainspec.ComponentActionUpdate {
 			component := componentMap[spec.Name]
 			if component == nil {
-				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, spec.Name)
 			}
 			componentType = component.ComponentType
 		}

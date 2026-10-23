@@ -36,7 +36,7 @@ func preserveVersionUpdatePVCIdentities(componentMap map[string]*model.Applicati
 		if action != spec.ComponentActionUpdate || specUpdate.Traits == nil {
 			continue
 		}
-		componentName := strings.TrimSpace(specUpdate.Name)
+		componentName := specUpdate.Name
 		if componentName == "" {
 			continue
 		}

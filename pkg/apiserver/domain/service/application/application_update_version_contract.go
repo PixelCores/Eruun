@@ -50,7 +50,7 @@ func parseVersionUpdateComponentAction(spec domainspec.ComponentUpdateSpec) (dom
 	case string(domainspec.ComponentActionRestart):
 		return domainspec.ComponentActionRestart, nil
 	default:
-		componentName := strings.TrimSpace(spec.Name)
+		componentName := spec.Name
 		if componentName == "" {
 			componentName = "<empty>"
 		}
@@ -64,29 +64,36 @@ func validateVersionUpdateActionContract(specs []domainspec.ComponentUpdateSpec,
 		if err != nil {
 			return err
 		}
+		// An added component gets the same name rule as one created with the
+		// application.
+		if action == domainspec.ComponentActionAdd {
+			if errs := ValidateLabelName(spec.Name, "component name"); len(errs) > 0 {
+				return fmt.Errorf("%w: component %q: %s", bcode.ErrApplicationConfig, spec.Name, errs[0].Message)
+			}
+		}
 		if spec.Name == "" {
 			continue
 		}
 		if (action == domainspec.ComponentActionUpdate || action == domainspec.ComponentActionAdd) && spec.Replicas != nil && *spec.Replicas <= 0 {
-			return fmt.Errorf("%w: component %s replicas must be greater than 0; /version does not support scale-to-zero", bcode.ErrApplicationConfig, strings.TrimSpace(spec.Name))
+			return fmt.Errorf("%w: component %s replicas must be greater than 0; /version does not support scale-to-zero", bcode.ErrApplicationConfig, spec.Name)
 		}
 		_, exists := componentMap[spec.Name]
 		switch action {
 		case domainspec.ComponentActionUpdate:
 			if !exists {
-				return fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, spec.Name)
 			}
 		case domainspec.ComponentActionAdd:
 			if exists {
-				return fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
+				return fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, spec.Name)
 			}
 		case domainspec.ComponentActionRemove:
 			if !exists {
-				return fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, spec.Name)
 			}
 		case domainspec.ComponentActionRestart:
 			if !exists {
-				return fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, spec.Name)
 			}
 		}
 	}
@@ -111,7 +118,7 @@ func validateVersionUpdateComponentActionConflicts(specs []domainspec.ComponentU
 			continue
 		}
 		current := seen[spec.Name]
-		current.name = strings.TrimSpace(spec.Name)
+		current.name = spec.Name
 		switch action {
 		case domainspec.ComponentActionAdd:
 			current.add = true
@@ -185,7 +192,7 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 		case domainspec.ComponentActionUpdate:
 			current, exists := componentsByName[spec.Name]
 			if !exists {
-				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, spec.Name)
 			}
 			updated, err := applyComponentUpdateSpecToResolvedComponent(current, spec)
 			if err != nil {
@@ -194,7 +201,7 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 			componentsByName[spec.Name] = updated
 		case domainspec.ComponentActionAdd:
 			if _, exists := componentsByName[spec.Name]; exists {
-				return nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
+				return nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, spec.Name)
 			}
 			added, err := componentUpdateSpecToResolvedComponent(spec)
 			if err != nil {
@@ -207,12 +214,12 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 			}
 		case domainspec.ComponentActionRemove:
 			if _, exists := componentsByName[spec.Name]; !exists {
-				return nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, spec.Name)
 			}
 			delete(componentsByName, spec.Name)
 		case domainspec.ComponentActionRestart:
 			if _, exists := componentsByName[spec.Name]; !exists {
-				return nil, fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return nil, fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, spec.Name)
 			}
 		}
 	}
@@ -255,7 +262,7 @@ func componentUpdateSpecToResolvedComponent(spec domainspec.ComponentUpdateSpec)
 		}
 	}
 	if spec.Traits != nil {
-		if err := validateComponentTraitsForWrite(spec.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
+		if err := validateComponentTraitsForWrite(spec.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", spec.Name)); err != nil {
 			return domainspec.Component{}, err
 		}
 		resolved.Traits = *spec.Traits
@@ -288,7 +295,7 @@ func applyComponentUpdateSpecToResolvedComponent(current domainspec.Component, s
 		}
 	}
 	if spec.Traits != nil {
-		if err := validateComponentTraitsForWrite(current.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
+		if err := validateComponentTraitsForWrite(current.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", spec.Name)); err != nil {
 			return domainspec.Component{}, err
 		}
 		current.Traits = *spec.Traits
@@ -330,7 +337,7 @@ func hasVersionUpdateComponentChanges(componentMap map[string]*model.Application
 		case domainspec.ComponentActionUpdate:
 			comp, exists := componentMap[spec.Name]
 			if !exists {
-				return false, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return false, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, spec.Name)
 			}
 			changed, err := componentUpdateSpecHasChanges(comp, spec)
 			if err != nil {
@@ -341,17 +348,17 @@ func hasVersionUpdateComponentChanges(componentMap map[string]*model.Application
 			}
 		case domainspec.ComponentActionAdd:
 			if _, exists := componentMap[spec.Name]; exists {
-				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
+				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, spec.Name)
 			}
 			hasChanges = true
 		case domainspec.ComponentActionRemove:
 			if _, exists := componentMap[spec.Name]; !exists {
-				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, spec.Name)
 			}
 			hasChanges = true
 		case domainspec.ComponentActionRestart:
 			if _, exists := componentMap[spec.Name]; !exists {
-				return false, fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
+				return false, fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, spec.Name)
 			}
 		}
 	}
@@ -392,7 +399,7 @@ func componentUpdateSpecHasChanges(comp *model.ApplicationComponent, spec domain
 		}
 	}
 	if spec.Traits != nil {
-		if err := validateComponentTraitsForWrite(comp.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
+		if err := validateComponentTraitsForWrite(comp.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", spec.Name)); err != nil {
 			return false, err
 		}
 		equal, err := componentTraitsEqual(comp.Traits, *spec.Traits)
