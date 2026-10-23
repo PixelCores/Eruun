@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -29,6 +30,16 @@ func (w *workflowServiceImpl) UpsertWorkflowSchedule(ctx context.Context, appID 
 	if appID == "" {
 		return nil, bcode.ErrApplicationNotExist
 	}
+	// Request checks run before the lock, so an invalid request stays a 400
+	// under lock contention.
+	if !spec.ValidAPIName(req.WorkflowID, datastore.PrimaryKeyMaxLength) {
+		return nil, bcode.ErrWorkflowConfig
+	}
+	normalizedCron, err := utils.NormalizeCronSchedule(req.Cron)
+	if err != nil {
+		return nil, bcode.ErrWorkflowConfig
+	}
+	req.Cron = normalizedCron
 	lockProvider, err := w.appScheduleLocker()
 	if err != nil {
 		return nil, err
@@ -45,26 +56,16 @@ func (w *workflowServiceImpl) UpsertWorkflowSchedule(ctx context.Context, appID 
 	return resp, nil
 }
 
+// upsertWorkflowScheduleUnlocked expects the request checked and the cron
+// normalized by UpsertWorkflowSchedule.
 func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context, appID string, req apis.UpsertWorkflowScheduleRequest) (*apis.UpsertWorkflowScheduleResponse, error) {
-	appID = strings.TrimSpace(appID)
-	if appID == "" {
-		return nil, bcode.ErrApplicationNotExist
-	}
-	workflowID := strings.TrimSpace(req.WorkflowID)
-	if workflowID == "" {
-		return nil, bcode.ErrWorkflowConfig
-	}
 	if _, err := repository.ApplicationByID(ctx, w.Store, appID); err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, bcode.ErrApplicationNotExist
 		}
 		return nil, err
 	}
-	normalizedCron, err := utils.NormalizeCronSchedule(req.Cron)
-	if err != nil {
-		return nil, bcode.ErrWorkflowConfig
-	}
-	workflow, err := repository.WorkflowByID(ctx, w.Store, workflowID)
+	workflow, err := repository.WorkflowByID(ctx, w.Store, req.WorkflowID)
 	if err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, bcode.ErrWorkflowNotExist
@@ -81,13 +82,13 @@ func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context
 	}
 	var nextRun int64
 	if enabled {
-		nextRun, err = NextScheduleRun(normalizedCron, time.Now().UTC())
+		nextRun, err = NextScheduleRun(req.Cron, time.Now().UTC())
 		if err != nil {
 			return nil, bcode.ErrWorkflowConfig
 		}
 	}
 
-	schedule, err := repository.FindWorkflowScheduleByAppAndWorkflowID(ctx, w.Store, appID, workflowID)
+	schedule, err := repository.FindWorkflowScheduleByAppAndWorkflowID(ctx, w.Store, appID, req.WorkflowID)
 	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
 		return nil, err
 	}
@@ -95,8 +96,8 @@ func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context
 		schedule = &model.WorkflowSchedule{
 			ID:         utils.RandStringByNumLowercase(24),
 			AppID:      appID,
-			WorkflowID: workflowID,
-			Cron:       normalizedCron,
+			WorkflowID: req.WorkflowID,
+			Cron:       req.Cron,
 			Enabled:    enabled,
 			NextRun:    nextRun,
 			LastRun:    0,
@@ -105,7 +106,7 @@ func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context
 			return nil, err
 		}
 	} else {
-		schedule.Cron = normalizedCron
+		schedule.Cron = req.Cron
 		schedule.Enabled = enabled
 		if enabled {
 			schedule.NextRun = nextRun

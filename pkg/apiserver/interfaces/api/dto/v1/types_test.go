@@ -156,7 +156,7 @@ func TestUpdateVersionRequestComponentJSONContract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var req UpdateVersionRequest
-			require.NoError(t, decodeStrictJSON([]byte(tt.input), &req))
+			require.NoError(t, DecodeStrictJSON([]byte(tt.input), &req))
 			raw, err := json.Marshal(req)
 			require.NoError(t, err)
 			require.JSONEq(t, tt.want, string(raw))
@@ -206,7 +206,7 @@ func TestUpdateVersionRequestDistinguishesOmittedAndExplicitJobFailurePolicy(t *
 func TestUpdateVersionRequestKeepsStrictPropertiesValidation(t *testing.T) {
 	input := []byte(`{"version":"1.1.0","components":[{"name":"job","properties":{"failurePolicy":"cleanup_failed","unknown":true}}]}`)
 	var req UpdateVersionRequest
-	require.ErrorContains(t, decodeStrictJSON(input, &req), `unknown field "unknown"`)
+	require.ErrorContains(t, DecodeStrictJSON(input, &req), `unknown field "unknown"`)
 }
 
 func jobFailurePolicyPointer(policy workflowconfig.WorkflowFailurePolicy) *workflowconfig.WorkflowFailurePolicy {
@@ -532,7 +532,7 @@ func TestRequestsRejectRemovedComponentPermissions(t *testing.T) {
 				{`{"components":[{"name":"api","traits":` + traits + `}]}`, &CreateApplicationsRequest{}},
 				{`{"components":[{"name":"api","traits":` + traits + `}]}`, &UpdateVersionRequest{}},
 			} {
-				require.ErrorContains(t, decodeStrictJSON([]byte(request.body), request.out), `unknown field "`+field+`"`)
+				require.ErrorContains(t, DecodeStrictJSON([]byte(request.body), request.out), `unknown field "`+field+`"`)
 			}
 		})
 	}

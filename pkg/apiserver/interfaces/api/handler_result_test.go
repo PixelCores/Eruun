@@ -14,7 +14,7 @@ import (
 )
 
 type handlerResultTestRequest struct {
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name"`
 }
 
 func TestHandleContextResultReturnsSuccess(t *testing.T) {
@@ -62,7 +62,7 @@ func TestHandlePathBoundResultSkipsRunOnPathError(t *testing.T) {
 		handlePathBoundResult(
 			c,
 			appIDPathParam,
-			validatedStrictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
+			strictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
 			func(context.Context, string, *handlerResultTestRequest) (gin.H, error) {
 				called = true
 				return gin.H{}, nil
@@ -91,7 +91,7 @@ func TestHandleBoundResultSkipsRunOnBindError(t *testing.T) {
 	r.POST("/result", func(c *gin.Context) {
 		handleBoundResult(
 			c,
-			validatedStrictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
+			strictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
 			func(context.Context, *handlerResultTestRequest) (gin.H, error) {
 				called = true
 				return gin.H{}, errors.New("unexpected call")
@@ -100,7 +100,7 @@ func TestHandleBoundResultSkipsRunOnBindError(t *testing.T) {
 	})
 
 	resp := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/result", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/result", strings.NewReader(`{"name":`))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(resp, req)
 
@@ -139,7 +139,7 @@ func TestHandleComponentBoundResultSkipsRunOnComponentPathError(t *testing.T) {
 	r.POST("/apps/:appID/components/:componentName", func(c *gin.Context) {
 		handleComponentBoundResult(
 			c,
-			validatedStrictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
+			strictJSONBody[handlerResultTestRequest](bcode.ErrApplicationConfig, true),
 			func(context.Context, string, string, *handlerResultTestRequest) (gin.H, error) {
 				called = true
 				return gin.H{}, nil

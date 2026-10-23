@@ -27,7 +27,7 @@ type ComponentUpdateSpec struct {
 	Action string `json:"action,omitempty"`
 
 	// Name 组件名称
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name"`
 
 	// 以下字段仅在 action 为 update 或 add 时有效
 

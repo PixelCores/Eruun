@@ -15,42 +15,21 @@ import (
 )
 
 type bindingTestRequest struct {
-	Name string `json:"name" validate:"required"`
+	Name string `json:"name"`
 }
 
-func TestBindAndValidateRejectsInvalidPayload(t *testing.T) {
+func TestBindStrictJSONRejectsMalformedPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
 	r.POST("/binding", func(c *gin.Context) {
-		if _, ok := bindAndValidateStrictJSON[bindingTestRequest](c, bcode.ErrApplicationConfig, true); !ok {
+		if _, ok := bindStrictJSON[bindingTestRequest](c, bcode.ErrApplicationConfig, true); !ok {
 			return
 		}
 		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/binding", strings.NewReader(`{"name":`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrApplicationConfig.BusinessCode, envelope.Code)
-}
-
-func TestBindAndValidateRejectsValidationFailure(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	r := gin.New()
-	r.POST("/binding", func(c *gin.Context) {
-		if _, ok := bindAndValidateStrictJSON[bindingTestRequest](c, bcode.ErrApplicationConfig, false); !ok {
-			return
-		}
-		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/binding", strings.NewReader(`{"name":""}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	r.ServeHTTP(resp, req)

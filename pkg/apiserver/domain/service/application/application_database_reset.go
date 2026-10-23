@@ -31,6 +31,16 @@ func (c *applicationsServiceImpl) ResetApplicationDatabases(ctx context.Context,
 	if appID == "" {
 		return nil, bcode.ErrApplicationNotExist
 	}
+	// Request checks run before the lock, so an invalid request stays a 400
+	// under lock contention.
+	requested, err := normalizeDatabaseResetComponents(req.Components)
+	if err != nil {
+		return nil, err
+	}
+	initSQLURL, err := normalizeDatabaseResetInitSQLURL(req.InitSQLURL, req.InitSQLURLProvided())
+	if err != nil {
+		return nil, err
+	}
 	lockProvider, err := c.appScheduleLocker()
 	if err != nil {
 		return nil, err
@@ -38,7 +48,7 @@ func (c *applicationsServiceImpl) ResetApplicationDatabases(ctx context.Context,
 	var resp *apisv1.DatabaseResetResponse
 	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, appID, "reset-application-databases", true, func(lockCtx context.Context) error {
 		var lockErr error
-		resp, lockErr = c.resetApplicationDatabasesUnlocked(lockCtx, appID, req)
+		resp, lockErr = c.resetApplicationDatabasesUnlocked(lockCtx, appID, requested, initSQLURL)
 		return lockErr
 	})
 	if err != nil {
@@ -47,8 +57,7 @@ func (c *applicationsServiceImpl) ResetApplicationDatabases(ctx context.Context,
 	return resp, nil
 }
 
-func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.Context, appID string, req apisv1.DatabaseResetRequest) (*apisv1.DatabaseResetResponse, error) {
-
+func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.Context, appID string, requested []string, initSQLURL string) (*apisv1.DatabaseResetResponse, error) {
 	app, err := c.AppRepo.FindByID(ctx, appID)
 	if err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
@@ -62,12 +71,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 	}
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 
-	databaseComponents, err := selectDatabaseResetComponents(req.Components, components)
-	if err != nil {
-		return nil, err
-	}
-	initSQLURL, err := normalizeDatabaseResetInitSQLURL(req.InitSQLURL, req.InitSQLURLProvided())
-	if err != nil {
+	if err := checkDatabaseResetComponents(requested, components); err != nil {
 		return nil, err
 	}
 	var (
@@ -89,7 +93,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, tx, app.ID); err != nil {
 			return err
 		}
-		workflowSteps, err := model.NewJSONStructByStruct(buildDatabaseResetWorkflowSteps(databaseComponents, initSQLURL))
+		workflowSteps, err := model.NewJSONStructByStruct(buildDatabaseResetWorkflowSteps(requested, initSQLURL))
 		if err != nil {
 			return fmt.Errorf("%w: encode database reset workflow steps: %v", bcode.ErrCreateWorkflow, err)
 		}
@@ -115,24 +119,18 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		AppID:              app.ID,
 		WorkflowID:         workflow.ID,
 		TaskID:             task.TaskID,
-		DatabaseComponents: databaseComponents,
+		DatabaseComponents: requested,
 	}, nil
 }
 
-func selectDatabaseResetComponents(requested []string, components []*model.ApplicationComponent) ([]string, error) {
+// normalizeDatabaseResetComponents returns the requested component names in
+// canonical form, without duplicates.
+func normalizeDatabaseResetComponents(requested []string) ([]string, error) {
 	if len(requested) == 0 {
 		return nil, bcode.ErrApplicationConfig
 	}
-	componentsByName := make(map[string]*model.ApplicationComponent, len(components))
-	for _, component := range components {
-		if component == nil {
-			continue
-		}
-		componentsByName[component.Name] = component
-	}
-
 	seen := make(map[string]struct{}, len(requested))
-	selected := make([]string, 0, len(requested))
+	names := make([]string, 0, len(requested))
 	for _, raw := range requested {
 		name := spec.NormalizeName(raw)
 		if name == "" {
@@ -141,20 +139,32 @@ func selectDatabaseResetComponents(requested []string, components []*model.Appli
 		if _, ok := seen[name]; ok {
 			continue
 		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+// checkDatabaseResetComponents checks that every requested name, already
+// normalized, is a store component of the application.
+func checkDatabaseResetComponents(requested []string, components []*model.ApplicationComponent) error {
+	componentsByName := make(map[string]*model.ApplicationComponent, len(components))
+	for _, component := range components {
+		if component == nil {
+			continue
+		}
+		componentsByName[component.Name] = component
+	}
+	for _, name := range requested {
 		component := componentsByName[name]
 		if component == nil {
-			return nil, fmt.Errorf("%w: component %q not found", bcode.ErrApplicationConfig, name)
+			return fmt.Errorf("%w: component %q not found", bcode.ErrApplicationConfig, name)
 		}
 		if component.ComponentType != config.StoreJob {
-			return nil, fmt.Errorf("%w: component %q is not a store component", bcode.ErrApplicationConfig, name)
+			return fmt.Errorf("%w: component %q is not a store component", bcode.ErrApplicationConfig, name)
 		}
-		seen[name] = struct{}{}
-		selected = append(selected, component.Name)
 	}
-	if len(selected) == 0 {
-		return nil, bcode.ErrApplicationConfig
-	}
-	return selected, nil
+	return nil
 }
 
 func buildDatabaseResetWorkflow(app *model.Applications, steps *model.JSONStruct) *model.Workflow {

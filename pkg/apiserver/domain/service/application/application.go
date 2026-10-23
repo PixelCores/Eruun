@@ -810,10 +810,16 @@ func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1
 
 func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
 	apisv1.NormalizeWorkflowSteps(req.Workflow)
+	// Request checks run before the lock, so an invalid request stays a 400
+	// under lock contention.
+	workflowType, err := validateUpdateApplicationWorkflowRequest(appID, req)
+	if err != nil {
+		return nil, err
+	}
 	var response *apisv1.UpdateWorkflowResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, app *model.Applications) error {
+	_, err = c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, app *model.Applications) error {
 		var updateErr error
-		response, updateErr = c.updateApplicationWorkflowLocked(lockCtx, appID, app, req)
+		response, updateErr = c.updateApplicationWorkflowLocked(lockCtx, appID, app, req, workflowType)
 		return updateErr
 	})
 	if err != nil {
@@ -822,12 +828,8 @@ func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context,
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, app *model.Applications, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
-	workflowType, err := validateUpdateApplicationWorkflowRequest(appID, req)
-	if err != nil {
-		return nil, err
-	}
-	app, err = c.applicationForRequestedID(ctx, appID, app)
+func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, app *model.Applications, req apisv1.UpdateApplicationWorkflowRequest, workflowType config.WorkflowTaskType) (*apisv1.UpdateWorkflowResponse, error) {
+	app, err := c.applicationForRequestedID(ctx, appID, app)
 	if err != nil {
 		return nil, err
 	}

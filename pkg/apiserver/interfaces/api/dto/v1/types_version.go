@@ -8,7 +8,7 @@ import (
 // UpdateVersionRequest 版本更新请求
 type UpdateVersionRequest struct {
 	// Version 新版本号（必填）
-	Version string `json:"version" validate:"required"`
+	Version string `json:"version"`
 
 	// Strategy 历史占位字段，仅接受空值或 rolling；实际更新策略由组件 traits.rollout 控制
 	Strategy string `json:"strategy,omitempty"`
@@ -91,7 +91,7 @@ const (
 // and optionally applies the generated version update.
 type DiffUpdateVersionRequest struct {
 	// SourceAppID source application ID used as the desired version/component snapshot
-	SourceAppID string `json:"sourceAppId" validate:"required"`
+	SourceAppID string `json:"sourceAppId"`
 
 	// DryRun returns the diff without applying it when true
 	DryRun bool `json:"dryRun,omitempty"`

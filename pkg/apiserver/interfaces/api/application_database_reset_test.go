@@ -153,33 +153,6 @@ func TestDatabaseResetEndpointRejectsInvalidInitSQLURLJSON(t *testing.T) {
 	}
 }
 
-func TestDatabaseResetEndpointMissingComponents(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appSvc := &fakeDatabaseResetApplicationService{}
-	appHandler := &applications{
-		ApplicationService: appSvc,
-		WorkflowService:    &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.POST("/applications/:appID/database-reset", appHandler.resetApplicationDatabases)
-
-	req := httptest.NewRequest(http.MethodPost, "/applications/app-123/database-reset", strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("unexpected status code: %d body=%s", resp.Code, resp.Body.String())
-	}
-	result := decodeResponse(t, resp.Body.Bytes(), nil)
-	if result.Code != bcode.ErrApplicationConfig.BusinessCode {
-		t.Fatalf("expected application config error, got %+v", result)
-	}
-	if appSvc.lastAppID != "" {
-		t.Fatalf("service should not be called on invalid request")
-	}
-}
-
 func TestDatabaseResetEndpointBusinessError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	appSvc := &fakeDatabaseResetApplicationService{

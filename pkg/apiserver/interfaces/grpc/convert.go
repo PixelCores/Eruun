@@ -1,7 +1,6 @@
 package grpcapi
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -9,6 +8,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
 // decodeTypedRequest converts a generated, field-checked protobuf message into
@@ -39,9 +40,7 @@ func decodeTypedRequest[D any](request proto.Message) (D, error) {
 	if err != nil {
 		return result, fmt.Errorf("marshal domain JSON: %w", err)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&result); err != nil {
+	if err := apis.DecodeStrictJSON(data, &result); err != nil {
 		return result, fmt.Errorf("decode domain request: %w", err)
 	}
 	return result, nil

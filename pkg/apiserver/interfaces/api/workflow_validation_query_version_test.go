@@ -370,37 +370,6 @@ func TestTryWorkflowRejectsLegacyStepsField(t *testing.T) {
 	require.False(t, validationSvc.called)
 }
 
-func TestCreateApplicationsValidationErrorUsesApplicationConfigCode(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-	}
-	r := gin.New()
-	r.POST("/applications", appHandler.createApplications)
-
-	body := `{"name":"x"}`
-	req := httptest.NewRequest(http.MethodPost, "/applications", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-
-	r.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("unexpected status code: %d", resp.Code)
-	}
-
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	if envelope.Code != bcode.ErrApplicationConfig.BusinessCode {
-		t.Fatalf("unexpected response code: %d", envelope.Code)
-	}
-	if envelope.Message != bcode.ErrApplicationConfig.Message {
-		t.Fatalf("unexpected response message: %s", envelope.Message)
-	}
-	if string(envelope.Data) != "null" {
-		t.Fatalf("expected null data, got: %s", string(envelope.Data))
-	}
-}
-
 func TestCreateApplicationsAcceptsStorageSubPathExpr(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	appSvc := &fakeCreateAndExecApplicationService{}
@@ -1148,28 +1117,6 @@ func TestDiffUpdateVersionEndpointDryRun(t *testing.T) {
 	require.False(t, *appSvc.lastDiffReq.AutoExec)
 }
 
-func TestDiffUpdateVersionEndpointRejectsMissingSourceAppID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appSvc := &fakeUpdateVersionService{}
-	appHandler := &applications{
-		ApplicationService: appSvc,
-		WorkflowService:    &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.POST("/applications/:appID/version/diff-update", appHandler.diffUpdateVersion)
-
-	req := httptest.NewRequest(http.MethodPost, "/applications/target-app/version/diff-update", strings.NewReader(`{"dryRun":true}`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrApplicationConfig.BusinessCode, envelope.Code)
-	require.Empty(t, appSvc.lastDiffID)
-}
-
 func TestCancelDelayedVersionUpdateEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wfSvc := &fakeWorkflowService{}
@@ -1188,29 +1135,13 @@ func TestCancelDelayedVersionUpdateEndpoint(t *testing.T) {
 	require.Equal(t, "app-1", wfSvc.lastCancelAppID)
 	require.Equal(t, "task-delay-1", wfSvc.lastCancelTaskID)
 	require.Equal(t, "manual cancel", wfSvc.lastCancelReason)
-	require.Equal(t, config.DefaultTaskRevoker, wfSvc.lastCancelUser)
+	// The user is forwarded as sent; the service applies the default revoker.
+	require.Empty(t, wfSvc.lastCancelUser)
 
 	var payload apis.CancelWorkflowResponse
 	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
 	require.Equal(t, "task-delay-1", payload.TaskID)
 	require.Equal(t, string(config.StatusCancelled), payload.Status)
-}
-
-func TestCancelDelayedVersionUpdateEndpointInvalidRequest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	wfSvc := &fakeWorkflowService{}
-	appHandler := &applicationWorkflows{WorkflowService: wfSvc}
-	r := gin.New()
-	r.POST("/applications/:appID/version/cancel", appHandler.cancelDelayedVersionUpdate)
-
-	body := `{"reason":"missing task id"}`
-	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/version/cancel", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	require.False(t, wfSvc.cancelDelayedCalled)
 }
 
 func TestCancelDelayedVersionUpdateEndpointNotCancellable(t *testing.T) {

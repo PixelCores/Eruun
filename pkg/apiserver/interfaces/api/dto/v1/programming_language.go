@@ -17,9 +17,9 @@ type ProgrammingLanguage struct {
 
 // CreateProgrammingLanguageRequest creates a programming language.
 type CreateProgrammingLanguageRequest struct {
-	Name    string `json:"name" validate:"required"`
-	Version string `json:"version" validate:"required"`
-	Enabled *bool  `json:"enabled" validate:"required"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Enabled *bool  `json:"enabled"`
 	CPUReq  string `json:"cpuReq,omitempty"`
 	MemReq  string `json:"memReq,omitempty"`
 }

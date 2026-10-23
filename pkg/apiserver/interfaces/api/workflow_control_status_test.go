@@ -170,25 +170,6 @@ func TestApproveWorkflowTaskEndpoint(t *testing.T) {
 	require.Equal(t, "looks good", svc.lastCancelReason)
 }
 
-func TestApproveWorkflowTaskEndpointRejectsInvalidAction(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	svc := &fakeWorkflowService{}
-	appHandler := &applicationWorkflows{
-		WorkflowService: svc,
-	}
-	r := gin.New()
-	r.POST("/workflow/tasks/:taskID/approval", appHandler.approveWorkflowTask)
-
-	body := `{"action":"invalid"}`
-	req := httptest.NewRequest(http.MethodPost, "/workflow/tasks/task-approve-2/approval", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.NotEqual(t, http.StatusOK, resp.Code)
-	require.False(t, svc.approveCalled)
-}
-
 func TestGetWorkflowTaskStatusEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{

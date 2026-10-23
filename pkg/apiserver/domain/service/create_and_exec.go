@@ -26,8 +26,8 @@ func ExecuteCreateAndExecApplication(
 	idempotencyKey string,
 	execFailureMessage func(error) string,
 ) (*apis.CreateAndExecApplicationResponse, error) {
-	if !spec.ValidAPIName(req.Name, datastore.PrimaryKeyMaxLength) ||
-		(req.WorkflowID != "" && !spec.ValidAPIName(req.WorkflowID, datastore.PrimaryKeyMaxLength)) {
+	// The workflow is checked before CreateApplications so a bad ID creates nothing.
+	if req.WorkflowID != "" && !spec.ValidAPIName(req.WorkflowID, datastore.PrimaryKeyMaxLength) {
 		return nil, bcode.ErrApplicationConfig
 	}
 	created, err := applications.CreateApplications(ctx, req.CreateApplicationsRequest)

@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/require"
 	"k8s.io/klog/v2"
 
@@ -86,22 +85,6 @@ func TestReturnErrorUsesExplicitSafeClientMessage(t *testing.T) {
 	require.Equal(t, "component mysql changes StatefulSet immutable field serviceName; explicit migration or recreation is required", resp.Message)
 	require.NotContains(t, recorder.Body.String(), "secret-old")
 	require.NotContains(t, recorder.Body.String(), "secret-new")
-}
-
-func TestReturnErrorMapsValidatorErrorToApplicationConfig(t *testing.T) {
-	type request struct {
-		Name string `validate:"required"`
-	}
-	err := validator.New().Struct(request{})
-	require.Error(t, err)
-
-	c, recorder := testGinContext()
-	ReturnError(c, err)
-
-	require.Equal(t, int(bcode.ErrApplicationConfig.HTTPCode), recorder.Code)
-	resp := decodeBcodeResponse(t, recorder)
-	require.Equal(t, bcode.ErrApplicationConfig.BusinessCode, resp.Code)
-	require.Equal(t, bcode.ErrApplicationConfig.Message, resp.Message)
 }
 
 func testGinContext() (*gin.Context, *httptest.ResponseRecorder) {

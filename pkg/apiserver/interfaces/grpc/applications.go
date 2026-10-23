@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
@@ -214,7 +213,6 @@ func (s *ApplicationsServer) UpdateApplicationWorkflow(ctx context.Context, req 
 	if err != nil {
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
-	input.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(input.WorkflowType))))
 	resp, err := s.Applications.UpdateApplicationWorkflow(ctx, req.AppId, input)
 	return typedResult(resp, err, &eruunv1.AppDTOUpdateWorkflowResponse{})
 }
@@ -368,7 +366,6 @@ func (s *ApplicationsServer) TryWorkflow(ctx context.Context, req *eruunv1.Updat
 	if err != nil {
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
-	input.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(input.WorkflowType))))
 	tryReq := apis.TryWorkflowRequest{
 		WorkflowID: input.WorkflowID, Name: input.Name, Alias: input.Alias, WorkflowType: input.WorkflowType,
 		Callback: input.Callback, FailurePolicy: input.FailurePolicy, FailurePolicySet: input.FailurePolicySet, Workflow: input.Workflow,

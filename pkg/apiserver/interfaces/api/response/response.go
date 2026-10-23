@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -62,12 +61,6 @@ func ReturnError(c *gin.Context, err error) {
 
 	if errors.Is(err, datastore.ErrRecordNotExist) {
 		ReturnErrorWithMessage(c, bcode.ErrNotFound, "")
-		return
-	}
-
-	var validErr validator.ValidationErrors
-	if errors.As(err, &validErr) {
-		ReturnErrorWithMessage(c, bcode.ErrApplicationConfig, "")
 		return
 	}
 

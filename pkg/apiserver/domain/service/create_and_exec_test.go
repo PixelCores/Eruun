@@ -150,7 +150,6 @@ func TestExecuteCreateAndExecApplicationRejectsInvalidRequestBeforeCreate(t *tes
 		appName    string
 		workflowID string
 	}{
-		{name: "invalid application name", appName: "Invalid Name"},
 		{name: "invalid workflow ID", appName: "sample", workflowID: "Bad ID"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

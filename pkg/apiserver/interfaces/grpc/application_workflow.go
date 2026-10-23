@@ -2,7 +2,6 @@ package grpcapi
 
 import (
 	"context"
-	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -34,20 +33,13 @@ func (s *ApplicationsServer) cancelWorkflow(ctx context.Context, req *eruunv1.Ca
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
 	input, err := decodeTypedRequest[apis.CancelWorkflowRequest](req.Request)
-	if err != nil || input.TaskID == "" {
+	if err != nil {
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
-	user := input.User
 	if delayed {
-		user = strings.TrimSpace(user)
-	}
-	if user == "" {
-		user = config.DefaultTaskRevoker
-	}
-	if delayed {
-		err = s.Workflow.CancelDelayedVersionTaskForApp(ctx, req.AppId, user, input.TaskID, input.Reason)
+		err = s.Workflow.CancelDelayedVersionTaskForApp(ctx, req.AppId, input.User, input.TaskID, input.Reason)
 	} else {
-		err = s.Workflow.CancelWorkflowTaskForApp(ctx, req.AppId, user, input.TaskID, input.Reason)
+		err = s.Workflow.CancelWorkflowTaskForApp(ctx, req.AppId, input.User, input.TaskID, input.Reason)
 	}
 	return typedResult(apis.CancelWorkflowResponse{TaskID: input.TaskID, Status: string(config.StatusCancelled)}, err, &eruunv1.AppDTOCancelWorkflowResponse{})
 }
@@ -100,15 +92,7 @@ func (s *ApplicationsServer) ApproveWorkflowTask(ctx context.Context, req *eruun
 	if err != nil {
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
-	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
-	if input.Action != "continue" && input.Action != "cancel" {
-		return nil, rpcError(bcode.ErrWorkflowConfig)
-	}
-	user := strings.TrimSpace(input.User)
-	if user == "" {
-		user = config.DefaultTaskRevoker
-	}
-	resp, err := s.Workflow.ApproveWorkflowTask(ctx, req.TaskId, input.Action, user, input.Reason)
+	resp, err := s.Workflow.ApproveWorkflowTask(ctx, req.TaskId, input.Action, input.User, input.Reason)
 	return typedResult(resp, err, &eruunv1.AppDTOTaskApprovalResponse{})
 }
 

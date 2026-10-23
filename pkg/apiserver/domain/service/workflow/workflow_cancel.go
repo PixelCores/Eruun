@@ -36,6 +36,10 @@ func (w *workflowServiceImpl) CancelWorkflowTask(ctx context.Context, userName, 
 }
 
 func (w *workflowServiceImpl) CancelWorkflowTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error {
+	if taskID == "" {
+		return bcode.ErrWorkflowConfig
+	}
+	userName = taskRevoker(userName)
 	task, err := repository.TaskByID(ctx, w.Store, taskID)
 	if err != nil {
 		return err
@@ -51,10 +55,7 @@ func (w *workflowServiceImpl) CancelAllWorkflowTasksForApp(ctx context.Context, 
 	if appID == "" {
 		return nil, bcode.ErrApplicationNotExist
 	}
-	userName = strings.TrimSpace(userName)
-	if userName == "" {
-		userName = config.DefaultTaskRevoker
-	}
+	userName = taskRevoker(userName)
 
 	tasks, err := repository.FindWorkflowTasksByAppID(ctx, w.Store, appID)
 	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
@@ -108,6 +109,10 @@ func (w *workflowServiceImpl) shouldCancelTaskWithStore(ctx context.Context, sto
 }
 
 func (w *workflowServiceImpl) CancelDelayedVersionTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error {
+	if taskID == "" {
+		return bcode.ErrWorkflowConfig
+	}
+	userName = taskRevoker(userName)
 	task, err := repository.TaskByID(ctx, w.Store, taskID)
 	if err != nil {
 		return err
@@ -127,6 +132,7 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 	if taskID == "" {
 		return nil, bcode.ErrWorkflowTaskNotExist
 	}
+	userName = taskRevoker(userName)
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	if normalizedAction != workflowApprovalActionContinue && normalizedAction != workflowApprovalActionCancel {
 		return nil, bcode.ErrWorkflowApprovalActionInvalid
@@ -177,19 +183,15 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		}, nil
 	}
 
-	user := strings.TrimSpace(userName)
-	if user == "" {
-		user = config.DefaultTaskRevoker
-	}
 	cancelReason := strings.TrimSpace(reason)
 	if cancelReason == "" {
-		cancelReason = fmt.Sprintf("cancelled by %s", user)
+		cancelReason = fmt.Sprintf("cancelled by %s", userName)
 	}
 	cancelUpdates := map[string]interface{}{
 		"approval_pending":      false,
 		"pending_approval_step": "",
 		"status":                config.StatusCancelled,
-		"task_revoker":          user,
+		"task_revoker":          userName,
 		"cancel_source":         config.CancelSourceUser,
 		"run_token":             "",
 		"worker_id":             "",
@@ -214,7 +216,7 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 	task.Status = config.StatusCancelled
 	task.ApprovalPending = false
 	task.PendingApprovalStep = ""
-	task.TaskRevoker = user
+	task.TaskRevoker = userName
 	task.CancelSource = config.CancelSourceUser
 	task.RunToken = ""
 	task.WorkerID = ""
@@ -527,4 +529,12 @@ func hasNonterminalWorkflowJobs(ctx context.Context, store datastore.DataStore, 
 		}
 	}
 	return false, nil
+}
+
+// taskRevoker is the user recorded for a cancel or approval request.
+func taskRevoker(userName string) string {
+	if userName = strings.TrimSpace(userName); userName == "" {
+		return config.DefaultTaskRevoker
+	}
+	return userName
 }

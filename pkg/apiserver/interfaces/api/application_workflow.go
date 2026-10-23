@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
@@ -55,11 +54,6 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
-	if err := validate.Struct(req); err != nil {
-		apiresponse.ReturnError(c, bcode.ErrWorkflowConfig)
-		return
-	}
 	ctx := c.Request.Context()
 	klog.InfoS("update workflow request received", "appID", appID, "workflowID", req.WorkflowID, "name", req.Name)
 	resp, err := app.ApplicationService.UpdateApplicationWorkflow(ctx, appID, *req)
@@ -87,7 +81,7 @@ func (app *applicationWorkflows) upsertWorkflowSchedule(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		appIDPathParam,
-		validatedStrictJSONBody[apis.UpsertWorkflowScheduleRequest](bcode.ErrWorkflowConfig, true),
+		strictJSONBody[apis.UpsertWorkflowScheduleRequest](bcode.ErrWorkflowConfig, true),
 		func(ctx context.Context, appID string, req *apis.UpsertWorkflowScheduleRequest) (*apis.UpsertWorkflowScheduleResponse, error) {
 			return app.WorkflowService.UpsertWorkflowSchedule(ctx, appID, *req)
 		},
@@ -119,7 +113,7 @@ func (app *applicationWorkflows) execApplicationWorkflow(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		appIDPathParam,
-		validatedStrictJSONBody[apis.ExecWorkflowRequest](bcode.ErrWorkflowConfig, true),
+		strictJSONBody[apis.ExecWorkflowRequest](bcode.ErrWorkflowConfig, true),
 		func(ctx context.Context, appID string, req *apis.ExecWorkflowRequest) (*apis.ExecWorkflowResponse, error) {
 			resp, err := app.WorkflowService.ExecWorkflowTaskForApp(ctx, appID, req.WorkflowID, req.ExecuteAt, idempotencyKey)
 			if resp != nil {
@@ -131,9 +125,7 @@ func (app *applicationWorkflows) execApplicationWorkflow(c *gin.Context) {
 }
 
 func (app *applicationWorkflows) cancelApplicationWorkflow(c *gin.Context) {
-	app.cancelWorkflow(c, app.WorkflowService.CancelWorkflowTaskForApp, func(user string) string {
-		return user
-	})
+	app.cancelWorkflow(c, app.WorkflowService.CancelWorkflowTaskForApp)
 }
 
 func (app *applicationWorkflows) cancelAllApplicationWorkflows(c *gin.Context) {
@@ -166,16 +158,7 @@ func (app *applicationWorkflows) approveWorkflowTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
-	if err := validate.Struct(req); err != nil {
-		apiresponse.ReturnError(c, bcode.ErrWorkflowConfig)
-		return
-	}
-	user := strings.TrimSpace(req.User)
-	if user == "" {
-		user = config.DefaultTaskRevoker
-	}
-	resp, err := app.WorkflowService.ApproveWorkflowTask(c.Request.Context(), taskID, req.Action, user, req.Reason)
+	resp, err := app.WorkflowService.ApproveWorkflowTask(c.Request.Context(), taskID, req.Action, req.User, req.Reason)
 	respondWithResult(c, resp, err)
 }
 
@@ -233,31 +216,23 @@ func (app *applicationWorkflows) getWorkflowTaskStages(c *gin.Context) {
 }
 
 func (app *applicationWorkflows) cancelDelayedVersionUpdate(c *gin.Context) {
-	app.cancelWorkflow(c, app.WorkflowService.CancelDelayedVersionTaskForApp, strings.TrimSpace)
+	app.cancelWorkflow(c, app.WorkflowService.CancelDelayedVersionTaskForApp)
 }
 
 func (app *applicationWorkflows) cancelWorkflow(
 	c *gin.Context,
 	cancelFn func(context.Context, string, string, string, string) error,
-	normalizeUser func(string) string,
 ) {
 	appID, ok := appIDPathParam(c)
 	if !ok {
 		return
 	}
-	req, ok := bindAndValidateStrictJSON[apis.CancelWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
+	req, ok := bindStrictJSON[apis.CancelWorkflowRequest](c, bcode.ErrWorkflowConfig, true)
 	if !ok {
 		return
 	}
-	user := req.User
-	if normalizeUser != nil {
-		user = normalizeUser(user)
-	}
-	if user == "" {
-		user = config.DefaultTaskRevoker
-	}
 	ctx := c.Request.Context()
-	if err := cancelFn(ctx, appID, user, req.TaskID, req.Reason); err != nil {
+	if err := cancelFn(ctx, appID, req.User, req.TaskID, req.Reason); err != nil {
 		apiresponse.ReturnError(c, err)
 		return
 	}
@@ -310,7 +285,6 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 		return
 	}
 
-	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
 	tryReq := apis.TryWorkflowRequest{
 		WorkflowID:       req.WorkflowID,
 		Name:             req.Name,
