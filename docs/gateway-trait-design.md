@@ -1,6 +1,6 @@
 # Gateway Trait 与网络入口设计
 
-> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。当前 `main` 仍只有 `traits.ingress`；第 1 节的决策除标明待确认的项外均已确认，但本文的类型、字段、配置和 Job 类型都未实现，不构成 API 或部署承诺。
+> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。当前 `main` 仍只有 `traits.ingress`；第 1 节的决策已全部确认，但本文的类型、字段、配置和 Job 类型都未实现，不构成 API 或部署承诺。
 >
 > 基线：`origin/main` `a73d15f`（2026-10-23）。Eruun 尚未发布，本方案直接替换 `traits.ingress`，不保留兼容字段、别名或迁移窗口。本文经 Codex 两轮独立审核与一轮设计讨论（R1–R14、S1–S8）。
 
@@ -10,14 +10,14 @@
 | --- | --- | --- |
 | G1 | `traits.gateway` 直接替换 `traits.ingress`，不做双轨与数据迁移 | 已确认（2026-10-23） |
 | G2 | 入站渲染后端为 `gatewayapi`（主路径，Istio、Envoy Gateway、kgateway 等经 Gateway API 接入）和 `ingress`；首期不生成 Istio `VirtualService` | 已确认（2026-10-23） |
-| G3 | 后端由平台配置决定；用户 DSL 不出现 provider、class、gateway 引用或注解；不做运行时自动探测 | 已确认（2026-10-23） |
+| G3 | 后端由平台在部署时选定（见 G10）；用户 DSL 不出现 provider、class、gateway 引用或注解；不做运行时自动探测 | 已确认（2026-10-23） |
 | G4 | 首期只实现南北向 HTTP 入站（含 SSE、WebSocket）：host、path、超时、rewrite；服务网格与出站进入后续阶段 | 已确认（2026-10-23） |
 | G5 | TLS 在平台入口终止，证书由平台提供；Trait 不带证书字段 | 已确认（2026-10-23） |
 | G6 | 首期 backend 只能指向本组件的 Service；不做跨组件 backend 和按权重分流 | 已确认（2026-10-23） |
 | G7 | host 为单层名称 `<前缀>-<空间 namespace>.<domain>`，平台一张 `*.<domain>` 证书覆盖全部空间 | 已确认（2026-10-23） |
 | G8 | 删除按 host 区分路由的能力：一个组件的所有 host 共用同一组路由 | 已确认（2026-10-23） |
 | G9 | `gateway` 定义为组件跨空间边界的入站与出站声明，`service` 只负责集群内端点；首期只实现入站，出站方向写入本文（§11.1），Schema 不预留 `egress` 字段 | 已确认（2026-10-23） |
-| G10 | 入口资源权限只授予运行时生成的空间 Role；平台 ClusterRole 不含入口专属规则，Helm 与静态清单无需知道后端选择 | 推荐（与 Codex 讨论后的共识），待确认 |
+| G10 | 入站后端在 Helm 安装时选定：`values.yaml` 的 `gateway` 是唯一来源，同时渲染服务端配置（`ERUUN_GATEWAY_*`）与 ClusterRole 中所选后端的规则，账号配置 Secret 不再保存入口配置；`gatewayapi` 时由 chart 创建平台 `Gateway` 对象；网络组件（Istio、Gateway Controller、Ingress Controller）仍由平台单独安装 | 已确认（2026-10-23） |
 
 ## 2. 背景
 
@@ -53,6 +53,7 @@
 7. **平台配置写入用户数据**：空间策略把 `ingressClassName`、默认 host（含平台域名）写进组件 Traits 并持久化，平台更换入口实现或域名后，存量组件的 spec 与平台配置不一致。
 8. **证书无法统一**：默认 host `<组件>.<namespace>.<domain>` 有两级子域，一张 `*.<domain>` 通配证书覆盖不了，只能每个空间一张证书。
 9. **长请求无法通用表达**：LLM 长上下文预填充或推理模型首个 token 前可能长时间无输出，Agent 工具调用也可能是长请求；当前契约没有可移植的请求超时。
+10. **配置来源分裂**：入口配置（`ingressDomain`、`ingressClass`、`ingressNamespace`）在账号配置 Secret 中，Helm 只接收 Secret 名字，ClusterRole 却由 Helm 静态渲染，两边互不知道对方；平台 Gateway 的 `allowedRoutes` 要匹配 Eruun 空间 namespace 的 label，这一 Eruun 内部约定也只能靠平台手工对齐。
 
 ## 3. 概念、目标与非目标
 
@@ -61,7 +62,7 @@
 | Trait | 负责 | 不负责 |
 | --- | --- | --- |
 | `service` | 组件在集群内的服务端点：Service 名、端口、协议 | 跨空间边界的访问 |
-| `gateway` | 组件跨越空间边界的流量声明：**入站**（向空间外提供什么访问入口）与**出站**（需要访问空间外的哪些目标） | 平台网关、证书、DNS、网络策略资源本身；这些归平台所有 |
+| `gateway` | 组件跨越空间边界的流量声明：**入站**（向空间外提供什么访问入口）与**出站**（需要访问空间外的哪些目标） | 网络组件、平台 `Gateway` 对象、证书、DNS、网络策略资源本身；它们由平台或 Eruun 的 Helm release 管理，不归任何组件所有 |
 
 - 首期 `gateway` 只有入站部分（`hosts`、`routes`）。出站的方向与约束见 §11.1，Schema 不预留字段，需求明确后直接扩展契约。
 - “跨空间”不等于“经过实体网关”：访问另一空间中的模型 Service 同样跨空间，可能直接走集群网络，但仍属于 `gateway` 出站声明与空间策略管辖。
@@ -71,7 +72,7 @@
 ### 3.2 目标
 
 - 一个与工作负载类型无关的入站声明。LLM 服务、Agent 应用和普通 Web 服务都用同一个 `traits.gateway` 声明对外暴露，不按产品名新增 Trait。
-- 平台在部署配置中选择入口实现，同一份应用 spec 在 Ingress 集群和 Gateway API（含 Istio）集群中都可部署。
+- 平台在 Helm 安装时选择入口实现，同一份应用 spec 在 Ingress 集群和 Gateway API（含 Istio）集群中都可部署；入口配置、权限与平台 `Gateway` 对象来自同一份 values。
 - 每个 Trait 字段在所选后端上要么正确生效，要么在 Try/保存时明确失败；不静默丢弃字段。
 - 平台配置（后端、域名、平台网关引用）只在校验、渲染与展示时读取，不写入组件 spec。
 - 删掉 Ingress 专属的兼容与注解逻辑，入口链路只有一种 Job 类型。
@@ -79,7 +80,7 @@
 
 ### 3.3 非目标
 
-- 不安装或管理 Istio、Gateway Controller、GatewayClass、Gateway、证书和 DNS；它们归平台所有。
+- 不安装或管理网络组件（Istio、Gateway Controller、Ingress Controller）、GatewayClass、Gateway API CRD、证书和 DNS；它们由平台单独安装。Eruun 的 Helm chart 只在 `gatewayapi` 时创建平台 `Gateway` 对象（§6.6）。
 - 首期不实现出站，不做跨组件路由、按权重分流、header 匹配、镜像流量、重试和限流；不生成 `VirtualService`、`GRPCRoute`、`TCPRoute`。
 - 不做 Eruun 自己的服务网格或流量控制平面：Eruun 声明流量意图，翻译为集群已安装的网络 API。
 
@@ -115,9 +116,12 @@ flowchart LR
         J[route_deploy Job<br/>空间 dynamic client]
         W[写入边界<br/>tenantTransport]
     end
-    subgraph Platform[平台所有 · Eruun 只读引用]
-        CFG[workspace.gateway 配置]
-        GW[Gateway / IngressClass<br/>*.domain 证书 / DNS]
+    subgraph Release[Eruun Helm release]
+        CFG[values.gateway<br/>→ ERUUN_GATEWAY_* / ClusterRole]
+        GW[平台 Gateway 对象<br/>仅 gatewayapi]
+    end
+    subgraph Platform[平台单独安装]
+        NET[Istio / Gateway Controller / Ingress Controller<br/>GatewayClass · IngressClass · 证书 · DNS]
     end
     subgraph K8s[空间 namespace · 组件所有]
         HR[HTTPRoute]
@@ -131,7 +135,8 @@ flowchart LR
     W -- provider=gatewayapi --> HR
     W -- provider=ingress --> ING
     HR -- parentRefs --> GW
-    ING -- ingressClassName --> GW
+    GW -- gatewayClassName --> NET
+    ING -- ingressClassName --> NET
     HR --> SVC
     ING --> SVC
 ```
@@ -142,9 +147,9 @@ flowchart LR
 - **平台校验**检查与平台配置相关的规则：平台是否配置了 gateway、host 归属与长度、当前后端是否支持所用字段。它只读，不修改 spec。
 - **渲染**读取平台配置，计算最终 hosts，生成 HTTPRoute 或 Ingress。
 - **写入边界**对最终载荷做最后校验，防止任何上游路径绕过策略。
-- **平台资源**只被引用，组件删除时永不清理，与“组件清理只删除自己拥有的资源”约束一致。
+- **平台 `Gateway` 对象**归 Eruun 的 Helm release 所有，网络组件归平台所有；组件只引用它们，组件删除时永不清理，与“组件清理只删除自己拥有的资源”约束一致。
 
-Try/保存的结论只对当时的平台配置成立。所有节点读取同一份账号配置 Secret；平台配置变化后重新部署，按新配置渲染，与 `nodePool` 在 Try/保存时检查引用、部署时重新解析的做法一致。
+Try/保存的结论只对当时的平台配置成立。所有节点由同一个 Helm release 注入相同的 `ERUUN_GATEWAY_*`（`helm upgrade` 滚动更新期间新旧节点并存，见 §7.3）；平台配置变化（`helm upgrade`）后重新部署，按新配置渲染，与 `nodePool` 在 Try/保存时检查引用、部署时重新解析的做法一致。
 
 ## 5. 公共契约
 
@@ -314,15 +319,40 @@ Agent 应用（UI 与 API 同一组件，API 去掉前缀转发）：
 
 ### 6.1 平台配置
 
-`WorkspaceConfig` 的 `ingressDomain`、`ingressClass`、`ingressNamespace` 删除，替换为一个 `gateway` 对象。它仍位于 `ERUUN_AUTH_CONFIG_FILE` 加载的账号配置中，与 host 归属、NetworkPolicy 和写入边界所用的其他空间配置在一起：
+入站后端在 Helm 安装时选定（G10）。`values.yaml` 的 `gateway` 是唯一来源，chart 用它渲染三样东西：服务端配置（`ERUUN_GATEWAY_*` 环境变量）、ClusterRole 中所选后端的规则（§7.4）、`gatewayapi` 时的平台 `Gateway` 对象（§6.6）。`WorkspaceConfig` 的 `ingressDomain`、`ingressClass`、`ingressNamespace` 从账号配置 Secret 中删除，不再保存任何入口配置。
+
+```yaml
+# deploy/helm/eruun/values.yaml
+gateway:
+  # "" 关闭入站（traits.gateway 被拒绝）；ingress 或 gatewayapi
+  provider: ""
+  domain: ""            # 例如 apps.example.com
+  # 网关数据面 Pod 所在 namespace，空间基线 NetworkPolicy 放行它的入站流量。
+  # ingress 必填；gatewayapi 省略时等于 gatewayapi.namespace（Istio 把网关 Pod 部署在 Gateway 所在 namespace）
+  proxyNamespace: ""
+  ingress:
+    className: ""       # IngressClass，例如 nginx
+  gatewayapi:
+    namespace: ""       # 平台 Gateway 对象所在 namespace，需已存在，例如 istio-ingress
+    className: ""       # GatewayClass，例如 istio
+    tlsSecretName: ""   # *.<domain> 通配证书 Secret，位于 gatewayapi.namespace
+```
+
+`proxyNamespace` 与 `gatewayapi.namespace` 分开：Istio 把网关 Pod 部署在 Gateway 所在 namespace，Envoy Gateway 默认部署在自己的控制器 namespace，两者不总是相同。
+
+服务端用现有 flag 与 `ERUUN_` 环境变量机制接收（`pkg/apiserver/config`）：
+
+| flag | 环境变量 | 来源 |
+| --- | --- | --- |
+| `--gateway-provider` | `ERUUN_GATEWAY_PROVIDER` | `gateway.provider` |
+| `--gateway-domain` | `ERUUN_GATEWAY_DOMAIN` | `gateway.domain` |
+| `--gateway-proxy-namespace` | `ERUUN_GATEWAY_PROXY_NAMESPACE` | `gateway.proxyNamespace`，`gatewayapi` 时缺省为 `gatewayapi.namespace` |
+| `--gateway-ingress-class` | `ERUUN_GATEWAY_INGRESS_CLASS` | `gateway.ingress.className` |
+| `--gateway-parent-namespace` | `ERUUN_GATEWAY_PARENT_NAMESPACE` | `gateway.gatewayapi.namespace` |
+| `--gateway-parent-name` | `ERUUN_GATEWAY_PARENT_NAME` | chart 创建的 Gateway 名（§6.6），不由用户填写 |
 
 ```go
-// pkg/apiserver/domain/spec/accounts.go
-type WorkspaceConfig struct {
-	// ...
-	Gateway *GatewayConfig `json:"gateway,omitempty"`
-}
-
+// pkg/apiserver/domain/spec/gateway.go
 type GatewayProvider string
 
 const (
@@ -330,58 +360,71 @@ const (
 	GatewayProviderIngress    GatewayProvider = "ingress"
 )
 
-// GatewayConfig selects the platform-owned inbound entry point for all workspaces.
+// GatewayConfig is the inbound entry point selected when the platform is installed.
 type GatewayConfig struct {
-	Provider GatewayProvider `json:"provider"`
-	Domain   string          `json:"domain"`
-	// ProxyNamespace hosts the data-plane Pods admitted by workspace NetworkPolicy.
-	ProxyNamespace string            `json:"proxyNamespace"`
-	ParentRef      *GatewayParentRef `json:"parentRef,omitempty"`
-	ClassName      string            `json:"className,omitempty"`
+	Provider       GatewayProvider
+	Domain         string
+	ProxyNamespace string
+	IngressClass   string
+	// ParentRef names the platform Gateway listener that workspace routes attach to.
+	ParentRef GatewayParentRef
 }
 
 type GatewayParentRef struct {
-	Namespace   string `json:"namespace"`
-	Name        string `json:"name"`
-	SectionName string `json:"sectionName,omitempty"`
+	Namespace   string
+	Name        string
+	SectionName string
+}
+
+// pkg/apiserver/config/config.go
+type Config struct {
+	// ...
+	Gateway spec.GatewayConfig
 }
 ```
 
-配置示例：
+`ParentRef.SectionName` 只在 `gatewayapi` 下由服务装配固定为 chart 渲染的 HTTPS 监听器名 `https`，不暴露为 flag。
 
-```json
-{
-  "workspace": {
-    "gateway": {
-      "provider": "gatewayapi",
-      "domain": "apps.example.com",
-      "proxyNamespace": "istio-ingress",
-      "parentRef": { "namespace": "istio-ingress", "name": "public" }
-    }
-  }
+平台配置随现有的空间策略对象传递，不新增传参链路：
+
+```go
+// pkg/apiserver/domain/spec/accounts.go
+type WorkspaceConfig struct {
+	// ...
+	// Gateway is filled from Config.Gateway during server assembly and is never
+	// decoded from the account configuration Secret.
+	Gateway GatewayConfig `json:"-"`
 }
 ```
 
-```json
-{
-  "workspace": {
-    "gateway": {
-      "provider": "ingress",
-      "domain": "apps.example.com",
-      "proxyNamespace": "ingress-nginx",
-      "className": "nginx"
-    }
-  }
-}
-```
+- 现有所有携带 `WorkspaceConfig` 的路径因此自动拿到入口配置，不需要逐个改构造点：`workspace.Manager` 的各构造点（`controller_run.go`、`workflow.go` 等）、`TenantClient` 与 `APIClient` 包装的 `tenantTransport`/`requestTransport`、`PrepareResource` 重新构造的 `tenantTransport`、任务准备阶段的 `PrepareTask`、空间 Role 与 NetworkPolicy 生成。
+- 校验、渲染与展示读 `Config.Gateway`，与 `WorkspaceConfig.Gateway` 是服务装配时赋入的同一个值。
+- `WorkspaceConfig` 因此是空间策略的运行时视图：`Gateway` 来自服务端配置，其余字段来自账号配置 Secret。
+- 账号配置按现有方式严格解码（`DisallowUnknownFields`）。Secret 中残留 `ingressDomain` 等旧字段，或写入 `gateway` 字段，都会让启动失败，不会被静默忽略。
 
-加载时校验（`AccountConfig` 现有校验位置，失败则启动失败）：
+**一致性规则**：每种 provider 的必填、禁止与派生字段如下。
 
-- `gateway` 省略：所有空间拒绝 `traits.gateway`，与当前“不设置域名则拒绝 Ingress”一致。
-- `provider` 必须是两个枚举值之一；`domain`、`proxyNamespace` 必填且为 DNS-1123 名称。
-- `gatewayapi` 必须有 `parentRef`，不得有 `className`；`ingress` 必须有 `className`，不得有 `parentRef`。
+| 字段 | `provider=""` | `ingress` | `gatewayapi` |
+| --- | --- | --- | --- |
+| `domain` | 禁止 | 必填，DNS-1123 子域名 | 必填，DNS-1123 子域名 |
+| `proxyNamespace` | 禁止 | 必填，DNS-1123 label | 可省略，派生为 `gatewayapi.namespace` |
+| `ingress.className` | 禁止 | 必填，DNS-1123 子域名 | 禁止 |
+| `gatewayapi.namespace` | 禁止 | 禁止 | 必填，DNS-1123 label |
+| `gatewayapi.className` | 禁止 | 禁止 | 必填，DNS-1123 子域名 |
+| `gatewayapi.tlsSecretName` | 禁止 | 禁止 | 必填，DNS-1123 子域名 |
+| `ParentRef`（仅服务端） | 空 | 空 | namespace 为 `gatewayapi.namespace`，name 为 chart 的 Gateway 名，sectionName 为 `https` |
 
-`proxyNamespace` 与 `parentRef.namespace` 分开：Istio 把网关 Pod 部署在 Gateway 所在 namespace，Envoy Gateway 默认部署在自己的控制器 namespace，两者不总是相同。
+- **Helm**：在现有 `eruun.validateRuntime` 中按整张表 `fail`；`provider` 只能是三个取值之一。
+- **服务端**：`Config.Validate` 按表中进入服务端的字段校验（`provider`、`domain`、`proxyNamespace`、`ingress.className`，以及 `ParentRef` 的三个字段），未知 `provider` 报错。`gatewayapi.className` 与 `tlsSecretName` 只由 chart 使用，服务端看不到，只能由 Helm 校验。
+- 两个校验入口都保留：不经 Helm 启动时需要服务端校验，chart 又有服务端看不到的字段。两者重叠的部分用同一组边界用例测试（§10），防止规则分叉。
+- **禁止覆盖**：`ERUUN_GATEWAY_*` 加入 `eruun.validateRuntime` 现有的禁止覆盖名单，`values.env` 设置它们时渲染失败。`runtime-deployments.yaml` 把 `values.env` 排在内置变量之后，同名变量会覆盖 chart 渲染的值；服务端校验发现不了这种“各自合法、彼此不同”的配置。
+
+**“唯一来源”的范围**：上述保证只对 Helm 管理的部署成立。
+
+- **一键安装器**：`INSTALL_MODE=helm` 分支把脚本的 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN` 等环境变量写入它生成的 `gateway` values，默认 `provider=ingress`；选择 `gatewayapi` 时，在 `rollout status` 之外再等待 Gateway 就绪（§6.4 第 3 步）。`INSTALL_MODE=manifest`（默认）分支使用静态清单，只支持 `ingress`。两个分支都要测试。
+- **静态清单**：`deploy/eruun-stack.yaml` 固定 `ingress` 后端，直接写出 `ERUUN_GATEWAY_*` 与 ClusterRole 规则，两者的一致由清单本身与 `eruun_stack_test.go` 保证。
+- **本地运行**：不经部署清单运行（`go run ./cmd/main.go`）时，`--gateway-*` flag 由使用者自行提供，`Config.Validate` 是唯一的检查。
+- `gatewayapi` 只能通过 Helm 安装，因为它依赖 chart 创建的 Gateway 对象。
 
 `provider` 只选择入站实现。将来的出站实现由独立的平台配置选择（§11.1），不复用本字段。
 
@@ -389,7 +432,7 @@ type GatewayParentRef struct {
 
 - 该请求只读 API 元数据，需要非资源 URL 的 `get` 权限，默认由 `system:discovery` 授予已认证身份，不需要新增 RBAC。`TenantClient` 会拒绝不带 namespace 的 URL，不能用于此检查。
 - API 不存在时 readiness 失败并写明原因；返回 403 时报告“无法检查”，不能误报为 API 不存在。不回退到另一个后端。
-- API 存在不代表 Controller 支持全部字段，后者是部署前提（§6.4）。
+- API 存在不代表 Controller 支持全部字段，后者是部署前提（§6.4）。`gatewayapi` 下缺少 CRD 时 `helm install` 本身就会因无法创建 Gateway 对象而失败；启动检查覆盖的是安装后 CRD 被移除等情况。
 
 ### 6.2 Host 命名
 
@@ -403,9 +446,9 @@ type GatewayParentRef struct {
 - **归属**：host 的第一段必须以 `-<当前空间 namespace>` 结尾，其余部分必须等于 `.<domain>`。所有空间 namespace 等长且前缀相同，一个 host 只可能属于一个空间，不存在后缀歧义。
 - **长度**：第一段最长 63 字符，扣除 `-` 与 namespace 后前缀最长 21 字符。默认 host 用组件名作前缀，组件名超过 21 字符时报 `INVALID_GATEWAY_HOST`，要求显式填写 `hosts`；不截断、不加哈希。
 - **证书与 DNS**：平台只需一条 `*.<domain>` 泛解析和一张 `*.<domain>` 通配证书。
-  - Gateway API：由平台 Gateway 的 HTTPS 监听器（hostname `*.<domain>`）终止 TLS。
+  - Gateway API：chart 创建的平台 Gateway 用 HTTPS 监听器（hostname `*.<domain>`，证书 `gatewayapi.tlsSecretName`）终止 TLS，并用 HTTP 监听器加一条重定向路由把 HTTP 统一跳转到 HTTPS（§6.6）。
   - Ingress：Eruun 渲染的 Ingress 不带 `tls`，HTTPS 由 Controller 的默认证书（如 ingress-nginx `--default-ssl-certificate`）或前置负载均衡提供。不带 `tls` 时 ingress-nginx 不会自动把 HTTP 重定向到 HTTPS，重定向由平台全局配置（如 ingress-nginx 的 `force-ssl-redirect`）或前置负载均衡负责。其他 Ingress Controller 在无 `tls` 段时是否提供默认证书，是平台部署前提。
-- 代价：host 中带有 41 字符的 namespace，可读性差；前缀长度受限；应用无法自行控制 HTTP 到 HTTPS 的重定向。
+- 代价：host 中带有 41 字符的 namespace，可读性差；前缀长度受限；`ingress` 后端下 HTTP 到 HTTPS 的重定向依赖平台配置。
 
 ### 6.3 后端能力矩阵
 
@@ -417,19 +460,26 @@ type GatewayParentRef struct {
 | `rewrite` | `filters[]` `URLRewrite` `ReplacePrefixMatch` | **不支持**，`GATEWAY_UNSUPPORTED` |
 | `timeout` | `rules[].timeouts.request` | **不支持**，`GATEWAY_UNSUPPORTED` |
 | `backend` | `backendRefs[]`（单项） | `backend.service` |
-| 平台引用 | `spec.parentRefs` = `parentRef` | `spec.ingressClassName` = `className` |
+| 平台引用 | `spec.parentRefs` = chart 创建的 Gateway 的 `https` 监听器 | `spec.ingressClassName` = `IngressClass` |
 
 `ingress` 后端只承担基础 host/path 转发，不写任何 Controller 专属注解。需要超时或 rewrite 的平台应使用 `gatewayapi`。
 
-### 6.4 `gatewayapi` 的部署前提
+### 6.4 `gatewayapi` 的部署前提与安装顺序
 
-`timeouts.request` 与 `URLRewrite` 在 Gateway API 中属于 Extended 支持能力，`timeouts` 自 v1.2.0 进入 Standard Channel。Eruun 不探测这些能力，把它们作为平台前提写入部署文档：
+`timeouts.request` 与 `URLRewrite` 在 Gateway API 中属于 Extended 支持能力，`timeouts` 自 v1.2.0 进入 Standard Channel。Eruun 不探测这些能力，把它们作为平台前提写入部署文档。Gateway 的外部地址要等 chart 创建 Gateway 之后才会分配，所以 DNS 必须在安装之后配置。安装按以下顺序进行：
 
-- 集群安装 Gateway API Standard Channel CRD，版本不低于 v1.2.0。
-- Controller 支持 `HTTPRouteRequestTimeout` 与 `HTTPRoutePathRewrite`。验收覆盖的 Controller 及版本在实现 PR 中记录（首期以 Istio 的 Gateway API 模式验收），包括其 `0s` 的实际行为。
-- 平台 Gateway 的 `allowedRoutes.namespaces` 允许空间 namespace（建议用空间 namespace 的 owner label 作为 selector），HTTPS 监听器 hostname 为 `*.<domain>`。
+1. **平台准备**：
+   - 安装 Gateway API Standard Channel CRD，版本不低于 v1.2.0。
+   - 安装 Gateway Controller（首期以 Istio 的 Gateway API 模式验收），提供 `gatewayapi.className` 指定的 GatewayClass。Controller 须支持 `HTTPRouteRequestTimeout`、`HTTPRoutePathRewrite` 与 `HTTPRouteSchemeRedirect`；验收覆盖的 Controller 及版本在实现 PR 中记录，包括其 `0s` 的实际行为。
+   - 创建 `gatewayapi.namespace`，在其中放好 `gatewayapi.tlsSecretName` 指定的 `*.<domain>` 证书 Secret（可由 cert-manager 签发）。
+2. **`helm install`/`helm upgrade`**：chart 创建 Gateway 与重定向路由（§6.6）。CRD 不存在时，安装会因无法创建 Gateway 对象而直接失败。
+3. **检查 Gateway**：确认 Gateway 的 `Accepted`、`Programmed` 为 True，`https`/`http` 两个监听器的 `Programmed` 与 `ResolvedRefs`（证书引用）为 True，重定向路由的 `Accepted` 为 True，再从 Gateway 的 `status.addresses` 取得外部地址（Istio 会为 Gateway 自动创建 LoadBalancer Service）。部署文档给出对应的 `kubectl wait` 命令，安装器的 helm 分支执行同样的等待；Eruun 运行时不监控 Gateway。
+4. **配置 DNS**：把 `*.<domain>` 泛解析指向第 3 步得到的地址。
+5. **验收入口**：对任一 `*.<domain>` 名称检查 HTTPS 证书校验通过，HTTP 请求被 301 重定向到 HTTPS。
 
-Try/保存只保证平台配置与应用 spec 能判定的部分；不满足前提的集群会在部署时由 HTTPRoute status 报告失败（§7.2）。
+Gateway 的监听器与 `allowedRoutes` 由 chart 渲染（§6.6），不需要平台手工对齐空间 namespace 的 label。
+
+Try/保存只保证平台配置与应用 spec 能判定的部分。部署时的 HTTPRoute status（§7.2）只反映单个路由是否被 Gateway 接受、backend 能否解析，不覆盖 DNS、Gateway 地址、监听器证书与重定向路由；这些由上面第 3–5 步验收。
 
 ### 6.5 渲染
 
@@ -444,7 +494,7 @@ func buildHTTPRoute(name, namespace string, hosts []string, routes []spec.Gatewa
 func buildIngress(name, namespace string, hosts []string, routes []spec.GatewayRouteSpec, className string) *networkingv1.Ingress
 ```
 
-- `TraitContext` 增加 `gateway *spec.GatewayConfig`，由 Job 构建方从 `Cfg.Accounts.Workspace.Gateway` 注入，做法与已有的 `nodePool` 相同；`processor.go` 只在非嵌套调用时处理 gateway。
+- `TraitContext` 增加 `gateway *spec.GatewayConfig`，由 Job 构建方从 `Cfg.Gateway` 注入，做法与已有的 `nodePool` 相同；`processor.go` 只在非嵌套调用时处理 gateway。
 - hosts 由 `spec.GatewayHosts` 计算，与校验、展示使用同一函数。
 - 入口对象名 `naming.GatewayRouteName(component, appName)`，替换 `naming.IngressName`，每个组件一个，确定性生成；`application_resource_validation.go` 的资源名冲突检查改用它。
 - HTTPRoute 用 `unstructured.Unstructured` 构建，不引入 `sigs.k8s.io/gateway-api` 依赖；用 golden 测试固定输出。
@@ -459,7 +509,7 @@ metadata:
   labels: { ...Eruun 受管 label... }
 spec:
   parentRefs:
-    - { group: gateway.networking.k8s.io, kind: Gateway, namespace: istio-ingress, name: public }
+    - { group: gateway.networking.k8s.io, kind: Gateway, namespace: istio-ingress, name: eruun, sectionName: https }
   hostnames: [chat-eruun-ws-<32 位 hex>.apps.example.com]
   rules:
     - matches: [{ path: { type: PathPrefix, value: / } }]
@@ -471,6 +521,63 @@ spec:
       timeouts: { request: 120s }
       backendRefs: [{ name: <agent 默认 Service>, port: 8080 }]
 ```
+
+### 6.6 Helm chart 创建的平台 Gateway
+
+`gateway.provider=gatewayapi` 时，chart 新增模板 `templates/gateway.yaml`，在 `gatewayapi.namespace` 中渲染两个对象。网络组件本身（Istio 或其他 Controller、GatewayClass、CRD）不在 chart 中。
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: eruun                      # 即 ERUUN_GATEWAY_PARENT_NAME
+  namespace: istio-ingress         # gatewayapi.namespace
+spec:
+  gatewayClassName: istio          # gatewayapi.className
+  listeners:
+    - name: https                  # 空间路由只能挂到这个监听器
+      protocol: HTTPS
+      port: 443
+      hostname: "*.apps.example.com"
+      tls:
+        mode: Terminate
+        certificateRefs: [{ name: wildcard-apps-tls }]   # gatewayapi.tlsSecretName
+      allowedRoutes:
+        kinds: [{ kind: HTTPRoute }]
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - { key: eruun.io/workspace-id, operator: Exists }
+    - name: http                   # 只服务下面的重定向路由
+      protocol: HTTP
+      port: 80
+      hostname: "*.apps.example.com"
+      allowedRoutes:
+        kinds: [{ kind: HTTPRoute }]
+        namespaces: { from: Same }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: eruun-https-redirect
+  namespace: istio-ingress
+spec:
+  parentRefs: [{ name: eruun, sectionName: http }]
+  hostnames: ["*.apps.example.com"]
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect: { scheme: https, statusCode: 301 }
+```
+
+- **空间选择器**：`eruun.io/workspace-id` 是空间初始化时写在 namespace 上的 owner label（`workspace/namespace.go` 的 `OwnerLabel`）。chart 模板与 `OwnerLabel` 用同一个常量值，Helm 模板测试固定它。防伪造的保证只在仓库定义的权限内成立：
+  - 空间 Role 不含 namespace 权限，空间执行身份不能给任何 namespace 打这个 label；
+  - 平台身份只在新建空间 namespace 时写入它，并拒绝接管归属不符的已有 namespace。
+  - 集群中其他拥有 namespace 写权限的身份仍可给任意 namespace 打上该 label，让其中的 HTTPRoute 挂到 `https` 监听器。管控这类身份是平台的责任，选择器不构成对所有集群身份的防伪保证。
+- **监听器隔离**：HTTPS 监听器只接受空间 namespace 的 HTTPRoute；HTTP 监听器只接受 Gateway 所在 namespace 的重定向路由，空间路由不能挂到明文监听器上。`tenantTransport` 要求 `parentRefs` 恰好指向 `https` 监听器（§7.4）。
+- **归属与生命周期**：Gateway 与重定向路由归 Eruun 的 Helm release 所有，`helm uninstall` 或把 `provider` 改离 `gatewayapi` 会删除它们，挂在上面的空间路由随之失效。组件删除永不触及它们。修改 `domain` 等同重建环境：已有路由的 hostnames 与新监听器不再匹配，按 §7.3 先清理再部署。
+- **`ingress` 后端**：chart 不创建任何网络对象，只渲染 `ERUUN_GATEWAY_*` 与 ClusterRole 规则；IngressClass 与 Controller 由平台提供。
 
 ## 7. 执行、状态与清理
 
@@ -499,7 +606,7 @@ func (c *DeployRouteJobCtl) Clean(ctx context.Context)
 
 ### 7.2 就绪判断
 
-`gatewayapi` 只看 `status.parents[]` 中与平台 `parentRef` 匹配的那一项，且只采信 `observedGeneration` 等于对象当前 `metadata.generation` 的 condition：
+`gatewayapi` 只看 `status.parents[]` 中与 `Config.Gateway.ParentRef` 匹配的那一项，且只采信 `observedGeneration` 等于对象当前 `metadata.generation` 的 condition：
 
 | 结果 | 条件 |
 | --- | --- |
@@ -531,49 +638,60 @@ stateDiagram-v2
 
 - 组件删除、版本更新移除组件、失败清理：以空间身份按受管 label 列出当前后端 GVR 下的对象并删除，只删本组件拥有的对象。
 - `application_update_version_cleanup.go` 中的 `versionUpdateCleanupIngressTraits` 改为比较 `traits.gateway`；G6 下路由只依赖本组件，组件变化即触发入口重渲染，没有跨组件的依赖需要追踪。
-- **后端切换**：平台从 `ingress` 改为 `gatewayapi`（或反向）时，必须在**旧配置与旧空间 Role 仍然有效时**先清理旧环境（删除全部应用或销毁旧集群环境），再切换配置、调和空间 Role 并重新部署。空间 Role 按期望规则整体更新，先切配置会移除旧入口资源的删除权限，平台的通用 `list` 只能发现残留，不能清理。只修改配置后重新部署会留下旧后端的入口对象，不算完成切换。本方案不为此增加跨后端的清理扫描。
+- **后端切换**：后端只能通过 `helm upgrade` 修改 `gateway.provider` 切换，在维护窗口内按以下顺序进行。只修改配置后重新部署会留下旧后端的入口对象，不算完成切换；本方案不为此增加跨后端的清理扫描。
+  1. **停止新增执行**：由运维方暂停对外 API 访问（Eruun 没有内置的暂停开关），等待进行中的 Workflow 与 Job 全部结束。窗口内仍可能有 cron 触发的空间 Job，它们会按执行节点的配置调和空间 Role；第 4 步之后由新节点再次调和即恢复一致，前提是第 5 步之前不部署任何入口。
+  2. **在旧配置下清理**：旧配置与旧空间 Role 仍然有效时，删除全部应用（或销毁旧集群环境）。空间 Role 按期望规则整体更新，先切配置会移除旧入口资源的删除权限，平台的通用 `list` 只能发现残留，不能清理。
+  3. **`helm upgrade` 切换 provider**：从 `gatewayapi` 切走时 chart 会删除平台 Gateway 与重定向路由；切到 `gatewayapi` 时按 §6.4 完成第 1、3–5 步。
+  4. **确认全部节点切换完成**：`kubectl rollout status` 确认所有 runtime Pod 都已是新 revision、旧 Pod 已退出。chart 默认 4 个副本、滚动更新，`helm upgrade` 返回时旧 Pod 可能仍在运行，会按旧 provider 重写空间 Role 与 NetworkPolicy，或用旧配置处理新任务。
+  5. **恢复执行并重新部署**：首次部署时空间 Role 与 NetworkPolicy 按新配置调和。
 
 ### 7.4 写入边界与权限
 
 `tenantTransport` 增加 `httproutes` 校验，Ingress 校验改读新配置：
 
-- `httproutes`：`parentRefs` 必须恰好等于平台 `parentRef`；`hostnames` 必须是**非空**列表（省略、`null`、空数组都拒绝），每项满足 §6.2 的归属规则，因为空 `hostnames` 会匹配平台 `*.<domain>` 监听器下的任意 host；`backendRefs` 只能是同 namespace 的 core `Service` 且只有一项；`filters` 只允许 `URLRewrite`；规则中不允许 `sessionPersistence`、`retry` 等首期之外的字段。
-- `ingresses`：`ingressClassName` 必须等于 `className`；无注解、无 `defaultBackend`、无 `tls`；每条 rule 的 host 非空且满足 §6.2 的归属规则。
+- `httproutes`：`parentRefs` 必须恰好是一项，指向 chart 创建的 Gateway 的 `https` 监听器（`ParentRef` 的 namespace、name、sectionName）；`hostnames` 必须是**非空**列表（省略、`null`、空数组都拒绝），每项满足 §6.2 的归属规则，因为空 `hostnames` 会匹配 `*.<domain>` 监听器下的任意 host；`backendRefs` 只能是同 namespace 的 core `Service` 且只有一项；`filters` 只允许 `URLRewrite`；规则中不允许 `sessionPersistence`、`retry` 等首期之外的字段。
+- `ingresses`：`ingressClassName` 必须等于 `IngressClass`；无注解、无 `defaultBackend`、无 `tls`；每条 rule 的 host 非空且满足 §6.2 的归属规则。
 
-权限（G10，待确认）：
+权限（G10）：
 
-- **空间 Role**（`workspace/namespace.go` 运行时生成）按平台 provider 只授予一种入口资源的读写：`gatewayapi` 为 `gateway.networking.k8s.io/httproutes`，`ingress` 为 `networking.k8s.io/ingresses`。就绪判断通过 GET 主资源读取 status，不需要 status 子资源。
-- **平台 ClusterRole**（Helm `serviceaccount-rbac.yaml` 与 `deploy/eruun-stack.yaml`）删除 `networking.k8s.io/ingresses` 规则，也不加入 `httproutes`。依据：
-  - 平台身份已持有 `roles` 的 `bind` 与 `escalate`，可以创建并绑定包含自身未直接持有权限的空间 Role；
-  - 生产代码中 14 处 typed Ingress 读写全部以空间身份执行（Workflow 经 `TenantClient`，API 请求经 `requestTransport` 按 scope 设置 `Impersonate-User`）；
-  - 唯一以平台身份触及入口资源的是删除空空间前的通用枚举（`Manager.DeleteEmpty`），由现有 `*/* list` 覆盖。
-- Helm values 与静态清单因此不需要知道后端选择，配置只有账号配置一个来源。
-- 代价与边界：本方案沿用现有 `bind`/`escalate` 与 impersonation 信任模型，不缩小平台的有效权限上限；准确说法是“平台不需要入口专属的显式授权”，不是“平台对入口资源没有任何权限”（通用 `list` 仍覆盖）。删除规则后的 RBAC 行为需在真实集群验收。
-- NetworkPolicy 等策略资源仍由平台 Manager 管理，`tenantTransport` 继续禁止空间客户端操作 `networkpolicies`、`roles`、`rolebindings`。空间基线 NetworkPolicy 的入站放行来源由 `ingressNamespace` 改为 `gateway.proxyNamespace`。
+- **平台 ClusterRole**（Helm `serviceaccount-rbac.yaml`）按 `gateway.provider` 渲染所选后端的一条显式规则：`ingress` 为 `networking.k8s.io/ingresses`，`gatewayapi` 为 `gateway.networking.k8s.io/httproutes`，`provider` 为空时两者都不渲染。部署方审阅 Helm 输出即可看到 Eruun 会操作哪种入口资源。静态清单 `deploy/eruun-stack.yaml` 固定 `ingress`，保留 `ingresses` 规则。
+- **verbs 对齐**：创建 Role 时，授予者必须持有被授予的全部权限（含每个 verb），否则需要 `escalate`。现在空间 Role 的入口规则带 `watch`（`workspace/namespace.go`），而 Helm ClusterRole 与静态清单的入口规则没有。入口没有 Informer，就绪判断与清理都用 GET/LIST，用不到 `watch`，因此删除空间 Role 入口规则中的 `watch`。ClusterRole 与空间 Role 的入口规则统一为 `get`、`list`、`create`、`update`、`patch`、`delete`，Helm、静态清单与 `namespace.go` 三处同步，测试固定两者相等。在此前提下，**入口规则**的授予不依赖 `escalate`；空间 Role 中的其他规则不在本方案范围内。
+- **空间 Role**（`workspace/namespace.go` 运行时生成）读 `WorkspaceConfig.Gateway`（与 `Config.Gateway` 是同一个值），只授予同一种入口资源的读写。就绪判断通过 GET 主资源读取 status，不需要 status 子资源。
+- 入口资源的读写全部以空间身份执行：生产代码中 14 处 typed Ingress 调用经 `TenantClient`（Workflow）或 `requestTransport` 按 scope 设置的 `Impersonate-User`（API 请求）；`route_deploy` 的 dynamic client 同样从空间 scoped config 创建。平台身份唯一触及入口资源的是删除空空间前的通用枚举（`Manager.DeleteEmpty`），由现有 `*/* list` 覆盖。
+- 现有 `roles` 的 `bind`/`escalate` 与 `*/* list` 不在本方案范围内调整，平台的有效权限上限不因本方案改变。
+- NetworkPolicy 等策略资源仍由平台 Manager 管理，`tenantTransport` 继续禁止空间客户端操作 `networkpolicies`、`roles`、`rolebindings`。空间基线 NetworkPolicy 的入站放行来源由 `ingressNamespace` 改为 `WorkspaceConfig.Gateway.ProxyNamespace`。
 
 ## 8. 查询、展示、Schema 与导入
 
-- 组件 DTO 的 `ingresses []ComponentIngressInfo` 改为 `gateway *ComponentGatewayInfo`，返回有效 hosts 与 routes（含推导出的 Service 有效名与端口），不返回平台内部名字。有效 hosts 依赖平台配置，assembler 需要接收 `GatewayConfig`。gRPC 中的 `AppDTOComponentIngressInfo`、`AppSpecIngress*` 同步替换并重新生成。
+- 组件 DTO 的 `ingresses []ComponentIngressInfo` 改为 `gateway *ComponentGatewayInfo`，返回有效 hosts 与 routes（含推导出的 Service 有效名与端口），不返回平台内部名字。有效 hosts 依赖平台配置，assembler 需要接收 `Config.Gateway`。gRPC 中的 `AppDTOComponentIngressInfo`、`AppSpecIngress*` 同步替换并重新生成。
 - `externalLinks` 的类型由 `ingress` 改为 `gateway`，值仍为可访问的 `host + path`；没有 gateway 时继续回退到 Service 链接。
 - canonical JSON Schema（`dto/v1/json_schema.go`）为 `GatewayTraitSpec`、`GatewayRouteSpec` 手写必填、数量、枚举、范围与组合约束；契约测试覆盖新格式被接受、`traits.ingress` 被拒绝、嵌套 gateway 被拒绝、`egress` 等未知字段被拒绝。
 - YAML 导入：Ingress 转为 `traits.gateway`。新契约不支持的输入在导入时明确报错并列出原因：annotations、TLS、`ImplementationSpecific`、不同 host 的规则不一致、指向其他组件 Service 的 backend、同一组件有多个 Ingress、指向 `job`/`scheduledjob` 组件。现有的 named port 与非 Service backend 有损转换改为报错。HTTPRoute 导入首期返回“不支持”。
-- 模板克隆、`examples/` 下所有含 `ingress` 字段或 `ingresses` 响应视图的文件（按内容扫描，不只按文件名）、`components-api-sidecar-field.md`、`validation-api-guide.md`、`account-auth-workspaces.md`、`deploy/accounts.example.json` 同步改写。
+- 模板克隆、`examples/` 下所有含 `ingress` 字段或 `ingresses` 响应视图的文件（按内容扫描，不只按文件名）、`components-api-sidecar-field.md`、`validation-api-guide.md`、`account-auth-workspaces.md`（删除 `workspace.ingress*` 三个字段的说明）、`helm-deployment.md`（新增 `gateway` values 与平台前提）、`deploy/accounts.example.json`（删除三个 ingress 字段）同步改写。
 
 ## 9. 改动清单
 
 | 区域 | 改动 |
 | --- | --- |
-| spec | 新增 `gateway.go`（类型、`GatewayHosts`、`ResolveGatewayBackend`）；删除 `IngressTraitsSpec` 系列类型、`model/ingress.go`、`ingress_defaults.go`；`WorkspaceConfig` 换为 `Gateway`；`job.go` 与 `evaluation_component.go` 的拒绝条件改为 gateway |
+| spec | 新增 `gateway.go`（Trait 类型、`GatewayConfig`、`GatewayHosts`、`ResolveGatewayBackend`）；删除 `IngressTraitsSpec` 系列类型、`model/ingress.go`、`ingress_defaults.go`；`WorkspaceConfig` 删除 `ingressDomain`、`ingressClass`、`ingressNamespace` 及其加载校验；`job.go` 与 `evaluation_component.go` 的拒绝条件改为 gateway |
+| 配置 | `pkg/apiserver/config` 新增 `Config.Gateway` 与 6 个 `--gateway-*` flag（§6.1）及 `Config.Validate` 中按 §6.1 规则表的校验；服务装配把它赋给 `WorkspaceConfig.Gateway`（`json:"-"`），并注入 Job 构建、校验与 assembler |
 | 校验 | `traitvalidation` 新增 `ValidateGatewayTrait`、`ValidateGatewayPlatform` 与新错误码；Try 的普通与模板路径返回字段级错误；保存路径用 `WithSafeClientMessage` 返回第一条错误；资源名冲突检查改用 `GatewayRouteName` |
-| 空间 | 删除 `prepareTraitIngresses`；`tenantTransport` 增加 `httproutes`，Ingress 规则读新配置并拒绝 `tls`；空间 Role 按 provider 授权；NetworkPolicy 读 `proxyNamespace` |
+| 空间 | 删除 `prepareTraitIngresses`；`tenantTransport` 增加 `httproutes`，Ingress 规则读 `WorkspaceConfig.Gateway` 并拒绝 `tls`；空间 Role 按 provider 授权，入口规则删除 `watch`；NetworkPolicy 读 `ProxyNamespace`。`PrepareResource`、`APIClient` 等现有路径随 `WorkspaceConfig` 自动拿到配置，无需改签名 |
 | 渲染 | `traits/ingress.go` 改为 `traits/gateway.go`；processor 只在顶层处理 gateway；`job`/`scheduledjob` 不再渲染入口 |
 | Workflow | `route_deploy` Job 放入 `JobPriorityNormal`、就绪判断、清理；删除 `jobdeploy/ingress.go` 与 `jobinfo.IngressFromJobInfo` |
 | 应用服务 | 删除、版本更新清理、模板克隆、YAML 转换中的 Ingress 分支 |
-| 接口 | DTO、assembler（注入 `GatewayConfig`）、`externalLinks`、canonical JSON Schema、proto 与生成代码 |
-| 部署 | Helm ClusterRole 与 `deploy/eruun-stack.yaml` 删除 `ingresses` 规则；`accounts.example.json`；启动时 Discovery 检查；`helm_template_test.sh`、`eruun_stack_test.go` 同步 |
+| 接口 | DTO、assembler（注入 `Config.Gateway`）、`externalLinks`、canonical JSON Schema、proto 与生成代码 |
+| Helm | `values.yaml` 新增 `gateway`；`runtime-deployments.yaml` 渲染 `ERUUN_GATEWAY_*`；`serviceaccount-rbac.yaml` 按 provider 渲染一条入口规则；新增 `templates/gateway.yaml`（Gateway 与 HTTPS 重定向路由，仅 `gatewayapi`）；`eruun.validateRuntime` 按 §6.1 规则表 `fail`，并把 `ERUUN_GATEWAY_*` 加入禁止覆盖名单；入口规则 verbs 与空间 Role 一致；`helm_template_test.sh` 覆盖三种 provider |
+| 静态清单与安装器 | `deploy/eruun-stack.yaml` 固定 `ingress` 后端并写出 `ERUUN_GATEWAY_*`，入口规则 verbs 同步；安装器 helm 分支把 `GATEWAY_*` 环境变量写入 `gateway` values，`gatewayapi` 时等待 Gateway 就绪；`accounts.example.json` 删除三个 ingress 字段；`eruun_stack_test.go`、`all_in_one_install_quickstart_test.sh` 覆盖两种安装模式 |
+| 启动 | Leader 的 Discovery 检查（§6.1） |
 | 文档 | 本文定稿为 Current 后，更新 `架构文档.md`、`architecture-diagrams.md`、`account-auth-workspaces.md`、`validation-api-guide.md`、`helm-deployment.md`、`docs/README.md` |
 
-建议拆成两个 PR：PR 1 替换契约、host 命名与 `ingress` 后端（含 `route_deploy`、执行顺序、校验与错误落点、Schema、导入、示例、空间 Role 与 ClusterRole 调整，删除兼容逻辑）；PR 2 增加 `gatewayapi` 后端、`httproutes` 写入边界与 Discovery 检查。两个 PR 都不涉及数据库 schema。
+建议拆成两个 PR：
+
+- **PR 1**：替换契约、host 命名、`Config.Gateway` 与 Helm `gateway` values（先支持 `ingress`）、`ingress` 后端、`route_deploy`、执行顺序、校验与错误落点、Schema、导入、示例、空间 Role 与 ClusterRole 调整，删除兼容逻辑。
+- **PR 2**：`gatewayapi` 后端、chart 的 `templates/gateway.yaml`、`httproutes` 写入边界与 Discovery 检查。
+
+两个 PR 都不涉及数据库 schema。
 
 ## 10. 测试与验证边界
 
@@ -587,14 +705,18 @@ stateDiagram-v2
 - 空间：`tenantTransport` 对 `parentRefs`、`backendRefs`、`filters`、Ingress `tls` 的篡改拒绝；HTTPRoute `hostnames` 省略、`null`、空数组均被拒绝；空间 Role 按 provider 只含一种入口资源。
 - Job 执行：fake dynamic client 下的创建、更新；当前 generation `Accepted=False`、`PartiallyInvalid=True` 立即失败；旧 generation 的 `False`、`Unknown`、`BackendNotFound` 继续等待；超时；失败清理只删除本次新建的对象。
 - Try 与保存：普通 Try 与模板 Try 的 gateway 错误带字段路径；创建与 `/version` 返回的安全消息含字段路径（HTTP 层测试）。
+- 配置：`Config.Validate` 与 Helm `fail` 用同一组边界用例覆盖 §6.1 规则表中两者重叠的部分（各 provider 的缺失、多余与格式错误，未知 provider）；`provider` 为空时 gateway 被拒绝；账号配置 Secret 含 `ingressDomain` 等旧字段或 `gateway` 字段时启动失败；`PrepareResource`、`APIClient` 路径拿到的 `WorkspaceConfig.Gateway` 非空。
+- Helm 模板：`provider` 为空时不渲染入口规则、Gateway 与 `ERUUN_GATEWAY_*` 中的后端值；`ingress` 只渲染 `ingresses` 规则、不渲染 Gateway；`gatewayapi` 只渲染 `httproutes` 规则，并渲染含 `https`/`http` 监听器、`eruun.io/workspace-id` 选择器的 Gateway 与重定向路由；values 不一致时 `fail`；`values.env` 设置任一 `ERUUN_GATEWAY_*` 时 `fail`；入口规则 verbs 与 `namespace.go` 生成的空间 Role 入口规则相等。
+- 安装器：manifest 与 helm 两种模式都渲染出一致的 `ERUUN_GATEWAY_*` 与入口规则。
 - 启动检查：Discovery 返回 API 缺失时 readiness 失败；返回 403 时报告无法检查。
 - 接口：DTO、`externalLinks`、gRPC 映射、canonical Schema 契约（含 `egress` 被拒）；YAML 导入的转换与各类报错。
 
 真实环境验收（本地与 fake 测试不能证明）：
 
-- Istio（Gateway API 模式）：HTTPRoute 被接受；部分规则无效时报告失败；先建路由后补 Service 能恢复；`timeout` 到达时请求被终止；`0s` 时持续超过 10 分钟的 SSE 与首个 token 前长时间无输出的请求的实际行为；WebSocket 升级成功；`*.<domain>` 证书在单层 host 上校验通过。
+- Istio（Gateway API 模式）：`helm install` 创建的 Gateway 被 Controller 接受并分配外部地址；HTTP 请求被 301 重定向到 HTTPS；非空间 namespace 的 HTTPRoute 无法挂到 `https` 监听器；HTTPRoute 被接受；部分规则无效时报告失败；先建路由后补 Service 能恢复；`timeout` 到达时请求被终止；`0s` 时持续超过 10 分钟的 SSE 与首个 token 前长时间无输出的请求的实际行为；WebSocket 升级成功；`*.<domain>` 证书在单层 host 上校验通过。
 - ingress-nginx 或其他 Ingress Controller：基础 host/path 转发、默认证书 HTTPS、HTTP 请求的重定向行为符合平台配置。
-- RBAC：删除 ClusterRole 入口规则后，空间 Role 下 HTTPRoute/Ingress 的写入、status 读取与清理正常；空空间删除检查仍能发现入口残留；NetworkPolicy 放行网关 Pod 流量。
+- RBAC：用 `kubectl auth can-i --as=system:serviceaccount:<release namespace>:<Eruun ServiceAccount>` 逐个 verb 确认平台身份直接持有入口规则的全部权限（现有 `escalate` 会掩盖缺口，不能只看 Role 创建成功）；ClusterRole 只含所选后端规则时，空间 Role 的创建与绑定成功，空间身份下 HTTPRoute/Ingress 的写入、status 读取与清理正常；空空间删除检查仍能发现入口残留；NetworkPolicy 放行网关 Pod 流量。
+- 后端切换：按 §7.3 的顺序清理后 `helm upgrade` 切换 provider，旧 Gateway 被删除、新空间 Role 只含新入口资源。
 
 ## 11. 后续阶段
 
@@ -631,6 +753,7 @@ stateDiagram-v2
 | 应用级入口与灰度 | 跨组件路由与按权重分流作为应用级能力设计（路由属于应用而非某个组件），需要定义版本更新时的依赖重渲染、被引用组件删除时的拒绝规则，以及 `weight` 的显式取值（含 0）语义 | 模型灰度有明确需求 |
 | 任务实例入站 | 一次性任务的交互界面或回调入口：Service 选择哪个执行实例、路由开放与撤销时机、重试与并行隔离 | 有具体交互或回调场景 |
 | Service L4 暴露类型 | 依 §3.1 的概念边界，评估 Service Trait `node`/`public` 的去留 | 用户逐项确认 |
+| Eruun 自身入口 | Eruun API 与控制台通过所选后端暴露：`gatewayapi` 时挂到同一 Gateway，`ingress` 时由 chart 渲染 Ingress。现在 Helm chart 没有 API 入口模板，静态清单写死了一个 `ingressClassName: ingress-nginx` 的 Ingress | 首期入口落地后 |
 | 服务网格成员 | 空间级 `mesh` 配置（如 Istio ambient 的 `istio.io/dataplane-mode=ambient` namespace label），由空间初始化写入；mTLS 由网格默认提供 | 首期上线后有东西向需求 |
 | 模型感知路由 | Gateway API Inference Extension 的 `InferencePool` 作为路由目标（Istio 对其支持为 beta） | 选定目标版本并确认 API 稳定性 |
 | 更多协议 | gRPC（`GRPCRoute`）、header 匹配、重试 | 有明确工作负载需求 |
