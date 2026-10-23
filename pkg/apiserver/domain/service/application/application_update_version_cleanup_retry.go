@@ -176,7 +176,7 @@ func validatePendingVersionUpdateStatefulSetPVCResume(
 func unfinishedStatefulSetPVCDeletionError(pending workflowservice.PendingStatefulSetCleanups) error {
 	names := make([]string, 0, len(pending))
 	for name := range pending {
-		if name = strings.TrimSpace(name); name != "" {
+		if name != "" {
 			names = append(names, name)
 		}
 	}

@@ -305,7 +305,6 @@ func collectWorkflowComponentNames(ctx context.Context, store datastore.DataStor
 	seen := make(map[string]struct{})
 	var names []string
 	add := func(name string) {
-		name = strings.TrimSpace(name)
 		if name == "" {
 			return
 		}
