@@ -102,8 +102,7 @@ func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) 
 			if !ok {
 				continue
 			}
-			key := strings.ToLower(j.ServiceName)
-			agg, exists := componentAggregates[key]
+			agg, exists := componentAggregates[j.ServiceName]
 			if !exists {
 				agg = &apis.ComponentTaskStatus{
 					Name:      j.ServiceName,
@@ -113,7 +112,7 @@ func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) 
 					StartTime: j.StartTime,
 					EndTime:   j.EndTime,
 				}
-				componentAggregates[key] = agg
+				componentAggregates[j.ServiceName] = agg
 				continue
 			}
 			// Aggregate: prefer the most severe status; capture first error message.
@@ -137,11 +136,10 @@ func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) 
 			names := collectWorkflowComponentNames(ctx, w.Store, task.AppID, workflow)
 			defaultStatus := defaultComponentStatus(task.Status)
 			for _, name := range names {
-				key := strings.ToLower(name)
-				if _, exists := componentAggregates[key]; exists {
+				if _, exists := componentAggregates[name]; exists {
 					continue
 				}
-				componentAggregates[key] = &apis.ComponentTaskStatus{
+				componentAggregates[name] = &apis.ComponentTaskStatus{
 					Name:   name,
 					Status: defaultStatus,
 				}
@@ -201,12 +199,11 @@ func (w *workflowServiceImpl) GetTaskStages(ctx context.Context, taskID string) 
 		}
 		jobInfos = append(jobInfos, j)
 		name := stageNameForJob(j)
-		key := strings.ToLower(name)
-		agg, exists := stageAggregates[key]
+		agg, exists := stageAggregates[name]
 		if !exists {
 			agg = newStageAggregate(name)
-			stageAggregates[key] = agg
-			stageOrder = append(stageOrder, key)
+			stageAggregates[name] = agg
+			stageOrder = append(stageOrder, name)
 		}
 		agg.add(j)
 	}
@@ -311,11 +308,10 @@ func collectWorkflowComponentNames(ctx context.Context, store datastore.DataStor
 		if name == "" {
 			return
 		}
-		key := strings.ToLower(name)
-		if _, ok := seen[key]; ok {
+		if _, ok := seen[name]; ok {
 			return
 		}
-		seen[key] = struct{}{}
+		seen[name] = struct{}{}
 		names = append(names, name)
 	}
 	for _, step := range steps.Steps {

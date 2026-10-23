@@ -700,7 +700,7 @@ func TestCreateApplications_TemplateWithExplicitWorkflow_DoesNotRewrite(t *testi
 	require.ElementsMatch(t, []string{"tenant-store"}, steps.Steps[0].ComponentNames())
 }
 
-func TestCreateApplicationsPreservesWorkflowComponentReferenceCasing(t *testing.T) {
+func TestCreateApplicationsStoresCanonicalComponentAndReferenceNames(t *testing.T) {
 	store := newInMemoryAppStore()
 	svc := newMockServiceWithStore(store)
 
@@ -732,7 +732,12 @@ func TestCreateApplicationsPreservesWorkflowComponentReferenceCasing(t *testing.
 	require.NotNil(t, defaultWorkflow)
 	steps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
 	require.Len(t, steps.Steps, 1)
-	require.Equal(t, []model.Policies{{Policies: []string{"Web"}}}, steps.Steps[0].Properties)
+	require.Equal(t, []model.Policies{{Policies: []string{"web"}}}, steps.Steps[0].Properties)
+	var names []string
+	for _, component := range store.components {
+		names = append(names, component.Name)
+	}
+	require.Equal(t, []string{"web"}, names)
 }
 
 func TestCreateApplications_NonTemplateWithoutWorkflow_GeneratesPhasedDefaultWorkflow(t *testing.T) {
@@ -770,4 +775,30 @@ func TestCreateApplications_NonTemplateWithoutWorkflow_GeneratesPhasedDefaultWor
 		require.Equal(t, config.WorkflowModeDAG, step.Mode)
 		require.Equal(t, config.JobDeploy, step.WorkflowType)
 	}
+}
+
+func TestCreateApplicationsStoresNormalizedEvaluationTraits(t *testing.T) {
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+
+	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Name:      "eval-app",
+		Namespace: config.DefaultNamespace,
+		Version:   "1.0.0",
+		Components: []apisv1.CreateComponentRequest{{
+			Name:          "evaluate",
+			ComponentType: config.InstantJob,
+			Traits: spec.Traits{Evaluation: &spec.EvaluationTraitSpec{
+				Env: "ack", Agent: "oracle", TaskPackageID: "12345678-1234-1234-1234-123456789012",
+			}},
+		}},
+	})
+	require.NoError(t, err)
+
+	component := store.components["evaluate"]
+	require.NotNil(t, component)
+	var traits apisv1.Traits
+	require.NoError(t, decodeJSONStruct(component.Traits, &traits))
+	require.NotNil(t, traits.Resources)
+	require.Equal(t, 1, traits.Evaluation.Attempts)
 }

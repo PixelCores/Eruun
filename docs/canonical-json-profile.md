@@ -177,6 +177,8 @@ https://eruun.io/schemas/v1/canonical-profile.json
 
 规范 Application 的 `name` 为 2–31 字符的小写 DNS-1123 名称；`components` 必须输出为数组，即使没有组件也使用 `[]`。
 
+组件名、Workflow Step 与 SubStep 名称、Step 中引用的组件名以及模板引用的 `tmp.target` 都是不区分大小写的 DNS-1123 label。服务端在写入口（创建、Try、Workflow 更新、版本更新）统一去除首尾空白并转为小写后再校验和保存；按组件名访问的接口（日志、文件、Shell、容器、数据库重置、日志归档）同样按这一形式匹配。读接口返回保存后的小写名称。
+
 Schema 是规范 profile，不是历史输入兼容表。未出现在 Schema 中的字段或表示不应由新客户端生成。
 
 ## 4. Try：规范化、计划与结构化错误

@@ -36,14 +36,13 @@ func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComp
 	targets := make([]string, 0)
 	appendTarget := func(name string) {
 		name = strings.TrimSpace(name)
-		key := strings.ToLower(name)
-		if key == "" {
+		if name == "" {
 			return
 		}
-		if _, ok := seen[key]; ok {
+		if _, ok := seen[name]; ok {
 			return
 		}
-		seen[key] = struct{}{}
+		seen[name] = struct{}{}
 		targets = append(targets, name)
 	}
 
@@ -53,10 +52,9 @@ func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComp
 			return nil, err
 		}
 		name := strings.TrimSpace(spec.Name)
-		key := strings.ToLower(name)
 		switch action {
 		case domainspec.ComponentActionUpdate:
-			comp := componentMap[key]
+			comp := componentMap[name]
 			if comp == nil || !versionUpdateImageReadyComponentType(comp.ComponentType) {
 				continue
 			}

@@ -20,22 +20,22 @@ func TestVersionUpdateWorkflowDeploymentComponents(t *testing.T) {
 		},
 		{
 			name:  "nil and blank steps",
-			steps: []*model.WorkflowStep{nil, {}, {Name: " \t"}},
+			steps: []*model.WorkflowStep{nil, {}, {Name: ""}},
 			want:  map[string]struct{}{},
 		},
 		{
-			name: "normalize and deduplicate policy and fallback names",
+			name: "deduplicate policy and fallback names",
 			steps: []*model.WorkflowStep{
 				{
 					Name:         "group",
 					WorkflowType: config.JobDeploy,
 					Properties: []model.Policies{
-						{Policies: []string{" API ", "api", "", " \t"}},
-						{Policies: []string{" Worker "}},
+						{Policies: []string{"api", "api", ""}},
+						{Policies: []string{"worker"}},
 					},
 				},
-				{Name: " WORKER "},
-				{Name: " Database "},
+				{Name: "worker"},
+				{Name: "database"},
 			},
 			want: map[string]struct{}{"api": {}, "worker": {}, "database": {}},
 		},
@@ -76,11 +76,11 @@ func TestVersionUpdateWorkflowDeploymentComponents(t *testing.T) {
 					SubSteps: []*model.WorkflowSubStep{
 						nil,
 						{},
-						{Name: " API "},
+						{Name: "api"},
 						{
 							Name:         "child-group",
 							WorkflowType: " deploy ",
-							Properties:   []model.Policies{{Policies: []string{"api", " WORKER ", " "}}},
+							Properties:   []model.Policies{{Policies: []string{"api", "worker", ""}}},
 						},
 						{Name: "cleanup", WorkflowType: config.JobCleanupResources},
 						{Name: "unsupported", WorkflowType: "unknown"},

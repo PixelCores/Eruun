@@ -429,21 +429,24 @@ func TestValidationService_TryApplication_ResolvesTemplateBeforeComponentValidat
 	appSvc := newMockServiceWithStore(store)
 	svc := &validationServiceImpl{AppRepo: appSvc.AppRepo, ComponentRepo: appSvc.ComponentRepo}
 
-	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
-		Name:      "game",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{{
-			Template: &spec.TemplateRef{ID: "tmpl-1", Target: "api"},
-		}},
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "deploy-step",
-			WorkflowType: config.JobDeploy,
-			Mode:         "StepByStep",
-			Components:   []string{"game-api"},
-		}},
-	})
+	// Template targets are names too: Try matches them in canonical form.
+	for _, target := range []string{"api", " API "} {
+		resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
+			Name:      "game",
+			Namespace: "default",
+			Components: []apisv1.CreateComponentRequest{{
+				Template: &spec.TemplateRef{ID: "tmpl-1", Target: target},
+			}},
+			Workflow: []apisv1.CreateWorkflowStepRequest{{
+				Name:         "deploy-step",
+				WorkflowType: config.JobDeploy,
+				Mode:         "StepByStep",
+				Components:   []string{"game-api"},
+			}},
+		})
 
-	require.True(t, resp.Valid, "expected template dry-run to validate resolved components, got: %+v", resp.Errors)
+		require.True(t, resp.Valid, "target %q: expected template dry-run to validate resolved components, got: %+v", target, resp.Errors)
+	}
 }
 
 func TestValidationService_TryApplication_TemplateResolveErrorSkipsStubValidation(t *testing.T) {

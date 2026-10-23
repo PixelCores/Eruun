@@ -70,8 +70,8 @@ func TestDiffUpdateVersionDryRunReportsUpdatedAddedAndExtra(t *testing.T) {
 			Resources: &spec.ResourceTraitsSpec{CPU: "500m", Memory: "512Mi"},
 		}),
 	}
-	store.components["Backend"] = &model.ApplicationComponent{
-		Name:          "Backend",
+	store.components["target-backend"] = &model.ApplicationComponent{
+		Name:          "backend",
 		AppID:         "target-app",
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
@@ -127,7 +127,7 @@ func TestDiffUpdateVersionDryRunReportsUpdatedAddedAndExtra(t *testing.T) {
 	require.Equal(t, apisv1.DiffUpdateComponentActionPreserve, resp.ExtraComponents[0].Action)
 	require.Equal(t, "target-only component is preserved", resp.ExtraComponents[0].Reason)
 	require.Empty(t, resp.BlockedComponents)
-	require.Equal(t, "backend:v1.0.0", store.components["Backend"].Image)
+	require.Equal(t, "backend:v1.0.0", store.components["target-backend"].Image)
 }
 
 func TestDiffUpdateVersionExecutesGeneratedUpdate(t *testing.T) {
@@ -158,8 +158,8 @@ func TestDiffUpdateVersionExecutesGeneratedUpdate(t *testing.T) {
 			Resources: &spec.ResourceTraitsSpec{CPU: "1", Memory: "1Gi"},
 		}),
 	}
-	store.components["API"] = &model.ApplicationComponent{
-		Name:          "API",
+	store.components["target-api"] = &model.ApplicationComponent{
+		Name:          "api",
 		AppID:         "target-app",
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
@@ -192,15 +192,16 @@ func TestDiffUpdateVersionExecutesGeneratedUpdate(t *testing.T) {
 	require.Equal(t, "2.0.0", resp.UpdateResult.Version)
 	require.Equal(t, string(spec.VersionUpdateExecutionScopeChangedComponents), resp.UpdateResult.ExecutionScope)
 	require.Equal(t, "2.0.0", store.apps["target-app"].Version)
-	require.Equal(t, "api:v2", store.components["API"].Image)
-	require.Equal(t, int32(4), store.components["API"].Replicas)
-	require.Equal(t, "target-app", store.components["job"].AppID)
+	require.Equal(t, "api:v2", store.components["target-api"].Image)
+	require.Equal(t, int32(4), store.components["target-api"].Replicas)
+	require.NotNil(t, findComponentByAppAndName(store, "target-app", "job"))
+	require.NotNil(t, findComponentByAppAndName(store, "source-app", "job"))
 
 	var props apisv1.Properties
-	require.NoError(t, decodeJSONStruct(store.components["API"].Properties, &props))
+	require.NoError(t, decodeJSONStruct(store.components["target-api"].Properties, &props))
 	require.Equal(t, map[string]string{"FEATURE": "enabled"}, props.Env)
 	var traits apisv1.Traits
-	require.NoError(t, decodeJSONStruct(store.components["API"].Traits, &traits))
+	require.NoError(t, decodeJSONStruct(store.components["target-api"].Traits, &traits))
 	require.Equal(t, "1Gi", traits.Resources.Memory)
 }
 
@@ -289,8 +290,8 @@ func TestDiffUpdateVersionBlocksTypeMismatch(t *testing.T) {
 		Properties:    mustJSONStruct(&apisv1.Properties{}),
 		Traits:        mustJSONStruct(&apisv1.Traits{}),
 	}
-	store.components["Backend"] = &model.ApplicationComponent{
-		Name:          "Backend",
+	store.components["target-backend"] = &model.ApplicationComponent{
+		Name:          "backend",
 		AppID:         "target-app",
 		ComponentType: config.ServerJob,
 		Image:         "backend:v1",
@@ -315,7 +316,7 @@ func TestDiffUpdateVersionBlocksTypeMismatch(t *testing.T) {
 	})
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 	require.Equal(t, "1.0.0", store.apps["target-app"].Version)
-	require.Equal(t, "backend:v1", store.components["Backend"].Image)
+	require.Equal(t, "backend:v1", store.components["target-backend"].Image)
 }
 
 func TestDiffUpdateVersionDryRunBlocksStatefulSetImmutableTraitChange(t *testing.T) {
@@ -654,8 +655,8 @@ func TestDiffUpdateVersionUsesMaterializedTemplateComponents(t *testing.T) {
 		Version:   "1.0.0",
 		Namespace: "default",
 	}
-	store.components["DB"] = &model.ApplicationComponent{
-		Name:          "DB",
+	store.components["target-db"] = &model.ApplicationComponent{
+		Name:          "db",
 		AppID:         "target-app",
 		Namespace:     "default",
 		ComponentType: config.StoreJob,

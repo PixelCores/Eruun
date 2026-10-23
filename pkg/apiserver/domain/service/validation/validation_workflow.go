@@ -13,6 +13,7 @@ import (
 
 // TryWorkflow validates a workflow update request against existing components
 func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, req apisv1.TryWorkflowRequest) *apisv1.TryWorkflowResponse {
+	apisv1.NormalizeWorkflowSteps(req.Workflow)
 	var errors []apisv1.ValidationError
 
 	// 1. Validate workflow name if provided
@@ -43,9 +44,8 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 		if err == nil {
 			for _, comp := range components {
 				if comp != nil {
-					name := strings.ToLower(strings.TrimSpace(comp.Name))
-					if name != "" {
-						componentIndex[name] = comp.ComponentType
+					if comp.Name != "" {
+						componentIndex[comp.Name] = comp.ComponentType
 					}
 				}
 			}
@@ -99,11 +99,10 @@ func (v *validationServiceImpl) validateWorkflowCallback(ctx context.Context, ca
 func workflowComponentIndexFromCreateComponents(components []apisv1.CreateComponentRequest) map[string]config.JobType {
 	componentIndex := make(map[string]config.JobType, len(components))
 	for _, component := range components {
-		name := strings.ToLower(strings.TrimSpace(component.Name))
-		if name == "" {
+		if component.Name == "" {
 			continue
 		}
-		componentIndex[name] = component.ComponentType
+		componentIndex[component.Name] = component.ComponentType
 	}
 	return componentIndex
 }

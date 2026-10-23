@@ -137,7 +137,7 @@ func (c *applicationsServiceImpl) buildApplicationVersionDiff(ctx context.Contex
 		if component == nil {
 			continue
 		}
-		targetComponentMap[strings.ToLower(strings.TrimSpace(component.Name))] = component
+		targetComponentMap[component.Name] = component
 	}
 
 	diff, err := buildVersionDiff(sourceComponents, targetComponents)
@@ -309,7 +309,7 @@ func blockNonExecutableStatefulSetVersionDiffs(componentMap map[string]*model.Ap
 	}
 	executable := make([]apisv1.VersionComponentDiff, 0, len(diff.updated))
 	for _, item := range diff.updated {
-		component := componentMap[strings.ToLower(strings.TrimSpace(item.Name))]
+		component := componentMap[item.Name]
 		if component == nil || component.ComponentType != config.StoreJob {
 			executable = append(executable, item)
 			continue
@@ -347,15 +347,14 @@ func componentSnapshotsByName(components []*model.ApplicationComponent) (map[str
 		if component == nil {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(component.Name))
-		if key == "" {
+		if component.Name == "" {
 			continue
 		}
 		snapshot, err := componentVersionState(component)
 		if err != nil {
 			return nil, err
 		}
-		snapshots[key] = snapshot
+		snapshots[component.Name] = snapshot
 	}
 	return snapshots, nil
 }

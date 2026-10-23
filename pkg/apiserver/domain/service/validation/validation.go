@@ -11,7 +11,6 @@ import (
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -48,6 +47,7 @@ func NewValidationService(cfg *config.Config, policy *urlpolicy.Provider, appRep
 
 // TryApplication validates an application creation request
 func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.CreateApplicationsRequest) *apisv1.TryApplicationResponse {
+	apisv1.NormalizeApplicationNames(&req)
 	if req.Components == nil {
 		req.Components = []apisv1.CreateComponentRequest{}
 	}
@@ -129,10 +129,8 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 					errors = append(errors, apisv1.ValidationError{Field: fieldPrefix, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
 				}
 			}
-			if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err == nil {
-				effectiveReq.Components[i] = comp
-			}
-			errors = append(errors, applicationservice.ValidateComponent(comp, fieldPrefix, componentNames)...)
+			errors = append(errors, applicationservice.ValidateComponent(&comp, fieldPrefix, componentNames)...)
+			effectiveReq.Components[i] = comp
 			errors = append(errors, traitvalidation.ValidateNodePoolRef(ctx, v.NodePoolRepo, comp.Traits, fieldPrefix+".traits")...)
 		}
 	}

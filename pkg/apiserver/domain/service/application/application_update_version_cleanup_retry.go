@@ -38,12 +38,11 @@ func mergePendingVersionUpdateStatefulSetPVCDeletions(
 		if cleanupComponent.Component == nil {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(cleanupComponent.Component.Name))
-		update, exists := updateSpecs[key]
+		update, exists := updateSpecs[cleanupComponent.Component.Name]
 		if !exists {
 			continue
 		}
-		plan, err := selectPendingStatefulSetPVCDeletion(pending[key], cleanupComponent.Component)
+		plan, err := selectPendingStatefulSetPVCDeletion(pending[cleanupComponent.Component.Name], cleanupComponent.Component)
 		if err != nil {
 			return err
 		}
@@ -68,7 +67,7 @@ func mergePendingVersionUpdateStatefulSetPVCDeletions(
 				transitionTemplates,
 			)
 		}
-		merged[key] = struct{}{}
+		merged[cleanupComponent.Component.Name] = struct{}{}
 	}
 	for key := range pending {
 		if _, exists := merged[key]; !exists {
@@ -235,7 +234,7 @@ func versionUpdateComponentUpdateSpecsByName(specs []apisv1.ComponentUpdateSpec)
 		if action != domainspec.ComponentActionUpdate {
 			continue
 		}
-		if key := strings.ToLower(strings.TrimSpace(update.Name)); key != "" {
+		if key := update.Name; key != "" {
 			if _, exists := updates[key]; exists {
 				return nil, fmt.Errorf("%w: component %s cannot be updated more than once in one version update request", bcode.ErrDuplicateComponentName, strings.TrimSpace(update.Name))
 			}

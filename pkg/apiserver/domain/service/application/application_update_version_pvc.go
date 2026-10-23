@@ -40,7 +40,7 @@ func preserveVersionUpdatePVCIdentities(componentMap map[string]*model.Applicati
 		if componentName == "" {
 			continue
 		}
-		component, exists := componentMap[strings.ToLower(componentName)]
+		component, exists := componentMap[componentName]
 		if !exists || component == nil {
 			continue
 		}

@@ -35,9 +35,8 @@ func parseVersionUpdateResourceActions(specs []domainspec.ComponentUpdateSpec) (
 			return versionUpdateResourceActions{}, err
 		}
 		name := strings.TrimSpace(spec.Name)
-		key := strings.ToLower(name)
 		switch {
-		case action == domainspec.ComponentActionRemove && key == versionUpdateCleanupAllSentinelName:
+		case action == domainspec.ComponentActionRemove && name == versionUpdateCleanupAllSentinelName:
 			if actions.fullCleanup {
 				return versionUpdateResourceActions{}, fmt.Errorf("%w: component %s cannot be used more than once in one version update request", bcode.ErrDuplicateComponentName, name)
 			}
@@ -45,7 +44,7 @@ func parseVersionUpdateResourceActions(specs []domainspec.ComponentUpdateSpec) (
 				return versionUpdateResourceActions{}, err
 			}
 			actions.fullCleanup = true
-		case action == domainspec.ComponentActionAdd && key == versionUpdateDeployAllSentinelName:
+		case action == domainspec.ComponentActionAdd && name == versionUpdateDeployAllSentinelName:
 			if actions.deployAll {
 				return versionUpdateResourceActions{}, fmt.Errorf("%w: component %s cannot be used more than once in one version update request", bcode.ErrDuplicateComponentName, name)
 			}
@@ -57,13 +56,13 @@ func parseVersionUpdateResourceActions(specs []domainspec.ComponentUpdateSpec) (
 			if err := validateVersionUpdateSentinelSpec(spec); err != nil {
 				return versionUpdateResourceActions{}, err
 			}
-			if _, exists := restartSeen[key]; exists {
+			if _, exists := restartSeen[name]; exists {
 				return versionUpdateResourceActions{}, fmt.Errorf("%w: component %s cannot be restarted more than once in one version update request", bcode.ErrDuplicateComponentName, name)
 			}
-			restartSeen[key] = name
+			restartSeen[name] = name
 			actions.restartComponents = append(actions.restartComponents, name)
 		default:
-			if isReservedVersionUpdateSentinelName(key) {
+			if isReservedVersionUpdateSentinelName(name) {
 				return versionUpdateResourceActions{}, fmt.Errorf("%w: component name %q is reserved for version resource actions", bcode.ErrApplicationConfig, name)
 			}
 			actions.components = append(actions.components, spec)
@@ -89,11 +88,10 @@ func validateVersionUpdateSentinelSpec(spec domainspec.ComponentUpdateSpec) erro
 
 func validateVersionUpdateRestartActions(restartComponents []string, componentMap map[string]*model.ApplicationComponent) error {
 	for _, name := range restartComponents {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
+		if name == "" {
 			return fmt.Errorf("%w: restart component name is required", bcode.ErrApplicationConfig)
 		}
-		comp, exists := componentMap[key]
+		comp, exists := componentMap[name]
 		if !exists || comp == nil {
 			return fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(name))
 		}
@@ -128,7 +126,7 @@ func versionUpdateResourceActionInfoEmpty(info *model.VersionUpdateResourceActio
 }
 
 func isReservedVersionUpdateSentinelName(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
+	switch name {
 	case versionUpdateCleanupAllSentinelName, versionUpdateDeployAllSentinelName:
 		return true
 	default:
@@ -152,7 +150,7 @@ func validateVersionUpdateDeployAllWorkflow(workflow *model.Workflow, components
 		if name == "" {
 			continue
 		}
-		required[strings.ToLower(name)] = name
+		required[name] = name
 	}
 	if len(required) == 0 {
 		return bcode.ErrApplicationNoComponents
@@ -200,12 +198,11 @@ func validateVersionUpdateReadyWorkflowCoverage(workflow *model.Workflow, compon
 
 	missing := make([]string, 0)
 	for _, name := range componentNames {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
+		if name == "" {
 			continue
 		}
-		if _, ok := covered[key]; !ok {
-			missing = append(missing, strings.TrimSpace(name))
+		if _, ok := covered[name]; !ok {
+			missing = append(missing, name)
 		}
 	}
 	if len(missing) > 0 {
@@ -226,9 +223,8 @@ func versionUpdateWorkflowDeploymentComponents(steps model.WorkflowSteps) map[st
 		}
 		if len(step.SubSteps) == 0 && versionUpdateWorkflowJobTypeDeploysComponents(step.WorkflowType) {
 			for _, name := range step.ComponentNames() {
-				key := strings.ToLower(strings.TrimSpace(name))
-				if key != "" {
-					covered[key] = struct{}{}
+				if name != "" {
+					covered[name] = struct{}{}
 				}
 			}
 		}
@@ -237,9 +233,8 @@ func versionUpdateWorkflowDeploymentComponents(steps model.WorkflowSteps) map[st
 				continue
 			}
 			for _, name := range sub.ComponentNames() {
-				key := strings.ToLower(strings.TrimSpace(name))
-				if key != "" {
-					covered[key] = struct{}{}
+				if name != "" {
+					covered[name] = struct{}{}
 				}
 			}
 		}

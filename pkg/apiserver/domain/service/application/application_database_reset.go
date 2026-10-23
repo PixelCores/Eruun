@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -127,28 +128,27 @@ func selectDatabaseResetComponents(requested []string, components []*model.Appli
 		if component == nil {
 			continue
 		}
-		componentsByName[strings.ToLower(strings.TrimSpace(component.Name))] = component
+		componentsByName[component.Name] = component
 	}
 
 	seen := make(map[string]struct{}, len(requested))
 	selected := make([]string, 0, len(requested))
 	for _, raw := range requested {
-		name := strings.TrimSpace(raw)
+		name := spec.NormalizeName(raw)
 		if name == "" {
 			return nil, fmt.Errorf("%w: database reset component name is required", bcode.ErrApplicationConfig)
 		}
-		key := strings.ToLower(name)
-		if _, ok := seen[key]; ok {
+		if _, ok := seen[name]; ok {
 			continue
 		}
-		component := componentsByName[key]
+		component := componentsByName[name]
 		if component == nil {
 			return nil, fmt.Errorf("%w: component %q not found", bcode.ErrApplicationConfig, name)
 		}
 		if component.ComponentType != config.StoreJob {
 			return nil, fmt.Errorf("%w: component %q is not a store component", bcode.ErrApplicationConfig, name)
 		}
-		seen[key] = struct{}{}
+		seen[name] = struct{}{}
 		selected = append(selected, component.Name)
 	}
 	if len(selected) == 0 {

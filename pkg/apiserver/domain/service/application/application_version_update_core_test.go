@@ -379,3 +379,18 @@ func TestUpdateVersionNoChanges(t *testing.T) {
 	require.Empty(t, resp.RemovedComponents)
 	require.NotEmpty(t, resp.TaskID)
 }
+
+func TestUpdateVersionMatchesComponentNamesInCanonicalForm(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Version: "1.0.0"}
+	store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", Image: "nginx:1.26"}
+	svc := newMockServiceWithStore(store)
+
+	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+		Version: "2.0.0", AutoExec: boolPtr(false),
+		Components: []apisv1.ComponentUpdateSpec{{Name: " Web ", Image: "nginx:1.27"}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, resp.UpdatedComponents, "web")
+	require.Equal(t, "nginx:1.27", store.components["web"].Image)
+}

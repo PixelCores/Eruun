@@ -99,7 +99,7 @@ func (c *applicationsServiceImpl) prepareVersionUpdateRun(
 	run.componentMap = make(map[string]*model.ApplicationComponent, len(components))
 	for _, component := range components {
 		if component != nil {
-			run.componentMap[strings.ToLower(component.Name)] = component
+			run.componentMap[component.Name] = component
 		}
 	}
 
@@ -395,7 +395,7 @@ func (c *applicationsServiceImpl) validateVersionUpdateWorkspaceComponents(ctx c
 			}
 			for j := range run.normalReq.Components {
 				patch := &run.normalReq.Components[j]
-				if strings.EqualFold(patch.Name, component.Name) && (patch.Traits != nil || patch.Action == "add") {
+				if patch.Name == component.Name && (patch.Traits != nil || patch.Action == "add") {
 					patch.Traits = &component.Traits
 				}
 			}

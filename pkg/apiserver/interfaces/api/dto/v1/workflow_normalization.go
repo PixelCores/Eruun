@@ -4,10 +4,25 @@ import (
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-// NormalizeWorkflowSteps is the shared HTTP/gRPC presentation normalization
-// before workflow validation and domain execution.
+// NormalizeApplicationNames gives component names, template target refs and
+// workflow step names of a create request their stored form; create and Try
+// apply it before validation.
+func NormalizeApplicationNames(req *CreateApplicationsRequest) {
+	for i := range req.Components {
+		component := &req.Components[i]
+		component.Name = spec.NormalizeName(component.Name)
+		if component.Template != nil {
+			component.Template.Target = spec.NormalizeName(component.Template.Target)
+		}
+	}
+	NormalizeWorkflowSteps(req.Workflow)
+}
+
+// NormalizeWorkflowSteps is the write-boundary normalization the domain
+// services apply before validating or storing workflow steps.
 func NormalizeWorkflowSteps(steps []CreateWorkflowStepRequest) {
 	for i := range steps {
 		step := &steps[i]
@@ -26,14 +41,14 @@ func NormalizeWorkflowSteps(steps []CreateWorkflowStepRequest) {
 }
 
 func normalizeWorkflowStepNode(name *string, components []string, properties []WorkflowProperties) {
-	*name = strings.ToLower(*name)
+	*name = spec.NormalizeName(*name)
 	for i := range components {
-		components[i] = strings.TrimSpace(components[i])
+		components[i] = spec.NormalizeName(components[i])
 	}
 	for i := range properties {
 		item := &properties[i]
 		for j := range item.Policies {
-			item.Policies[j] = strings.TrimSpace(item.Policies[j])
+			item.Policies[j] = spec.NormalizeName(item.Policies[j])
 		}
 		item.Path = strings.TrimSpace(item.Path)
 		item.Container = strings.TrimSpace(item.Container)

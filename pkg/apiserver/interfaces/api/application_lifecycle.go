@@ -264,10 +264,6 @@ func (app *applications) updateVersion(c *gin.Context) {
 		return
 	}
 
-	for i := range req.Components {
-		req.Components[i].Name = strings.ToLower(strings.TrimSpace(req.Components[i].Name))
-	}
-
 	if err := validate.Struct(req); err != nil {
 		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return

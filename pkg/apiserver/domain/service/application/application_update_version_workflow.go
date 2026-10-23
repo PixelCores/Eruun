@@ -22,9 +22,8 @@ func (c *applicationsServiceImpl) markComponentsStatus(ctx context.Context, appI
 	}
 	targets := make(map[string]struct{}, len(components))
 	for _, name := range components {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key != "" {
-			targets[key] = struct{}{}
+		if name != "" {
+			targets[name] = struct{}{}
 		}
 	}
 	if len(targets) == 0 {
@@ -38,7 +37,7 @@ func (c *applicationsServiceImpl) markComponentsStatus(ctx context.Context, appI
 		if comp == nil {
 			continue
 		}
-		if _, ok := targets[strings.ToLower(comp.Name)]; !ok {
+		if _, ok := targets[comp.Name]; !ok {
 			continue
 		}
 		if comp.Status == string(config.ComponentStatusCleaning) {
@@ -92,7 +91,7 @@ func (c *applicationsServiceImpl) MarkInitialDeployingWorkflowComponents(ctx con
 		if comp == nil {
 			continue
 		}
-		if _, ok := targets[strings.ToLower(strings.TrimSpace(comp.Name))]; !ok {
+		if _, ok := targets[comp.Name]; !ok {
 			continue
 		}
 		if !shouldMarkInitialDeployingComponent(comp) {
@@ -129,9 +128,8 @@ func initialDeployingWorkflowComponentTargets(workflow *model.Workflow) (map[str
 	targets := make(map[string]struct{})
 	addNames := func(names []string) {
 		for _, name := range names {
-			key := strings.ToLower(strings.TrimSpace(name))
-			if key != "" {
-				targets[key] = struct{}{}
+			if name != "" {
+				targets[name] = struct{}{}
 			}
 		}
 	}
@@ -254,7 +252,7 @@ func applyVersionUpdateWorkflowStepSync(
 
 	removedSet := make(map[string]struct{}, len(removed))
 	for _, name := range removed {
-		removedSet[strings.ToLower(name)] = struct{}{}
+		removedSet[name] = struct{}{}
 	}
 
 	filteredSteps := make([]*model.WorkflowStep, 0, len(steps.Steps))
@@ -262,8 +260,7 @@ func applyVersionUpdateWorkflowStepSync(
 		if step == nil {
 			continue
 		}
-		stepName := strings.ToLower(step.Name)
-		if _, shouldRemove := removedSet[stepName]; !shouldRemove {
+		if _, shouldRemove := removedSet[step.Name]; !shouldRemove {
 			filteredSteps = append(filteredSteps, step)
 		}
 	}
@@ -297,18 +294,17 @@ func hasWorkflowStructureChanges(specs []apisv1.ComponentUpdateSpec, componentMa
 		if err != nil {
 			return false, err
 		}
-		compName := strings.ToLower(strings.TrimSpace(spec.Name))
-		if compName == "" {
+		if spec.Name == "" {
 			continue
 		}
 		switch action {
 		case domainspec.ComponentActionAdd:
-			if _, exists := componentMap[compName]; exists {
+			if _, exists := componentMap[spec.Name]; exists {
 				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
 			return true, nil
 		case domainspec.ComponentActionRemove:
-			if _, exists := componentMap[compName]; !exists {
+			if _, exists := componentMap[spec.Name]; !exists {
 				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
 			return true, nil

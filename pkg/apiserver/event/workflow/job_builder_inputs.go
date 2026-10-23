@@ -96,11 +96,10 @@ func validateLogArchiveUploadWorkflowInputs(steps *model.WorkflowSteps, componen
 	}
 	componentsByName := make(map[string]*model.ApplicationComponent, len(componentMap))
 	for name, component := range componentMap {
-		normalizedName := strings.ToLower(strings.TrimSpace(name))
-		if normalizedName == "" || component == nil {
+		if name == "" || component == nil {
 			continue
 		}
-		componentsByName[normalizedName] = component
+		componentsByName[name] = component
 	}
 	for _, step := range steps.Steps {
 		if step == nil || config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
@@ -127,7 +126,7 @@ func validateLogArchiveUploadStepInputs(stepName string, jobType config.JobType,
 	}
 	for _, name := range componentNames {
 		componentName := strings.TrimSpace(name)
-		component := componentsByName[strings.ToLower(componentName)]
+		component := componentsByName[componentName]
 		if component == nil {
 			return fmt.Errorf("workflow step %q references missing component %q for jobType %q", stepName, componentName, jobType)
 		}

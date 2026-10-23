@@ -189,8 +189,7 @@ func (p PendingStatefulSetCleanups) applyComponent(
 	if component.ComponentType != config.StoreJob {
 		return fmt.Errorf("task %s has invalid StatefulSet cleanup contract for component %s", task.TaskID, component.Name)
 	}
-	key := strings.ToLower(strings.TrimSpace(component.Name))
-	if key == "" {
+	if component.Name == "" {
 		return fmt.Errorf("task %s StatefulSet cleanup contract has an empty component name", task.TaskID)
 	}
 	if strings.TrimSpace(component.AppID) == "" {
@@ -201,11 +200,11 @@ func (p PendingStatefulSetCleanups) applyComponent(
 		return fmt.Errorf("task %s component %s StatefulSet identity: %w", task.TaskID, component.Name, err)
 	}
 	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)
-	job, err := matchingStatefulSetCleanupJob(task, key, templates, attempt.jobs)
+	job, err := matchingStatefulSetCleanupJob(task, component.Name, templates, attempt.jobs)
 	if err != nil {
 		return err
 	}
-	plan := p[key][identity]
+	plan := p[component.Name][identity]
 	if plan != nil {
 		if err := ValidateStatefulSetCleanupComponent(plan.Component, component); err != nil {
 			return fmt.Errorf("task %s component %s pending StatefulSet identity %s: %w", task.TaskID, component.Name, identity, err)
@@ -217,7 +216,7 @@ func (p PendingStatefulSetCleanups) applyComponent(
 	}
 	switch {
 	case jobStatus == config.StatusCompleted && taskCompleted:
-		p.resolve(key, identity, templates)
+		p.resolve(component.Name, identity, templates)
 	case job == nil,
 		taskRequiresRetry && shouldTerminalizePrecreatedCleanupStatus(jobStatus),
 		jobStatus == config.StatusCompleted && taskRequiresRetry,
@@ -228,8 +227,8 @@ func (p PendingStatefulSetCleanups) applyComponent(
 		jobStatus == config.StatusCancelled,
 		jobStatus == config.StatusReject:
 		if plan == nil {
-			if p[key] == nil {
-				p[key] = make(map[string]*PendingStatefulSetCleanup)
+			if p[component.Name] == nil {
+				p[component.Name] = make(map[string]*PendingStatefulSetCleanup)
 			}
 			plan = &PendingStatefulSetCleanup{
 				Component:       component,
@@ -237,7 +236,7 @@ func (p PendingStatefulSetCleanups) applyComponent(
 				Templates:       make(map[string]struct{}, len(templates)),
 				TaskIDs:         make(map[string]struct{}),
 			}
-			p[key][identity] = plan
+			p[component.Name][identity] = plan
 		}
 		plan.TaskIDs[task.TaskID] = struct{}{}
 		for _, template := range templates {
@@ -419,7 +418,7 @@ func ValidateStatefulSetCleanupComponent(previous, current *model.ApplicationCom
 	if strings.TrimSpace(previous.AppID) != strings.TrimSpace(current.AppID) {
 		return fmt.Errorf("component appID changed from %q to %q", previous.AppID, current.AppID)
 	}
-	if !strings.EqualFold(strings.TrimSpace(previous.Name), strings.TrimSpace(current.Name)) {
+	if previous.Name != current.Name {
 		return fmt.Errorf("component name changed from %q to %q", previous.Name, current.Name)
 	}
 	return nil
@@ -435,7 +434,7 @@ func matchingStatefulSetCleanupJob(
 ) (*model.JobInfo, error) {
 	var matched *model.JobInfo
 	for _, job := range jobs {
-		if job == nil || strings.ToLower(strings.TrimSpace(job.ServiceName)) != componentName {
+		if job == nil || job.ServiceName != componentName {
 			continue
 		}
 		marked, err := isVersionUpdateRemoveCleanupJobInfo(job)

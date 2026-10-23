@@ -56,7 +56,6 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 		return
 	}
 	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
-	apis.NormalizeWorkflowSteps(req.Workflow)
 	if err := validate.Struct(req); err != nil {
 		apiresponse.ReturnError(c, bcode.ErrWorkflowConfig)
 		return
@@ -280,11 +279,6 @@ func (app *applications) tryApplication(c *gin.Context) {
 		return
 	}
 
-	for i := range req.Components {
-		req.Components[i].Name = strings.ToLower(strings.TrimSpace(req.Components[i].Name))
-	}
-	apis.NormalizeWorkflowSteps(req.Workflow)
-
 	ctx := c.Request.Context()
 	klog.V(2).InfoS("try application validation request received", "name", req.Name, "components", len(req.Components), "workflows", len(req.Workflow))
 
@@ -317,7 +311,6 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 	}
 
 	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
-	apis.NormalizeWorkflowSteps(req.Workflow)
 	tryReq := apis.TryWorkflowRequest{
 		WorkflowID:       req.WorkflowID,
 		Name:             req.Name,
