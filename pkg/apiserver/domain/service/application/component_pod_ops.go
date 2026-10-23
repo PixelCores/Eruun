@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -154,7 +155,7 @@ func (c *applicationsServiceImpl) StreamComponentShellScript(ctx context.Context
 
 func (c *applicationsServiceImpl) resolveComponentPodTarget(ctx context.Context, appID, componentName, requestedContainer string, invalidContainerErr, unavailableErr error, allowCompleted bool) (*componentPodTarget, error) {
 	appID = strings.TrimSpace(appID)
-	componentName = strings.TrimSpace(componentName)
+	componentName = spec.NormalizeName(componentName)
 	requestedContainer = strings.TrimSpace(requestedContainer)
 	if appID == "" || componentName == "" {
 		return nil, bcode.ErrComponentNotFound

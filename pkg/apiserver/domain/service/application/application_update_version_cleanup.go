@@ -29,11 +29,10 @@ func buildVersionUpdateCleanupInfo(
 		if err != nil {
 			return nil, err
 		}
-		key := strings.ToLower(strings.TrimSpace(update.Name))
-		if key == "" {
+		if update.Name == "" {
 			continue
 		}
-		comp, exists := componentMap[key]
+		comp, exists := componentMap[update.Name]
 		if !exists || comp == nil {
 			continue
 		}
@@ -41,7 +40,7 @@ func buildVersionUpdateCleanupInfo(
 			continue
 		}
 		insertBeforeStepIndex := cleanupAppendStepIndex
-		if idx, ok := cleanupStepIndexes[strings.ToLower(strings.TrimSpace(comp.Name))]; ok {
+		if idx, ok := cleanupStepIndexes[comp.Name]; ok {
 			insertBeforeStepIndex = idx
 		}
 		cleanupComponent, err := versionUpdateCleanupComponentDescriptor(comp)
@@ -93,7 +92,7 @@ func buildVersionUpdateFullCleanupInfo(
 			continue
 		}
 		if strings.TrimSpace(key) == "" {
-			key = strings.ToLower(strings.TrimSpace(comp.Name))
+			key = comp.Name
 		}
 		if key == "" {
 			continue
@@ -119,7 +118,7 @@ func buildVersionUpdateFullCleanupInfo(
 		requireStatefulSetDeletion := false
 		var statefulSetPVCTemplatesToDelete []string
 		if requireStatefulSetRecreation && versionUpdateRecreatesStatefulSet(comp, true) {
-			if update, exists := updateSpecs[strings.ToLower(strings.TrimSpace(comp.Name))]; exists {
+			if update, exists := updateSpecs[comp.Name]; exists {
 				requireStatefulSetDeletion, err = versionUpdateStatefulSetRequiresDeletion(comp, update)
 				if err != nil {
 					return nil, fmt.Errorf("build cleanup component %s StatefulSet deletion plan: %w", comp.Name, err)
@@ -127,7 +126,7 @@ func buildVersionUpdateFullCleanupInfo(
 			}
 		}
 		if requireStatefulSetDeletion {
-			if update, exists := updateSpecs[strings.ToLower(strings.TrimSpace(comp.Name))]; exists {
+			if update, exists := updateSpecs[comp.Name]; exists {
 				statefulSetPVCTemplatesToDelete, err = versionUpdateStatefulSetPVCTemplatesToDelete(comp, update)
 				if err != nil {
 					return nil, fmt.Errorf("build cleanup component %s StatefulSet PVC plan: %w", comp.Name, err)
@@ -453,16 +452,15 @@ func versionUpdateCleanupStepIndexes(
 		if action != spec.ComponentActionRemove {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(update.Name))
-		if key == "" {
+		if update.Name == "" {
 			continue
 		}
-		comp, exists := componentMap[key]
+		comp, exists := componentMap[update.Name]
 		if !exists || comp == nil {
 			continue
 		}
 		originalIndex := findWorkflowStepIndexForComponent(&steps, comp.Name, len(steps.Steps))
-		indexes[strings.ToLower(strings.TrimSpace(comp.Name))] = versionUpdatePostRemovalStepIndex(&steps, removedSet, originalIndex)
+		indexes[comp.Name] = versionUpdatePostRemovalStepIndex(&steps, removedSet, originalIndex)
 	}
 	return indexes, appendIndex, nil
 }
@@ -497,14 +495,13 @@ func versionUpdateRemovedComponentSet(specs []apisv1.ComponentUpdateSpec, compon
 		if action != spec.ComponentActionRemove {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(update.Name))
-		if key == "" {
+		if update.Name == "" {
 			continue
 		}
-		if comp, exists := componentMap[key]; !exists || comp == nil {
+		if comp, exists := componentMap[update.Name]; !exists || comp == nil {
 			continue
 		}
-		removedSet[key] = struct{}{}
+		removedSet[update.Name] = struct{}{}
 	}
 	return removedSet, nil
 }
@@ -575,12 +572,11 @@ func versionUpdateWorkflowStepSurvivesRemoval(step *model.WorkflowStep, removedS
 func versionUpdateComponentNamesSurviveRemoval(names []string, removedSet map[string]struct{}) (bool, bool) {
 	hasNames := false
 	for _, name := range names {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
+		if name == "" {
 			continue
 		}
 		hasNames = true
-		if _, removed := removedSet[key]; !removed {
+		if _, removed := removedSet[name]; !removed {
 			return true, true
 		}
 	}
@@ -591,19 +587,18 @@ func findWorkflowStepIndexForComponent(steps *model.WorkflowSteps, componentName
 	if steps == nil {
 		return fallbackIndex
 	}
-	target := strings.ToLower(strings.TrimSpace(componentName))
-	if target == "" {
+	if componentName == "" {
 		return fallbackIndex
 	}
 	for index, step := range steps.Steps {
 		if step == nil {
 			continue
 		}
-		if workflowComponentNamesContain(step.ComponentNames(), target) {
+		if workflowComponentNamesContain(step.ComponentNames(), componentName) {
 			return index
 		}
 		for _, sub := range step.SubSteps {
-			if workflowComponentNamesContain(sub.ComponentNames(), target) {
+			if workflowComponentNamesContain(sub.ComponentNames(), componentName) {
 				return index
 			}
 		}
@@ -613,7 +608,7 @@ func findWorkflowStepIndexForComponent(steps *model.WorkflowSteps, componentName
 
 func workflowComponentNamesContain(names []string, target string) bool {
 	for _, name := range names {
-		if strings.ToLower(strings.TrimSpace(name)) == target {
+		if name == target {
 			return true
 		}
 	}

@@ -124,14 +124,13 @@ func loadPersistedCleanupJobInfos(ctx context.Context, task *model.WorkflowQueue
 		if !marked {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(record.ServiceName))
-		if key == "" {
+		if record.ServiceName == "" {
 			return nil, fmt.Errorf("cleanup job info service name is empty")
 		}
-		if _, exists := recordsByName[key]; exists {
+		if _, exists := recordsByName[record.ServiceName]; exists {
 			return nil, fmt.Errorf("duplicate cleanup job info for component %s", record.ServiceName)
 		}
-		recordsByName[key] = record
+		recordsByName[record.ServiceName] = record
 	}
 
 	records := make([]persistedCleanupJobInfo, 0, len(cleanupComponents))
@@ -144,7 +143,7 @@ func loadPersistedCleanupJobInfos(ctx context.Context, task *model.WorkflowQueue
 			return nil, fmt.Errorf("cleanup insert step index is negative")
 		}
 		componentName := strings.TrimSpace(component.Name)
-		record := recordsByName[strings.ToLower(componentName)]
+		record := recordsByName[componentName]
 		if record == nil {
 			return nil, fmt.Errorf("precreated cleanup job info not found for component %s", componentName)
 		}

@@ -213,14 +213,13 @@ func buildLogArchiveUploadJobs(
 
 	seen := make(map[string]struct{}, len(componentNames))
 	for _, name := range componentNames {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
+		if name == "" {
 			continue
 		}
-		if _, ok := seen[key]; ok {
+		if _, ok := seen[name]; ok {
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[name] = struct{}{}
 		component, ok := componentMap[name]
 		if !ok || component == nil {
 			logger.Info("Log archive upload component referenced in workflow step not found", "componentName", name)
@@ -252,7 +251,6 @@ func cloneLogArchiveUploadComponent(component *model.ApplicationComponent) *mode
 }
 
 func logArchiveUploadOptionsForComponent(componentName string, properties []model.Policies) (string, string) {
-	normalizedComponentName := strings.ToLower(strings.TrimSpace(componentName))
 	var fallbackPath string
 	var fallbackContainer string
 	for _, property := range properties {
@@ -263,7 +261,7 @@ func logArchiveUploadOptionsForComponent(componentName string, properties []mode
 			fallbackContainer = container
 		}
 		for _, policy := range property.Policies {
-			if strings.ToLower(strings.TrimSpace(policy)) == normalizedComponentName {
+			if policy == componentName {
 				return path, container
 			}
 		}
@@ -298,11 +296,10 @@ func buildDatabaseResetJobs(
 			logger.Info("Database reset skips non-store component", "componentName", component.Name, "componentType", component.ComponentType)
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(component.Name))
-		if _, ok := seenDatabases[key]; ok {
+		if _, ok := seenDatabases[component.Name]; ok {
 			continue
 		}
-		seenDatabases[key] = struct{}{}
+		seenDatabases[component.Name] = struct{}{}
 		databaseComponents = append(databaseComponents, cloneDatabaseResetComponent(component))
 	}
 	if len(databaseComponents) == 0 {

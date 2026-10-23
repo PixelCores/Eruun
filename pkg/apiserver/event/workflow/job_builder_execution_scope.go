@@ -122,9 +122,8 @@ func filterWorkflowPoliciesByExecutionComponents(policies []model.Policies, allo
 func versionUpdateExecutionComponentSet(components []string) map[string]struct{} {
 	allowed := make(map[string]struct{}, len(components))
 	for _, name := range components {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key != "" {
-			allowed[key] = struct{}{}
+		if name != "" {
+			allowed[name] = struct{}{}
 		}
 	}
 	return allowed
@@ -134,7 +133,7 @@ func versionUpdateExecutionComponentAllowed(name string, allowed map[string]stru
 	if len(allowed) == 0 {
 		return false
 	}
-	_, ok := allowed[strings.ToLower(strings.TrimSpace(name))]
+	_, ok := allowed[name]
 	return ok
 }
 

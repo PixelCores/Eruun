@@ -36,7 +36,7 @@ func validateVersionUpdateStatefulSetImmutableFields(componentMap map[string]*mo
 		if action != domainspec.ComponentActionUpdate {
 			continue
 		}
-		component := componentMap[strings.ToLower(strings.TrimSpace(update.Name))]
+		component := componentMap[update.Name]
 		if component == nil || component.ComponentType != config.StoreJob {
 			continue
 		}

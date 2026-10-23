@@ -17,6 +17,9 @@ import (
 // UpdateVersion 更新应用版本，支持组件的更新、新增、删除操作
 func (c *applicationsServiceImpl) UpdateVersion(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error) {
 	var response *apisv1.UpdateVersionResponse
+	for i := range req.Components {
+		req.Components[i].Name = domainspec.NormalizeName(req.Components[i].Name)
+	}
 	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-version", func(lockCtx context.Context, app *model.Applications) error {
 		app, err := c.applicationForRequestedID(lockCtx, appID, app)
 		if err != nil {

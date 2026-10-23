@@ -71,23 +71,21 @@ func buildVersionRestartJobs(
 	}
 	componentsByName := make(map[string]*model.ApplicationComponent, len(componentMap))
 	for name, component := range componentMap {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key != "" && component != nil {
-			componentsByName[key] = component
+		if name != "" && component != nil {
+			componentsByName[name] = component
 		}
 	}
 
 	seen := make(map[string]struct{}, len(componentNames))
 	for _, name := range componentNames {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
+		if name == "" {
 			continue
 		}
-		if _, ok := seen[key]; ok {
+		if _, ok := seen[name]; ok {
 			continue
 		}
-		seen[key] = struct{}{}
-		component := componentsByName[key]
+		seen[name] = struct{}{}
+		component := componentsByName[name]
 		if component == nil {
 			continue
 		}
@@ -110,12 +108,11 @@ func versionUpdateImageReadyTimeoutForComponent(task *model.WorkflowQueue, compo
 	if err != nil || !ok || info.ImageReadyTimeoutSeconds <= 0 || len(info.ImageReadyComponents) == 0 {
 		return 0, false
 	}
-	target := strings.ToLower(strings.TrimSpace(componentName))
-	if target == "" {
+	if componentName == "" {
 		return 0, false
 	}
 	for _, name := range info.ImageReadyComponents {
-		if strings.ToLower(strings.TrimSpace(name)) == target {
+		if name == componentName {
 			return info.ImageReadyTimeoutSeconds, true
 		}
 	}

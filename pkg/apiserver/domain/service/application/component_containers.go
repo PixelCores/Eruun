@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -17,7 +18,7 @@ import (
 
 func (c *applicationsServiceImpl) ListComponentContainers(ctx context.Context, appID, componentName string) (*apisv1.ComponentContainersResponse, error) {
 	appID = strings.TrimSpace(appID)
-	componentName = strings.TrimSpace(componentName)
+	componentName = spec.NormalizeName(componentName)
 	if appID == "" || componentName == "" {
 		return nil, bcode.ErrComponentNotFound
 	}

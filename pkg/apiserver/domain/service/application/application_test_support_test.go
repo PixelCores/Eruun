@@ -91,6 +91,31 @@ func diffFieldNames(fields []apisv1.VersionComponentField) []string {
 	return names
 }
 
+// componentKeyFor finds the map key of a stored component. Components of
+// different applications may share a name, so AppID and Name match together
+// when AppID is set.
+func (s *inMemoryAppStore) componentKeyFor(v *model.ApplicationComponent) (string, bool) {
+	if v.AppID == "" {
+		_, ok := s.components[v.Name]
+		return v.Name, ok
+	}
+	for key, comp := range s.components {
+		if comp != nil && comp.AppID == v.AppID && comp.Name == v.Name {
+			return key, true
+		}
+	}
+	return "", false
+}
+
+// newComponentKey keys a new component by name unless another application
+// already holds that name.
+func (s *inMemoryAppStore) newComponentKey(v *model.ApplicationComponent) string {
+	if other, taken := s.components[v.Name]; taken && other.AppID != v.AppID {
+		return v.AppID + "/" + v.Name
+	}
+	return v.Name
+}
+
 func findComponentByAppAndName(store *inMemoryAppStore, appID, name string) *model.ApplicationComponent {
 	if store == nil {
 		return nil
@@ -337,7 +362,11 @@ func (s *inMemoryAppStore) Add(_ context.Context, entity datastore.Entity) error
 		s.workflows[v.ID] = &cp
 	case *model.ApplicationComponent:
 		cp := *v
-		s.components[v.Name] = &cp
+		key, ok := s.componentKeyFor(v)
+		if !ok {
+			key = s.newComponentKey(v)
+		}
+		s.components[key] = &cp
 	case *model.WorkflowQueue:
 		if s.addWorkflowQueueErr != nil {
 			return s.addWorkflowQueueErr
@@ -395,11 +424,11 @@ func (s *inMemoryAppStore) Put(_ context.Context, entity datastore.Entity) error
 			s.apps[v.ID] = &cp
 		}
 	case *model.ApplicationComponent:
-		if existing, ok := s.components[v.Name]; ok {
-			*existing = *v
+		if key, ok := s.componentKeyFor(v); ok {
+			*s.components[key] = *v
 		} else {
 			cp := *v
-			s.components[v.Name] = &cp
+			s.components[s.newComponentKey(v)] = &cp
 		}
 	case *model.WorkflowQueue:
 		if existing, ok := s.tasks[v.TaskID]; ok {
@@ -427,7 +456,9 @@ func (s *inMemoryAppStore) Delete(_ context.Context, entity datastore.Entity) er
 	case *model.Workflow:
 		delete(s.workflows, v.ID)
 	case *model.ApplicationComponent:
-		delete(s.components, v.Name)
+		if key, ok := s.componentKeyFor(v); ok {
+			delete(s.components, key)
+		}
 	case *model.WorkflowQueue:
 		delete(s.tasks, v.TaskID)
 	}
@@ -468,8 +499,8 @@ func (s *inMemoryAppStore) Get(_ context.Context, entity datastore.Entity) error
 		return datastore.ErrRecordNotExist
 	case *model.ApplicationComponent:
 		if v.Name != "" {
-			if comp, ok := s.components[v.Name]; ok {
-				*v = *comp
+			if key, ok := s.componentKeyFor(v); ok {
+				*v = *s.components[key]
 				return nil
 			}
 		}

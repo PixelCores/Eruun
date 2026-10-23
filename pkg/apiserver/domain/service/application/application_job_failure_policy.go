@@ -28,7 +28,7 @@ func normalizeVersionUpdateJobFailurePolicies(specs []apisv1.ComponentUpdateSpec
 
 		componentType := spec.ComponentType
 		if action == domainspec.ComponentActionUpdate {
-			component := componentMap[strings.ToLower(strings.TrimSpace(spec.Name))]
+			component := componentMap[spec.Name]
 			if component == nil {
 				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}

@@ -215,7 +215,6 @@ func (s *ApplicationsServer) UpdateApplicationWorkflow(ctx context.Context, req 
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
 	input.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(input.WorkflowType))))
-	apis.NormalizeWorkflowSteps(input.Workflow)
 	resp, err := s.Applications.UpdateApplicationWorkflow(ctx, req.AppId, input)
 	return typedResult(resp, err, &eruunv1.AppDTOUpdateWorkflowResponse{})
 }
@@ -336,9 +335,6 @@ func (s *ApplicationsServer) UpdateApplicationVersion(ctx context.Context, req *
 	if err != nil {
 		return nil, rpcError(bcode.ErrApplicationConfig)
 	}
-	for i := range input.Components {
-		input.Components[i].Name = strings.ToLower(strings.TrimSpace(input.Components[i].Name))
-	}
 	resp, err := s.Applications.UpdateVersion(ctx, req.AppId, input)
 	return typedResult(resp, err, &eruunv1.AppDTOUpdateVersionResponse{})
 }
@@ -360,10 +356,6 @@ func (s *ApplicationsServer) TryApplication(ctx context.Context, req *eruunv1.Ap
 	if err != nil {
 		return nil, rpcError(bcode.ErrApplicationConfig)
 	}
-	for i := range input.Components {
-		input.Components[i].Name = strings.ToLower(strings.TrimSpace(input.Components[i].Name))
-	}
-	apis.NormalizeWorkflowSteps(input.Workflow)
 	resp := s.Validation.TryApplication(ctx, input)
 	return typedResult(resp, nil, &eruunv1.AppDTOTryApplicationResponse{})
 }
@@ -377,7 +369,6 @@ func (s *ApplicationsServer) TryWorkflow(ctx context.Context, req *eruunv1.Updat
 		return nil, rpcError(bcode.ErrWorkflowConfig)
 	}
 	input.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(input.WorkflowType))))
-	apis.NormalizeWorkflowSteps(input.Workflow)
 	tryReq := apis.TryWorkflowRequest{
 		WorkflowID: input.WorkflowID, Name: input.Name, Alias: input.Alias, WorkflowType: input.WorkflowType,
 		Callback: input.Callback, FailurePolicy: input.FailurePolicy, FailurePolicySet: input.FailurePolicySet, Workflow: input.Workflow,

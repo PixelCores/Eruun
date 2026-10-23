@@ -80,8 +80,6 @@ func allocateTemplateTargetName(base string, used map[string]int) string {
 }
 
 func templateOverrideTargetsComponent(target, templateName string) bool {
-	target = strings.TrimSpace(target)
-	templateName = strings.TrimSpace(templateName)
 	return target == templateName || target == fmt.Sprintf("tem-%s", templateName)
 }
 
@@ -117,11 +115,11 @@ func resolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.
 		}
 		// 记录需要覆盖的组件名、类型和目标模板组件
 		tr.overrides = append(tr.overrides, componentOverride{
-			name:                strings.TrimSpace(comp.Name),
+			name:                comp.Name,
 			compType:            comp.ComponentType,
 			properties:          comp.Properties,
 			traits:              comp.Traits,
-			target:              strings.TrimSpace(comp.Template.Target),
+			target:              comp.Template.Target,
 			defaultStorageClass: strings.TrimSpace(comp.Template.DefaultStorageClass),
 			sourceIndex:         sourceIndex,
 		})

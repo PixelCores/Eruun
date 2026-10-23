@@ -86,12 +86,13 @@ func validateName(name, field string, maxLength int, allowUppercase bool, patter
 	return errors
 }
 
-// ValidateComponent is the single rule set for a resolved component. names
-// collects lower-cased component names to detect duplicates across calls.
-func ValidateComponent(comp apisv1.CreateComponentRequest, field string, names map[string]bool) []apisv1.ValidationError {
+// ValidateComponent is the single rule set for a resolved component and the
+// one place that normalizes its evaluation traits, in place. names collects
+// component names to detect duplicates across calls.
+func ValidateComponent(comp *apisv1.CreateComponentRequest, field string, names map[string]bool) []apisv1.ValidationError {
 	nameField := field + ".name"
 	errors := ValidateLabelName(comp.Name, nameField)
-	lowerName := strings.ToLower(comp.Name)
+	lowerName := comp.Name
 	if names[lowerName] {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   nameField,
@@ -131,7 +132,7 @@ func ValidateComponent(comp apisv1.CreateComponentRequest, field string, names m
 			Message: fmt.Sprintf("properties.labels key %q is reserved and cannot be overridden", key),
 		})
 	}
-	errors = append(errors, validateJobProperties(comp, field)...)
+	errors = append(errors, validateJobProperties(*comp, field)...)
 	return append(errors, traitvalidation.ValidateTraits(comp.Traits, field+".traits", comp.ComponentType)...)
 }
 

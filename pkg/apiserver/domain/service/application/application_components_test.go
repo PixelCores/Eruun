@@ -314,7 +314,7 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 				Name:         "deploy-api",
 				WorkflowType: config.JobDeploy,
 				Properties: []model.Policies{{
-					Policies: []string{"API", "api", "running", "stopped"},
+					Policies: []string{"api", "api", "running", "stopped"},
 				}},
 			},
 			{
@@ -324,7 +324,7 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 				SubSteps: []*model.WorkflowSubStep{
 					{
 						Name:       "deploy-secret",
-						Properties: []model.Policies{{Policies: []string{"Secret"}}},
+						Properties: []model.Policies{{Policies: []string{"secret"}}},
 					},
 					{
 						Name:         "cleanup-worker",

@@ -78,6 +78,37 @@ func TestCreateApplicationsFromTemplatePreservesEnvOverrideValuesDuringRewrite(t
 	require.Equal(t, "cloned-app-mysql-master.default.svc", clonedProps.Env["TEMPLATE_HOST"])
 }
 
+func TestCreateApplicationsFromTemplateMatchesTargetInCanonicalForm(t *testing.T) {
+	store := newInMemoryAppStore()
+	templateApp := &model.Applications{ID: "tmpl-target-case", Name: "web-template", TemplateEnabled: true}
+	store.apps[templateApp.ID] = templateApp
+	store.components["web"] = &model.ApplicationComponent{
+		Name:          "web",
+		AppID:         templateApp.ID,
+		Namespace:     config.DefaultNamespace,
+		Image:         "nginx:1.27",
+		Replicas:      1,
+		ComponentType: config.ServerJob,
+	}
+
+	svc := newMockServiceWithStore(store)
+	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Namespace: config.DefaultNamespace,
+		Name:      "cloned-web",
+		Components: []apisv1.CreateComponentRequest{{
+			Name:          "New-Web",
+			ComponentType: config.ServerJob,
+			Template:      &spec.TemplateRef{ID: templateApp.ID, Target: " Web "},
+		}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	created := findComponentByAppAndName(store, resp.ID, "new-web")
+	require.NotNil(t, created)
+	require.Equal(t, "nginx:1.27", created.Image)
+}
+
 func TestCreateApplicationsFromTemplatePreservesInitEnvOverrideValuesDuringRewrite(t *testing.T) {
 	store := newInMemoryAppStore()
 	templateApp := &model.Applications{ID: "tmpl-init-env-override", Name: "mysql-template", TemplateEnabled: true}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -22,7 +23,7 @@ func (c *applicationsServiceImpl) DownloadLogArchive(ctx context.Context, appID 
 		return nil, fmt.Errorf("%w: log archive download requires exactly one component", bcode.ErrApplicationConfig)
 	}
 
-	componentName := strings.TrimSpace(req.Components[0])
+	componentName := spec.NormalizeName(req.Components[0])
 	if componentName == "" {
 		return nil, fmt.Errorf("%w: log archive component name is required", bcode.ErrApplicationConfig)
 	}

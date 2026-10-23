@@ -568,8 +568,7 @@ func (c *CleanupResourcesJobCtl) currentComponentByName(ctx context.Context, com
 	if component == nil {
 		return nil, fmt.Errorf("component is nil")
 	}
-	componentName := strings.TrimSpace(component.Name)
-	if componentName == "" {
+	if component.Name == "" {
 		return nil, nil
 	}
 	entities, err := c.Store.List(ctx, &model.ApplicationComponent{AppID: component.AppID}, &datastore.ListOptions{})
@@ -578,7 +577,7 @@ func (c *CleanupResourcesJobCtl) currentComponentByName(ctx context.Context, com
 	}
 	for _, entity := range entities {
 		current, ok := entity.(*model.ApplicationComponent)
-		if ok && current != nil && strings.EqualFold(strings.TrimSpace(current.Name), componentName) {
+		if ok && current != nil && current.Name == component.Name {
 			return current, nil
 		}
 	}

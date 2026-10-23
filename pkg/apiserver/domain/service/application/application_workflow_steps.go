@@ -37,7 +37,7 @@ var legacyTemplatePhaseNameAliases = map[string]int{
 func defaultWorkflowBodyForCreate(req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest) interface{} {
 	var workflowSteps *model.WorkflowSteps
 	if len(req.Workflow) > 0 {
-		workflowSteps = convertWorkflowStepsFromRequest(req.Workflow, workflowComponentNamesFromRequests(resolvedComponents))
+		workflowSteps = convertWorkflowStepsFromRequest(req.Workflow)
 	} else {
 		workflowSteps = convertWorkflowStepByTemplatePhases(resolvedComponents)
 	}
@@ -93,11 +93,10 @@ func convertWorkflowStepByTemplatePhases(components []apisv1.CreateComponentRequ
 		if name == "" {
 			continue
 		}
-		key := strings.ToLower(name)
-		if _, ok := seen[key]; ok {
+		if _, ok := seen[name]; ok {
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[name] = struct{}{}
 
 		phase := templatePhaseByComponentType(component.ComponentType)
 		phaseComponents[phase] = append(phaseComponents[phase], name)
@@ -185,7 +184,9 @@ func templatePhaseIndexByName(name string) (int, bool) {
 	return 0, false
 }
 
-func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, componentNames map[string]string) *model.WorkflowSteps {
+// convertWorkflowStepsFromRequest expects steps already normalized by
+// apisv1.NormalizeWorkflowSteps, so component refs match stored names as is.
+func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest) *model.WorkflowSteps {
 	workflowSteps := new(model.WorkflowSteps)
 	for _, reqStep := range steps {
 		stepType := config.ParseWorkflowStepType(string(reqStep.StepType))
@@ -206,7 +207,6 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 			reqStep.WorkflowType,
 			reqStep.Components,
 			reqStep.Properties,
-			componentNames,
 		)
 		for _, subReq := range reqStep.SubSteps {
 			subStep := &model.WorkflowSubStep{
@@ -219,7 +219,6 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 				subReq.WorkflowType,
 				subReq.Components,
 				subReq.Properties,
-				componentNames,
 			)
 			step.SubSteps = append(step.SubSteps, subStep)
 		}
@@ -228,9 +227,9 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 	return workflowSteps
 }
 
-func workflowModelPoliciesFromRequest(name string, jobType config.JobType, explicit []string, propertiesList []apisv1.WorkflowProperties, componentNames map[string]string) []model.Policies {
+func workflowModelPoliciesFromRequest(name string, jobType config.JobType, explicit []string, propertiesList []apisv1.WorkflowProperties) []model.Policies {
 	if len(propertiesList) == 0 {
-		policyComponentNames := workflowTargetComponents(name, jobType, explicit, nil, componentNames)
+		policyComponentNames := workflowTargetComponents(name, jobType, explicit, nil)
 		if len(policyComponentNames) == 0 {
 			return nil
 		}
@@ -239,9 +238,9 @@ func workflowModelPoliciesFromRequest(name string, jobType config.JobType, expli
 
 	result := make([]model.Policies, 0, len(propertiesList))
 	for _, item := range propertiesList {
-		policyComponentNames := canonicalWorkflowComponentRefs(item.Policies, componentNames)
+		policyComponentNames := uniqueWorkflowComponentRefs(item.Policies)
 		if len(propertiesList) == 1 {
-			policyComponentNames = workflowTargetComponents(name, jobType, explicit, item.Policies, componentNames)
+			policyComponentNames = workflowTargetComponents(name, jobType, explicit, item.Policies)
 		}
 		if len(policyComponentNames) == 0 {
 			continue
@@ -273,78 +272,37 @@ func convertWorkflowStepApprovalFromRequest(req *apisv1.WorkflowStepApproval) *m
 	}
 }
 
-func mergeWorkflowComponents(explicit []string, policies []string, componentNames map[string]string) []string {
+func mergeWorkflowComponents(explicit []string, policies []string) []string {
 	combined := append([]string{}, explicit...)
 	combined = append(combined, policies...)
-	return canonicalWorkflowComponentRefs(combined, componentNames)
+	return uniqueWorkflowComponentRefs(combined)
 }
 
-func workflowTargetComponents(name string, jobType config.JobType, explicit []string, policies []string, componentNames map[string]string) []string {
-	components := mergeWorkflowComponents(explicit, policies, componentNames)
+func workflowTargetComponents(name string, jobType config.JobType, explicit []string, policies []string) []string {
+	components := mergeWorkflowComponents(explicit, policies)
 	if len(components) > 0 || config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
 		return components
 	}
-	return canonicalWorkflowComponentRefs([]string{name}, componentNames)
+	return uniqueWorkflowComponentRefs([]string{name})
 }
 
-func canonicalWorkflowComponentRefs(values []string, componentNames map[string]string) []string {
+func uniqueWorkflowComponentRefs(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
 	seen := make(map[string]struct{}, len(values))
 	var result []string
-	for _, v := range values {
-		value := strings.TrimSpace(v)
-		key := workflowComponentRefKey(value)
-		if key == "" {
+	for _, value := range values {
+		if value == "" {
 			continue
 		}
-		if _, exists := seen[key]; exists {
+		if _, exists := seen[value]; exists {
 			continue
 		}
-		seen[key] = struct{}{}
-		if componentNames != nil {
-			if canonical, ok := componentNames[key]; ok {
-				result = append(result, canonical)
-				continue
-			}
-		}
+		seen[value] = struct{}{}
 		result = append(result, value)
 	}
 	return result
-}
-
-func workflowComponentRefKey(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func workflowComponentNamesFromRequests(components []apisv1.CreateComponentRequest) map[string]string {
-	componentNames := make(map[string]string, len(components))
-	for _, component := range components {
-		name := strings.TrimSpace(component.Name)
-		key := workflowComponentRefKey(name)
-		if key == "" {
-			continue
-		}
-		componentNames[key] = name
-	}
-	return componentNames
-}
-
-func workflowComponentNamesFromModels(components []*model.ApplicationComponent) map[string]string {
-	componentNames := make(map[string]string, len(components))
-	for _, component := range components {
-		if component == nil {
-			continue
-		}
-		name := strings.TrimSpace(component.Name)
-		key := workflowComponentRefKey(name)
-		if key == "" {
-			continue
-		}
-		componentNames[key] = name
-	}
-	return componentNames
 }
 
 func ensureUniqueWorkflowName(base string, workflows []*model.Workflow) string {
@@ -378,11 +336,10 @@ func deriveWorkflowMetadata(app *model.Applications, workflows []*model.Workflow
 func workflowComponentTypesFromRequests(components []apisv1.CreateComponentRequest) map[string]config.JobType {
 	componentTypes := make(map[string]config.JobType, len(components))
 	for _, component := range components {
-		name := strings.ToLower(strings.TrimSpace(component.Name))
-		if name == "" {
+		if component.Name == "" {
 			continue
 		}
-		componentTypes[name] = component.ComponentType
+		componentTypes[component.Name] = component.ComponentType
 	}
 	return componentTypes
 }
@@ -393,11 +350,10 @@ func workflowComponentTypesFromModels(components []*model.ApplicationComponent) 
 		if component == nil {
 			continue
 		}
-		name := strings.ToLower(strings.TrimSpace(component.Name))
-		if name == "" {
+		if component.Name == "" {
 			continue
 		}
-		componentTypes[name] = component.ComponentType
+		componentTypes[component.Name] = component.ComponentType
 	}
 	return componentTypes
 }
@@ -437,7 +393,7 @@ func ValidateWorkflowSteps(steps []apisv1.CreateWorkflowStepRequest, components 
 		}
 		if step.Name != "" {
 			errors = append(errors, ValidateLabelName(step.Name, stepField+".name")...)
-			if key := strings.ToLower(step.Name); stepNames[key] {
+			if key := step.Name; stepNames[key] {
 				errors = append(errors, apisv1.ValidationError{
 					Field:   stepField + ".name",
 					Code:    apisv1.ErrCodeDuplicateWorkflowStep,
@@ -628,7 +584,6 @@ func workflowTargetComponentRefs(name string, jobType config.JobType, explicit [
 	if len(refs) > 0 || config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
 		return refs
 	}
-	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
 		return nil
 	}
@@ -642,15 +597,14 @@ func workflowComponentRefs(values []string, field string, existing []workflowCom
 	}
 	refs := append([]workflowComponentValidationRef{}, existing...)
 	for i, value := range values {
-		name := strings.ToLower(strings.TrimSpace(value))
-		if name == "" {
+		if value == "" {
 			continue
 		}
-		if _, ok := seen[name]; ok {
+		if _, ok := seen[value]; ok {
 			continue
 		}
-		seen[name] = struct{}{}
-		refs = append(refs, workflowComponentValidationRef{name: name, field: fmt.Sprintf("%s[%d]", field, i)})
+		seen[value] = struct{}{}
+		refs = append(refs, workflowComponentValidationRef{name: value, field: fmt.Sprintf("%s[%d]", field, i)})
 	}
 	return refs
 }

@@ -36,16 +36,14 @@ func versionUpdateExecutionComponents(updatedComponents, addedComponents []strin
 	seen := make(map[string]struct{}, len(updatedComponents)+len(addedComponents))
 	result := make([]string, 0, len(updatedComponents)+len(addedComponents))
 	appendComponent := func(name string) {
-		trimmed := strings.TrimSpace(name)
-		key := strings.ToLower(trimmed)
-		if key == "" {
+		if name == "" {
 			return
 		}
-		if _, exists := seen[key]; exists {
+		if _, exists := seen[name]; exists {
 			return
 		}
-		seen[key] = struct{}{}
-		result = append(result, trimmed)
+		seen[name] = struct{}{}
+		result = append(result, name)
 	}
 	for _, name := range updatedComponents {
 		appendComponent(name)
@@ -63,18 +61,6 @@ func validateVersionUpdateExecutionScopeWorkflowCoverage(workflow *model.Workflo
 	if workflow == nil {
 		return bcode.ErrWorkflowNotExist
 	}
-	required := make(map[string]string, len(components))
-	for _, name := range components {
-		trimmed := strings.TrimSpace(name)
-		if trimmed == "" {
-			continue
-		}
-		required[strings.ToLower(trimmed)] = trimmed
-	}
-	if len(required) == 0 {
-		return nil
-	}
-
 	var steps model.WorkflowSteps
 	if workflow.Steps != nil {
 		if err := decodeJSONStruct(workflow.Steps, &steps); err != nil {
@@ -83,8 +69,8 @@ func validateVersionUpdateExecutionScopeWorkflowCoverage(workflow *model.Workflo
 	}
 	covered := versionUpdateWorkflowDeploymentComponents(steps)
 	missing := make([]string, 0)
-	for key, name := range required {
-		if _, ok := covered[key]; !ok {
+	for _, name := range components {
+		if _, ok := covered[name]; !ok {
 			missing = append(missing, name)
 		}
 	}

@@ -120,6 +120,7 @@ func (c *applicationsServiceImpl) CreateApplications(ctx context.Context, req ap
 	if !spec.ValidAPIName(req.Name, datastore.PrimaryKeyMaxLength) {
 		return nil, bcode.ErrApplicationConfig
 	}
+	apisv1.NormalizeApplicationNames(&req)
 	return c.createApplicationsWithScheduleLock(ctx, req, "create-or-replace-application")
 }
 
@@ -757,11 +758,8 @@ func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateCom
 	components := make([]*model.ApplicationComponent, 0, len(reqComponents))
 	names := make(map[string]bool, len(reqComponents))
 	for idx, reqComponent := range reqComponents {
-		if err := componentValidationError(ValidateComponent(reqComponent, fmt.Sprintf("component[%d]", idx), names)); err != nil {
+		if err := componentValidationError(ValidateComponent(&reqComponent, fmt.Sprintf("component[%d]", idx), names)); err != nil {
 			return nil, err
-		}
-		if err := spec.NormalizeComponentEvaluation(string(reqComponent.ComponentType), reqComponent.Image, reqComponent.Properties, &reqComponent.Traits); err != nil {
-			return nil, fmt.Errorf("%w: component[%d]: %v", bcode.ErrApplicationConfig, idx, err)
 		}
 		normalizeJobFailurePolicy(&reqComponent.Properties)
 
@@ -811,6 +809,7 @@ func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1
 }
 
 func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
+	apisv1.NormalizeWorkflowSteps(req.Workflow)
 	var response *apisv1.UpdateWorkflowResponse
 	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, app *model.Applications) error {
 		var updateErr error
@@ -867,7 +866,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		return nil, err
 	}
 
-	workflowSteps := convertWorkflowStepsFromRequest(req.Workflow, workflowComponentNamesFromModels(components))
+	workflowSteps := convertWorkflowStepsFromRequest(req.Workflow)
 	failurePolicy := req.FailurePolicy
 	if target != nil && !updateWorkflowFailurePolicySpecified(req) {
 		failurePolicy, err = storedWorkflowFailurePolicy(target.Steps)

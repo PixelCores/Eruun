@@ -42,8 +42,8 @@ func buildWorkflowFailureCleanupJobs(ctx context.Context, task *model.WorkflowQu
 		components = append(components, &componentCopy)
 	}
 	sort.SliceStable(components, func(i, j int) bool {
-		left := strings.ToLower(strings.TrimSpace(components[i].Namespace + "/" + components[i].Name))
-		right := strings.ToLower(strings.TrimSpace(components[j].Namespace + "/" + components[j].Name))
+		left := components[i].Namespace + "/" + components[i].Name
+		right := components[j].Namespace + "/" + components[j].Name
 		if left == right {
 			return components[i].ID < components[j].ID
 		}

@@ -213,3 +213,19 @@ func newComponentContainersPod(
 		},
 	}
 }
+
+func TestListComponentContainersMatchesComponentNameInCanonicalForm(t *testing.T) {
+	store := newInMemoryAppStore()
+	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
+		AppID:         "app-1",
+		Name:          "api",
+		Namespace:     config.DefaultNamespace,
+		ComponentType: config.ServerJob,
+	}))
+	svc := newMockServiceWithStore(store)
+	svc.KubeClient = k8sfake.NewSimpleClientset()
+
+	resp, err := svc.ListComponentContainers(context.Background(), "app-1", " API ")
+	require.NoError(t, err)
+	require.Equal(t, config.ServerJob, resp.ComponentType)
+}

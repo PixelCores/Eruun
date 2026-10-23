@@ -366,7 +366,7 @@ func TestUpdateApplicationWorkflowNormalizesComponentRefs(t *testing.T) {
 	require.Equal(t, []string{"api", "worker"}, steps.Steps[0].Properties[0].Policies)
 }
 
-func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing.T) {
+func TestUpdateApplicationWorkflowStoresCanonicalComponentRefs(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
 		ID:      "app-1",
@@ -374,13 +374,13 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 		Project: "proj-1",
 	}
 	store.components["web"] = &model.ApplicationComponent{
-		Name:          "Web",
+		Name:          "web",
 		AppID:         "app-1",
 		ComponentType: config.ServerJob,
 		Image:         "nginx:latest",
 	}
 	store.components["worker"] = &model.ApplicationComponent{
-		Name:          "Worker",
+		Name:          "worker",
 		AppID:         "app-1",
 		ComponentType: config.ServerJob,
 		Image:         "nginx:latest",
@@ -431,10 +431,10 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 	require.NotNil(t, stored)
 	steps := decodeWorkflowSteps(t, stored.Steps)
 	require.Len(t, steps.Steps, 3)
-	require.Equal(t, []model.Policies{{Policies: []string{"Web"}}}, steps.Steps[0].Properties)
+	require.Equal(t, []model.Policies{{Policies: []string{"web"}}}, steps.Steps[0].Properties)
 	require.Len(t, steps.Steps[1].SubSteps, 1)
-	require.Equal(t, []model.Policies{{Policies: []string{"Worker"}}}, steps.Steps[1].SubSteps[0].Properties)
-	require.Equal(t, []model.Policies{{Policies: []string{"Web"}, Path: "/var/log/web"}}, steps.Steps[2].Properties)
+	require.Equal(t, []model.Policies{{Policies: []string{"worker"}}}, steps.Steps[1].SubSteps[0].Properties)
+	require.Equal(t, []model.Policies{{Policies: []string{"web"}, Path: "/var/log/web"}}, steps.Steps[2].Properties)
 }
 
 func TestUpdateApplicationWorkflowRejectsUnsupportedJobType(t *testing.T) {

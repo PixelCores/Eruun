@@ -303,11 +303,10 @@ func applyVersionUpdateComponentChanges(
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		compName := strings.ToLower(strings.TrimSpace(spec.Name))
 
 		switch action {
 		case domainspec.ComponentActionUpdate:
-			comp, exists := componentMap[compName]
+			comp, exists := componentMap[spec.Name]
 			if !exists {
 				return nil, nil, nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
@@ -320,7 +319,7 @@ func applyVersionUpdateComponentChanges(
 			}
 
 		case domainspec.ComponentActionAdd:
-			if _, exists := componentMap[compName]; exists {
+			if _, exists := componentMap[spec.Name]; exists {
 				return nil, nil, nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
 			if err := handlers.add(ctx, spec); err != nil {
@@ -329,7 +328,7 @@ func applyVersionUpdateComponentChanges(
 			addedComponents = append(addedComponents, spec.Name)
 
 		case domainspec.ComponentActionRemove:
-			comp, exists := componentMap[compName]
+			comp, exists := componentMap[spec.Name]
 			if !exists {
 				return nil, nil, nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
@@ -337,7 +336,7 @@ func applyVersionUpdateComponentChanges(
 				return nil, nil, nil, fmt.Errorf("%w: remove component %s: %w", bcode.ErrVersionUpdateFailed, spec.Name, err)
 			}
 			removedComponents = append(removedComponents, spec.Name)
-			delete(componentMap, compName)
+			delete(componentMap, spec.Name)
 		}
 	}
 
@@ -390,7 +389,7 @@ func validateVersionUpdateSnapshot(ctx context.Context, store datastore.DataStor
 		return bcode.ErrVersionUpdateConflict
 	}
 	for _, component := range current {
-		expected := components[strings.ToLower(component.Name)]
+		expected := components[component.Name]
 		if expected == nil {
 			return bcode.ErrVersionUpdateConflict
 		}
@@ -407,7 +406,7 @@ func validateVersionUpdateSnapshot(ctx context.Context, store datastore.DataStor
 	// their current values when the existing full-model update writes the plan.
 	app.BaseModel = currentApp.BaseModel
 	for _, component := range current {
-		expected := components[strings.ToLower(component.Name)]
+		expected := components[component.Name]
 		expected.BaseModel = component.BaseModel
 		expected.Status, expected.ReadyReplicas, expected.LastAbnormal = component.Status, component.ReadyReplicas, component.LastAbnormal
 	}
