@@ -45,7 +45,7 @@ func (p *programmingLanguages) getProgrammingLanguage(c *gin.Context) {
 func (p *programmingLanguages) createProgrammingLanguage(c *gin.Context) {
 	handleBoundResult(
 		c,
-		validatedStrictJSONBody[apis.CreateProgrammingLanguageRequest](bcode.ErrProgrammingLanguageInvalid, true),
+		strictJSONBody[apis.CreateProgrammingLanguageRequest](bcode.ErrProgrammingLanguageInvalid, true),
 		func(ctx context.Context, req *apis.CreateProgrammingLanguageRequest) (*apis.ProgrammingLanguage, error) {
 			language, err := p.ProgrammingLanguageService.Create(ctx, assembler.CreateProgrammingLanguageCommand(*req))
 			return assembler.ProgrammingLanguageModelToDTO(language), err
@@ -57,7 +57,7 @@ func (p *programmingLanguages) updateProgrammingLanguage(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		programmingLanguageIDPathParam,
-		validatedStrictJSONBody[apis.UpdateProgrammingLanguageRequest](bcode.ErrProgrammingLanguageInvalid, true),
+		strictJSONBody[apis.UpdateProgrammingLanguageRequest](bcode.ErrProgrammingLanguageInvalid, true),
 		func(ctx context.Context, id string, req *apis.UpdateProgrammingLanguageRequest) (*apis.ProgrammingLanguage, error) {
 			language, err := p.ProgrammingLanguageService.Update(ctx, id, assembler.UpdateProgrammingLanguageCommand(*req))
 			return assembler.ProgrammingLanguageModelToDTO(language), err

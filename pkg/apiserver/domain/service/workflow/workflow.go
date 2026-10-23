@@ -19,6 +19,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -393,6 +394,9 @@ func defaultComponentStatus(taskStatus config.Status) string {
 }
 
 func (w *workflowServiceImpl) ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
+	if !spec.ValidAPIName(workflowID, datastore.PrimaryKeyMaxLength) {
+		return nil, bcode.ErrWorkflowConfig
+	}
 	requestedExecuteAt := executeAt
 	normalized, err := NormalizeExecuteAt(executeAt)
 	if err != nil {

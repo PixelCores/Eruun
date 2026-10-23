@@ -60,7 +60,7 @@ type TryWorkflowRequest struct {
 	// FailurePolicySet distinguishes an omitted policy from an explicit empty reset.
 	FailurePolicySet bool `json:"-"`
 	// Workflow contains the workflow steps to validate.
-	Workflow []CreateWorkflowStepRequest `json:"workflow" validate:"required,min=1,dive"`
+	Workflow []CreateWorkflowStepRequest `json:"workflow"`
 }
 
 // TryWorkflowResponse is the response for the try workflow validation API

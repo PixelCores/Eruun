@@ -1,27 +1,15 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
 
+	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
-
-func bindAndValidateStrictJSON[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
-	req, ok := bindStrictJSON[T](c, invalidErr, logBindErr)
-	if !ok {
-		return nil, false
-	}
-	if err := validate.Struct(*req); err != nil {
-		apiresponse.ReturnError(c, invalidErr)
-		return nil, false
-	}
-	return req, true
-}
 
 func bindStrictJSON[T any](c *gin.Context, invalidErr error, logBindErr bool) (*T, bool) {
 	return bindStrictJSONBody[T](c, invalidErr, logBindErr, false)
@@ -33,26 +21,16 @@ func bindStrictJSONAllowEOF[T any](c *gin.Context, invalidErr error, logBindErr 
 
 func bindStrictJSONBody[T any](c *gin.Context, invalidErr error, logBindErr, allowEOF bool) (*T, bool) {
 	var req T
-	decoder := json.NewDecoder(c.Request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	data, err := io.ReadAll(c.Request.Body)
+	if err == nil {
+		err = apis.DecodeStrictJSON(data, &req)
+	}
+	if err != nil {
 		if allowEOF && errors.Is(err, io.EOF) {
 			return &req, true
 		}
 		if logBindErr {
 			logRequestError(c, err, "decode strict json request failed")
-		}
-		apiresponse.ReturnError(c, invalidErr)
-		return nil, false
-	}
-	var extra struct{}
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if logBindErr {
-			if err == nil {
-				logRequestError(c, errors.New("request body contains multiple JSON values"), "decode strict json request failed")
-			} else {
-				logRequestError(c, err, "decode strict json request failed")
-			}
 		}
 		apiresponse.ReturnError(c, invalidErr)
 		return nil, false

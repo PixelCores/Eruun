@@ -691,3 +691,9 @@ func TestDiffUpdateVersionUsesMaterializedTemplateComponents(t *testing.T) {
 	require.Equal(t, "mysql:8", resp.UpdatedComponents[0].After.Image)
 	require.Equal(t, "mysql:5.7", resp.UpdatedComponents[0].Before.Image)
 }
+
+func TestDiffUpdateVersionRequiresSourceAppID(t *testing.T) {
+	svc := newMockServiceWithStore(newInMemoryAppStore())
+	_, err := svc.DiffUpdateVersion(context.Background(), "target-app", apisv1.DiffUpdateVersionRequest{SourceAppID: " "})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+}

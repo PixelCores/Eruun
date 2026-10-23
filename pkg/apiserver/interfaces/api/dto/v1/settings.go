@@ -15,13 +15,13 @@ type SystemSetting struct {
 
 // CreateSystemSettingRequest creates a setting.
 type CreateSystemSettingRequest struct {
-	Type  string          `json:"type" validate:"required"`
-	Value json.RawMessage `json:"value" validate:"required"`
+	Type  string          `json:"type"`
+	Value json.RawMessage `json:"value"`
 }
 
 // UpdateSystemSettingRequest updates a setting value.
 type UpdateSystemSettingRequest struct {
-	Value json.RawMessage `json:"value" validate:"required"`
+	Value json.RawMessage `json:"value"`
 }
 
 // ListSystemSettingResponse lists settings.

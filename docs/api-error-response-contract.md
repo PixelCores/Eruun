@@ -30,11 +30,10 @@ HTTP envelope 与错误映射由 `pkg/apiserver/interfaces/api/response` 统一�
 | --- | --- | --- | --- |
 | 业务错误 `*Bcode` | 业务错误定义值 | 业务错误定义值 | 业务错误定义文案 |
 | 显式标记为客户端安全的业务错误 | 对应业务错误定义值 | 对应业务错误定义值 | 经该业务路径审查的客户端提示 |
-| validator 校验错误 | `400` | `10000` | `application config does not comply with OAM specification` |
 | `datastore.ErrRecordNotExist` | `404` | `404` | `404 Not Found` |
 | 非业务通用错误 | `500` | `500` | `The service has lapsed.` |
 
-所有 HTTP JSON 请求体都按严格模式解码：未知字段、类型错误或多个 JSON 值都会被拒绝，返回入口对应的 4xx 业务错误，不会静默忽略拼错的字段。必填等约束由 `validate` 标签校验。
+所有 HTTP JSON 请求体都按严格模式解码：未知字段、类型错误或多个 JSON 值都会被拒绝，返回入口对应的 4xx 业务错误，不会静默忽略拼错的字段。必填、名称格式等请求约束由领域服务统一校验，HTTP 与 gRPC 返回相同的业务错误。不依赖存储的请求检查在获取应用锁、查询应用之前完成，因此非法请求在锁竞争或锁后端故障时仍返回请求错误，而不是 `409`/`503`。
 
 应用不存在是业务级不存在，响应使用 HTTP `200`，body 中返回 `code=10005`、`message=application not found`；客户端应依赖 body `code` 区分该场景。
 

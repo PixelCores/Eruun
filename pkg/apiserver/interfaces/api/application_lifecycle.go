@@ -17,7 +17,7 @@ import (
 func (app *applications) createApplications(c *gin.Context) {
 	handleBoundResult(
 		c,
-		validatedStrictJSONBody[apis.CreateApplicationsRequest](bcode.ErrApplicationConfig, true),
+		strictJSONBody[apis.CreateApplicationsRequest](bcode.ErrApplicationConfig, true),
 		func(ctx context.Context, req *apis.CreateApplicationsRequest) (*apis.ApplicationBase, error) {
 			return app.ApplicationService.CreateApplications(ctx, *req)
 		},
@@ -29,7 +29,7 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req, ok := bindAndValidateStrictJSON[apis.CreateAndExecApplicationRequest](c, bcode.ErrApplicationConfig, true)
+	req, ok := bindStrictJSON[apis.CreateAndExecApplicationRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return
 	}
@@ -44,7 +44,7 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 func (app *applications) convertApplications(c *gin.Context) {
 	handleBoundResult(
 		c,
-		validatedStrictJSONBody[apis.ConvertApplicationsRequest](bcode.ErrApplicationConfig, true),
+		strictJSONBody[apis.ConvertApplicationsRequest](bcode.ErrApplicationConfig, true),
 		func(ctx context.Context, req *apis.ConvertApplicationsRequest) (*apis.ConvertApplicationsResponse, error) {
 			return app.ConversionService.ConvertKubeResources(ctx, *req)
 		},
@@ -129,7 +129,7 @@ func (app *applications) resetApplicationDatabases(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req, ok := bindAndValidateStrictJSON[apis.DatabaseResetRequest](c, bcode.ErrApplicationConfig, true)
+	req, ok := bindStrictJSON[apis.DatabaseResetRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return
 	}
@@ -264,11 +264,6 @@ func (app *applications) updateVersion(c *gin.Context) {
 		return
 	}
 
-	if err := validate.Struct(req); err != nil {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return
-	}
-
 	ctx := c.Request.Context()
 	klog.InfoS("update version request received", "appID", appID, "version", req.Version, "strategy", req.Strategy, "components", len(req.Components))
 
@@ -293,10 +288,6 @@ func (app *applications) diffUpdateVersion(c *gin.Context) {
 
 	req, ok := bindStrictJSON[apis.DiffUpdateVersionRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
-		return
-	}
-	if err := validate.Struct(req); err != nil {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return
 	}
 

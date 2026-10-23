@@ -274,6 +274,8 @@ func TestResetApplicationDatabasesRejectsUnknownOrNonStoreComponent(t *testing.T
 	}{
 		{name: "unknown component", components: []string{"missing"}},
 		{name: "non store component", components: []string{"api"}},
+		{name: "no components"},
+		{name: "blank component", components: []string{" "}},
 	}
 
 	for _, tt := range tests {

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -315,12 +314,7 @@ func rpcError(err error) error {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			bc = bcode.ErrNotFound
 		} else {
-			var validationErr validator.ValidationErrors
-			if errors.As(err, &validationErr) {
-				bc = bcode.ErrApplicationConfig
-			} else {
-				bc = bcode.ErrServer
-			}
+			bc = bcode.ErrServer
 		}
 	}
 	message := bcode.SafeClientMessage(err)

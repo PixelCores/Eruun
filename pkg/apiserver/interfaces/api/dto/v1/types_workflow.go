@@ -46,7 +46,7 @@ type UpdateApplicationWorkflowRequest struct {
 	WorkflowType     config.WorkflowTaskType              `json:"workflowType,omitempty"`
 	FailurePolicy    workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
 	FailurePolicySet bool                                 `json:"-"`
-	Workflow         []CreateWorkflowStepRequest          `json:"workflow" validate:"required,min=1,dive"`
+	Workflow         []CreateWorkflowStepRequest          `json:"workflow"`
 }
 
 type UpdateWorkflowResponse struct {
@@ -54,7 +54,7 @@ type UpdateWorkflowResponse struct {
 }
 
 type ExecWorkflowRequest struct {
-	WorkflowID string `json:"workflowId" validate:"checkname"`
+	WorkflowID string `json:"workflowId"`
 	ExecuteAt  int64  `json:"executeAt,omitempty"`
 }
 
@@ -81,8 +81,8 @@ type CreateAndExecApplicationResponse struct {
 }
 
 type UpsertWorkflowScheduleRequest struct {
-	WorkflowID string `json:"workflowId" validate:"required,checkname"`
-	Cron       string `json:"cron" validate:"required"`
+	WorkflowID string `json:"workflowId"`
+	Cron       string `json:"cron"`
 	Enabled    *bool  `json:"enabled,omitempty"`
 }
 
@@ -113,7 +113,7 @@ type DeleteWorkflowScheduleResponse struct {
 }
 
 type CancelWorkflowRequest struct {
-	TaskID string `json:"taskId" validate:"required"`
+	TaskID string `json:"taskId"`
 	User   string `json:"user,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
@@ -160,7 +160,7 @@ type AllowedAction struct {
 }
 
 type TaskApprovalRequest struct {
-	Action string `json:"action" validate:"required,oneof=continue cancel"`
+	Action string `json:"action"`
 	User   string `json:"user,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }

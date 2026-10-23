@@ -36,7 +36,7 @@ type ApplicationResources struct {
 
 type CreateApplicationsRequest struct {
 	ID          string                      `json:"id,omitempty"`
-	Name        string                      `json:"name" validate:"checkname"`
+	Name        string                      `json:"name"`
 	Namespace   string                      `json:"namespace,omitempty"`
 	Alias       string                      `json:"alias,omitempty"`
 	Version     string                      `json:"version,omitempty"`
@@ -57,7 +57,7 @@ type CreateApplicationsRequest struct {
 // CreateAndExecApplicationRequest combines application creation with workflow execution.
 type CreateAndExecApplicationRequest struct {
 	CreateApplicationsRequest
-	WorkflowID string `json:"workflowId,omitempty" validate:"omitempty,checkname"`
+	WorkflowID string `json:"workflowId,omitempty"`
 	ExecuteAt  int64  `json:"executeAt,omitempty"`
 }
 
@@ -199,7 +199,7 @@ type StartApplicationDeploymentsResponse struct {
 
 // DatabaseResetRequest requests a workflow-backed reset of selected database components.
 type DatabaseResetRequest struct {
-	Components         []string `json:"components" validate:"required,min=1,dive,required"`
+	Components         []string `json:"components"`
 	InitSQLURL         string   `json:"initSqlUrl,omitempty"`
 	initSQLURLProvided bool
 }
@@ -214,8 +214,8 @@ type DatabaseResetResponse struct {
 
 // LogArchiveDownloadRequest downloads one component log archive as a file stream.
 type LogArchiveDownloadRequest struct {
-	Components []string `json:"components" validate:"required,min=1,dive,required"`
-	Path       string   `json:"path" validate:"required"`
+	Components []string `json:"components"`
+	Path       string   `json:"path"`
 	Container  string   `json:"container,omitempty"`
 }
 

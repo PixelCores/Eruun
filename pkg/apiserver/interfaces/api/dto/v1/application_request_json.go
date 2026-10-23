@@ -39,9 +39,9 @@ func (r *CreateAndExecApplicationRequest) UnmarshalJSON(data []byte) error {
 		var err error
 		switch name {
 		case "workflowId":
-			err = decodeStrictJSON(raw, &r.WorkflowID)
+			err = DecodeStrictJSON(raw, &r.WorkflowID)
 		case "executeAt":
-			err = decodeStrictJSON(raw, &r.ExecuteAt)
+			err = DecodeStrictJSON(raw, &r.ExecuteAt)
 		default:
 			var known bool
 			known, err = decodeCreateApplicationField(name, raw, &r.CreateApplicationsRequest)
@@ -61,7 +61,7 @@ func (r *DatabaseResetRequest) UnmarshalJSON(data []byte) error {
 		Components []string        `json:"components"`
 		InitSQLURL json.RawMessage `json:"initSqlUrl"`
 	}
-	if err := decodeStrictJSON(data, &request); err != nil {
+	if err := DecodeStrictJSON(data, &request); err != nil {
 		return err
 	}
 
@@ -72,7 +72,7 @@ func (r *DatabaseResetRequest) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(bytes.TrimSpace(request.InitSQLURL), []byte("null")) {
 		return errors.New("initSqlUrl must be a string")
 	}
-	if err := decodeStrictJSON(request.InitSQLURL, &r.InitSQLURL); err != nil {
+	if err := DecodeStrictJSON(request.InitSQLURL, &r.InitSQLURL); err != nil {
 		return err
 	}
 	r.initSQLURLProvided = true
@@ -88,31 +88,31 @@ func (r DatabaseResetRequest) InitSQLURLProvided() bool {
 func decodeCreateApplicationField(name string, raw json.RawMessage, req *CreateApplicationsRequest) (bool, error) {
 	switch name {
 	case "id":
-		return true, decodeStrictJSON(raw, &req.ID)
+		return true, DecodeStrictJSON(raw, &req.ID)
 	case "name":
-		return true, decodeStrictJSON(raw, &req.Name)
+		return true, DecodeStrictJSON(raw, &req.Name)
 	case "namespace":
-		return true, decodeStrictJSON(raw, &req.Namespace)
+		return true, DecodeStrictJSON(raw, &req.Namespace)
 	case "alias":
-		return true, decodeStrictJSON(raw, &req.Alias)
+		return true, DecodeStrictJSON(raw, &req.Alias)
 	case "version":
-		return true, decodeStrictJSON(raw, &req.Version)
+		return true, DecodeStrictJSON(raw, &req.Version)
 	case "project":
-		return true, decodeStrictJSON(raw, &req.Project)
+		return true, DecodeStrictJSON(raw, &req.Project)
 	case "description":
-		return true, decodeStrictJSON(raw, &req.Description)
+		return true, DecodeStrictJSON(raw, &req.Description)
 	case "icon":
-		return true, decodeStrictJSON(raw, &req.Icon)
+		return true, DecodeStrictJSON(raw, &req.Icon)
 	case "components":
-		return true, decodeStrictJSON(raw, &req.Components)
+		return true, DecodeStrictJSON(raw, &req.Components)
 	case "workflow":
 		return true, decodeWorkflowArray(raw, &req.Workflow)
 	case "callback":
-		return true, decodeStrictJSON(raw, &req.Callback)
+		return true, DecodeStrictJSON(raw, &req.Callback)
 	case "failurePolicy":
-		return true, decodeStrictJSON(raw, &req.FailurePolicy)
+		return true, DecodeStrictJSON(raw, &req.FailurePolicy)
 	case "templateEnabled":
-		return true, decodeStrictJSON(raw, &req.TemplateEnabled)
+		return true, DecodeStrictJSON(raw, &req.TemplateEnabled)
 	default:
 		return false, nil
 	}
@@ -128,28 +128,28 @@ func (r *UpdateApplicationWorkflowRequest) UnmarshalJSON(data []byte) error {
 	for name, raw := range fields {
 		switch name {
 		case "workflowId":
-			if err := decodeStrictJSON(raw, &r.WorkflowID); err != nil {
+			if err := DecodeStrictJSON(raw, &r.WorkflowID); err != nil {
 				return err
 			}
 		case "name":
-			if err := decodeStrictJSON(raw, &r.Name); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Name); err != nil {
 				return err
 			}
 		case "alias":
-			if err := decodeStrictJSON(raw, &r.Alias); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Alias); err != nil {
 				return err
 			}
 		case "callback":
-			if err := decodeStrictJSON(raw, &r.Callback); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Callback); err != nil {
 				return err
 			}
 		case "workflowType":
-			if err := decodeStrictJSON(raw, &r.WorkflowType); err != nil {
+			if err := DecodeStrictJSON(raw, &r.WorkflowType); err != nil {
 				return err
 			}
 		case "failurePolicy":
 			r.FailurePolicySet = true
-			if err := decodeStrictJSON(raw, &r.FailurePolicy); err != nil {
+			if err := DecodeStrictJSON(raw, &r.FailurePolicy); err != nil {
 				return err
 			}
 		case "workflow":
@@ -173,23 +173,23 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 	for name, raw := range fields {
 		switch name {
 		case "schedulingClass":
-			if err := decodeStrictJSON(raw, &r.SchedulingClass); err != nil {
+			if err := DecodeStrictJSON(raw, &r.SchedulingClass); err != nil {
 				return err
 			}
 		case "name":
-			if err := decodeStrictJSON(raw, &r.Name); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Name); err != nil {
 				return err
 			}
 		case "stepType":
-			if err := decodeStrictJSON(raw, &r.StepType); err != nil {
+			if err := DecodeStrictJSON(raw, &r.StepType); err != nil {
 				return err
 			}
 		case "jobType":
-			if err := decodeStrictJSON(raw, &r.WorkflowType); err != nil {
+			if err := DecodeStrictJSON(raw, &r.WorkflowType); err != nil {
 				return err
 			}
 		case "approval":
-			if err := decodeStrictJSON(raw, &r.Approval); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Approval); err != nil {
 				return err
 			}
 		case "properties":
@@ -197,15 +197,15 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 				return err
 			}
 		case "components":
-			if err := decodeStrictJSON(raw, &r.Components); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Components); err != nil {
 				return err
 			}
 		case "mode":
-			if err := decodeStrictJSON(raw, &r.Mode); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Mode); err != nil {
 				return err
 			}
 		case "subSteps":
-			if err := decodeStrictJSON(raw, &r.SubSteps); err != nil {
+			if err := DecodeStrictJSON(raw, &r.SubSteps); err != nil {
 				return err
 			}
 		default:
@@ -225,15 +225,15 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 	for name, raw := range fields {
 		switch name {
 		case "schedulingClass":
-			if err := decodeStrictJSON(raw, &r.SchedulingClass); err != nil {
+			if err := DecodeStrictJSON(raw, &r.SchedulingClass); err != nil {
 				return err
 			}
 		case "name":
-			if err := decodeStrictJSON(raw, &r.Name); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Name); err != nil {
 				return err
 			}
 		case "jobType":
-			if err := decodeStrictJSON(raw, &r.WorkflowType); err != nil {
+			if err := DecodeStrictJSON(raw, &r.WorkflowType); err != nil {
 				return err
 			}
 		case "properties":
@@ -241,7 +241,7 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 				return err
 			}
 		case "components":
-			if err := decodeStrictJSON(raw, &r.Components); err != nil {
+			if err := DecodeStrictJSON(raw, &r.Components); err != nil {
 				return err
 			}
 		default:
@@ -259,7 +259,7 @@ func decodeWorkflowStepProperties(raw json.RawMessage, properties *[]WorkflowPro
 	if len(trimmed) == 0 || trimmed[0] != '[' {
 		return errors.New("workflow step properties must be an array")
 	}
-	return decodeStrictJSON(raw, properties)
+	return DecodeStrictJSON(raw, properties)
 }
 
 func decodeWorkflowArray(raw json.RawMessage, workflow *[]CreateWorkflowStepRequest) error {
@@ -267,10 +267,12 @@ func decodeWorkflowArray(raw json.RawMessage, workflow *[]CreateWorkflowStepRequ
 	if len(trimmed) == 0 || trimmed[0] != '[' {
 		return errors.New("workflow must be an array")
 	}
-	return decodeStrictJSON(raw, workflow)
+	return DecodeStrictJSON(raw, workflow)
 }
 
-func decodeStrictJSON(data []byte, target interface{}) error {
+// DecodeStrictJSON decodes exactly one JSON value into target and rejects
+// unknown fields; HTTP binding and gRPC request decoding share it.
+func DecodeStrictJSON(data []byte, target interface{}) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {

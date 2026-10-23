@@ -47,7 +47,7 @@ func (h *nodepools) get(c *gin.Context) {
 }
 
 func (h *nodepools) create(c *gin.Context) {
-	req, ok := bindAndValidateStrictJSON[apis.CreateNodePoolRequest](c, bcode.ErrNodePoolInvalid, true)
+	req, ok := bindStrictJSON[apis.CreateNodePoolRequest](c, bcode.ErrNodePoolInvalid, true)
 	if !ok {
 		return
 	}
@@ -60,7 +60,7 @@ func (h *nodepools) create(c *gin.Context) {
 }
 
 func (h *nodepools) update(c *gin.Context) {
-	req, ok := bindAndValidateStrictJSON[apis.UpdateNodePoolRequest](c, bcode.ErrNodePoolInvalid, true)
+	req, ok := bindStrictJSON[apis.UpdateNodePoolRequest](c, bcode.ErrNodePoolInvalid, true)
 	if !ok {
 		return
 	}
