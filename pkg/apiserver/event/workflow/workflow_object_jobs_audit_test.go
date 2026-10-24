@@ -43,10 +43,12 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		expected := wfNaming.IngressName(component.Name, component.ResourceAppNameOrID())
 		require.Equal(t, expected, jobs[0].Name)
 
-		ingressObj, ok := jobs[0].JobInfo.(*networkingv1.Ingress)
-		require.True(t, ok)
-		require.Equal(t, expected, ingressObj.Name)
-		require.Equal(t, component.Namespace, ingressObj.Namespace)
+		require.Equal(t, string(config.JobDeployRoute), jobs[0].JobType)
+		route, resource, err := jobinfo.RouteFromJobInfo(jobs[0])
+		require.NoError(t, err)
+		require.Equal(t, spec.ResourceIngress, resource.Kind)
+		require.Equal(t, expected, route.GetName())
+		require.Equal(t, component.Namespace, route.GetNamespace())
 	})
 
 	t.Run("normalize pvc name and namespace", func(t *testing.T) {
@@ -99,10 +101,12 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		expected := wfNaming.IngressName(baseName, component.ResourceAppNameOrID())
 		require.Equal(t, expected, jobs[0].Name)
 
-		ingressObj, ok := jobs[0].JobInfo.(*networkingv1.Ingress)
-		require.True(t, ok)
-		require.Equal(t, expected, ingressObj.Name)
-		require.Equal(t, component.Namespace, ingressObj.Namespace)
+		require.Equal(t, string(config.JobDeployRoute), jobs[0].JobType)
+		route, resource, err := jobinfo.RouteFromJobInfo(jobs[0])
+		require.NoError(t, err)
+		require.Equal(t, spec.ResourceIngress, resource.Kind)
+		require.Equal(t, expected, route.GetName())
+		require.Equal(t, component.Namespace, route.GetNamespace())
 	})
 
 	t.Run("append system labels to ingress", func(t *testing.T) {
@@ -118,11 +122,11 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, testJobTimeoutSeconds, shareConfigForComponent(component, decodeComponentTraits(component)))
 		require.NoError(t, err)
 		require.Len(t, jobs, 1)
-		ingressObj, ok := jobs[0].JobInfo.(*networkingv1.Ingress)
-		require.True(t, ok)
-		require.Equal(t, wfNaming.NormalizeLabelValue("App-1"), ingressObj.Labels[spec.LabelAppID])
-		require.Equal(t, wfNaming.BoundedLabelValue("Gateway"), ingressObj.Labels[spec.LabelComponentName])
-		require.Equal(t, "db", ingressObj.Labels["layer"])
+		route, _, err := jobinfo.RouteFromJobInfo(jobs[0])
+		require.NoError(t, err)
+		require.Equal(t, wfNaming.NormalizeLabelValue("App-1"), route.GetLabels()[spec.LabelAppID])
+		require.Equal(t, wfNaming.BoundedLabelValue("Gateway"), route.GetLabels()[spec.LabelComponentName])
+		require.Equal(t, "db", route.GetLabels()["layer"])
 	})
 }
 
@@ -609,6 +613,45 @@ func TestBuildJobsForComponent_DefaultServiceFromPortsUsesHighPriority(t *testin
 	require.Len(t, normalJobs, 1)
 	_, ok = normalJobs[0].JobInfo.(*appsv1.Deployment)
 	require.True(t, ok)
+}
+
+// Routes must run after the Services they reference: Services sit in
+// JobPriorityHigh and priorities execute in order within an execution group.
+func TestBuildJobsForComponent_RouteRunsAfterService(t *testing.T) {
+	propsJSON, err := model.NewJSONStructByStruct(model.Properties{
+		Ports: []model.Ports{{Port: 8080}},
+	})
+	require.NoError(t, err)
+	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
+		Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}},
+	})
+	require.NoError(t, err)
+	component := &model.ApplicationComponent{
+		Name:          "api",
+		AppID:         "app-route",
+		Namespace:     "nvg",
+		ComponentType: config.ServerJob,
+		Image:         "api:latest",
+		Properties:    propsJSON,
+		Traits:        traitsJSON,
+	}
+	task := &model.WorkflowQueue{WorkflowID: "wf-route", ProjectID: "proj-route", AppID: component.AppID, TaskID: "task-route"}
+
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	require.NoError(t, err)
+	for _, job := range buckets[config.JobPriorityHigh] {
+		require.NotEqual(t, string(config.JobDeployRoute), job.JobType)
+	}
+	require.Contains(t, jobTypes(buckets[config.JobPriorityHigh]), string(config.JobDeployService))
+	require.ElementsMatch(t, []string{string(config.JobDeploy), string(config.JobDeployRoute)}, jobTypes(buckets[config.JobPriorityNormal]))
+}
+
+func jobTypes(jobs []*model.JobTask) []string {
+	types := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		types = append(types, job.JobType)
+	}
+	return types
 }
 
 func TestServiceTraitsForComponent_FallbackFromProperties(t *testing.T) {

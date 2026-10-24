@@ -8,6 +8,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -38,8 +39,12 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 		resource = "configmaps"
 	case config.JobDeploySecret:
 		resource = "secrets"
-	case config.JobDeployIngress:
-		resource = "ingresses"
+	case config.JobDeployRoute:
+		_, route, err := jobinfo.RouteFromJobInfo(task)
+		if err != nil {
+			return false, bcode.ErrForbidden
+		}
+		resource = route.GVR.Resource
 	case config.JobDeployInstant, config.JobCommand, config.JobEval:
 		resource = "jobs"
 	case config.JobDeployScheduled:

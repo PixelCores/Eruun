@@ -599,10 +599,10 @@ func (c *DeployRouteJobCtl) Clean(ctx context.Context)
 
 - **顺序**：路由 Job 不再作为 AdditionalObjects 进入 `JobPriorityHigh`，而是放入 `JobPriorityNormal`，与工作负载同档。`controller_run.go` 在每个执行组内按优先级逐档执行，前一档全部结束并检查结果后才进入下一档；StepByStep、DAG 与多步骤都遵守这一屏障。因此路由总在同组件 Service（`JobPriorityHigh`）创建之后执行；G6 保证路由不依赖其他组件。HTTPRoute 解析引用只要求 Service 存在，不要求工作负载 Pod 就绪，所以与工作负载同档没有问题。
 - **载荷**：`JobInfo` 统一为 `*unstructured.Unstructured`（Ingress 也转换为 unstructured），按两个固定 GVR 分支写入：`networking.k8s.io/v1 ingresses` 或 `gateway.networking.k8s.io/v1 httproutes`。
-- **客户端**：dynamic client 从空间的 scoped REST config 创建。`TenantClient` 的 REST config 固定 impersonation 空间执行身份 `eruun-runner` 并挂载 `tenantTransport`，因此即使清理 helper 使用新的 context，所有读写仍以空间身份执行并经过写入边界。`tenantTransport` 按 URL 中的资源名识别资源，两个 GVR 的资源名分别是 `ingresses` 与 `httproutes`。
+- **客户端**：dynamic client 从空间的 scoped REST config 创建：`WorkflowCtl` 在取得 `TenantClient` 时一并创建，经 `jobexec.Runtime.Dynamic` 交给 `route_deploy`。`TenantClient` 的 REST config 固定 impersonation 空间执行身份 `eruun-runner` 并挂载 `tenantTransport`，因此即使清理 helper 使用新的 context，所有读写仍以空间身份执行并经过写入边界。`tenantTransport` 按 URL 中的资源名识别资源，两个 GVR 的资源名分别是 `ingresses` 与 `httproutes`。
 - **调和**：创建与更新复用 `jobexec.ReconcileTrackedResource`（泛型参数不限类型）、共享资源保护和受管 label 合并；`findReusableIngressName` 及其打分逻辑删除。
 - **跟踪与清理**：沿用现有 Created/Observed 跟踪；`Clean` 回调从 Job 载荷确定 GVR。不把通用清理跟踪改造成按 GVR 记录。
-- `controller_run.go` 失败清理触发表、`job.go` 写权限表、`job_scheduler_resources.go`、`jobexec/workspace_task.go` 中的 `JobDeployIngress` 全部替换；资源类型 `domainspec.ResourceIngress` 改为 `ResourceRoute`。
+- `controller_run.go` 失败清理触发表、`job.go` 写权限表、`job_scheduler_resources.go`、`jobexec/workspace_task.go` 中的 `JobDeployIngress` 全部替换。资源类型按对象种类区分：Ingress 沿用 `domainspec.ResourceIngress`，PR 2 为 HTTPRoute 新增 `ResourceHTTPRoute`；`jobinfo.RouteFromJobInfo` 从载荷的 GVK 得到资源类型与 GVR，按引用清理时不需要读取 provider。
 
 ### 7.2 就绪判断
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -159,9 +158,4 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 	_, err = client.CoreV1().PersistentVolumeClaims("ops").Get(ctx, "data-mysql", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
-}
-
-func TestIngressReady(t *testing.T) {
-	require.False(t, ingressReady(nil))
-	require.True(t, ingressReady(&networkingv1.Ingress{}))
 }
