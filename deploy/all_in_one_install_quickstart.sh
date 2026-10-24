@@ -47,6 +47,13 @@ REDIS_SERVICE_PORT="${REDIS_SERVICE_PORT:-}"
 REDIS_WORKLOAD_KIND=$(printf '%s' "${REDIS_WORKLOAD_KIND:-statefulset}" | tr '[:upper:]' '[:lower:]')
 
 AUTH_CONFIG_FILE="${AUTH_CONFIG_FILE:-}"
+# Helm-only gateway values; the static manifest carries its own ingress settings.
+# Record presence first: an explicitly empty value is still a setting.
+GATEWAY_INPUT_SET="${GATEWAY_PROVIDER+x}${GATEWAY_DOMAIN+x}${GATEWAY_PROXY_NAMESPACE+x}${GATEWAY_INGRESS_CLASS+x}"
+GATEWAY_PROVIDER="${GATEWAY_PROVIDER:-}"
+GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-}"
+GATEWAY_PROXY_NAMESPACE="${GATEWAY_PROXY_NAMESPACE:-}"
+GATEWAY_INGRESS_CLASS="${GATEWAY_INGRESS_CLASS:-}"
 
 TEMP_FILES=()
 PORT_FORWARD_PID=
@@ -316,6 +323,9 @@ preflightCheck() {
     manifest|helm) ;;
     *) bail "unsupported INSTALL_MODE=${INSTALL_MODE}; expected manifest or helm" ;;
   esac
+  if [ "${INSTALL_MODE}" = "manifest" ] && [ -n "${GATEWAY_INPUT_SET}" ]; then
+    bail "GATEWAY_* settings require INSTALL_MODE=helm; edit the ERUUN_GATEWAY_* entries in the static manifest instead"
+  fi
   case "${REDIS_WORKLOAD_KIND}" in
     deployment|statefulset) ;;
     *) bail "unsupported REDIS_WORKLOAD_KIND=${REDIS_WORKLOAD_KIND}" ;;
@@ -484,6 +494,10 @@ installHelm() {
   if [ -n "${REDIS_IMAGE}" ]; then args+=(--set "redis.image=${REDIS_IMAGE}"); fi
   if [ -n "${REDIS_STORAGE}" ]; then args+=(--set "redis.storage=${REDIS_STORAGE}"); fi
   if [ -n "${REDIS_SERVICE_PORT}" ]; then args+=(--set "redis.servicePort=${REDIS_SERVICE_PORT}"); fi
+  if [ -n "${GATEWAY_PROVIDER}" ]; then args+=(--set-string "gateway.provider=${GATEWAY_PROVIDER}"); fi
+  if [ -n "${GATEWAY_DOMAIN}" ]; then args+=(--set-string "gateway.domain=${GATEWAY_DOMAIN}"); fi
+  if [ -n "${GATEWAY_PROXY_NAMESPACE}" ]; then args+=(--set-string "gateway.proxyNamespace=${GATEWAY_PROXY_NAMESPACE}"); fi
+  if [ -n "${GATEWAY_INGRESS_CLASS}" ]; then args+=(--set-string "gateway.ingress.className=${GATEWAY_INGRESS_CLASS}"); fi
 
   runCmd "${HELM_BIN}" "${args[@]}"
 }

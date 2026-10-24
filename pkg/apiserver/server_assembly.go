@@ -36,8 +36,20 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
+// loadAccountConfig reads the account configuration and attaches the
+// server-selected gateway, so every consumer of the workspace policy sees the
+// same entry point. The gateway never comes from the account Secret.
+func loadAccountConfig(cfg *config.Config) (*spec.AccountConfig, error) {
+	accounts, err := spec.LoadAccountConfig(cfg.AuthConfigFile)
+	if err != nil {
+		return nil, err
+	}
+	accounts.Workspace.Gateway = cfg.Gateway
+	return accounts, nil
+}
+
 func (s *restServer) buildIoCContainer(ctx context.Context) error {
-	accountsConfig, err := spec.LoadAccountConfig(s.cfg.AuthConfigFile)
+	accountsConfig, err := loadAccountConfig(&s.cfg)
 	if err != nil {
 		return fmt.Errorf("load authentication configuration: %w", err)
 	}

@@ -1,6 +1,6 @@
 # Gateway Trait 与网络入口设计
 
-> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。当前 `main` 仍只有 `traits.ingress`；第 1 节的决策已全部确认，但本文的类型、字段、配置和 Job 类型都未实现，不构成 API 或部署承诺。
+> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。第 1 节的决策已全部确认。已实现的只有 §6.1 的入口平台配置（`--gateway-*` flag、Helm `gateway` values、`WorkspaceConfig.Gateway`，provider 暂只有 `ingress`）；公共契约仍是 `traits.ingress`，本文的 Trait 类型、渲染、Job 类型与 `gatewayapi` 后端都未实现，不构成 API 或部署承诺。
 >
 > 基线：`origin/main` `a73d15f`（2026-10-23）。Eruun 尚未发布，本方案直接替换 `traits.ingress`，不保留兼容字段、别名或迁移窗口。本文经 Codex 两轮独立审核与一轮设计讨论（R1–R14、S1–S8）。
 
@@ -421,7 +421,7 @@ type WorkspaceConfig struct {
 
 **“唯一来源”的范围**：上述保证只对 Helm 管理的部署成立。
 
-- **一键安装器**：`INSTALL_MODE=helm` 分支把脚本的 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN` 等环境变量写入它生成的 `gateway` values，默认 `provider=ingress`；选择 `gatewayapi` 时，在 `rollout status` 之外再等待 Gateway 就绪（§6.4 第 3 步）。`INSTALL_MODE=manifest`（默认）分支使用静态清单，只支持 `ingress`。两个分支都要测试。
+- **一键安装器**：`INSTALL_MODE=helm` 分支把脚本的 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN` 等环境变量写入它生成的 `gateway` values，未设置时保持关闭，与 chart 默认一致；选择 `gatewayapi` 时，在 `rollout status` 之外再等待 Gateway 就绪（§6.4 第 3 步）。`INSTALL_MODE=manifest`（默认）分支使用静态清单，只支持 `ingress`，设置任一 `GATEWAY_*` 时直接失败。两个分支都要测试。
 - **静态清单**：`deploy/eruun-stack.yaml` 固定 `ingress` 后端，直接写出 `ERUUN_GATEWAY_*` 与 ClusterRole 规则，两者的一致由清单本身与 `eruun_stack_test.go` 保证。
 - **本地运行**：不经部署清单运行（`go run ./cmd/main.go`）时，`--gateway-*` flag 由使用者自行提供，`Config.Validate` 是唯一的检查。
 - `gatewayapi` 只能通过 Helm 安装，因为它依赖 chart 创建的 Gateway 对象。

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,8 +32,10 @@ import (
 
 func workspaceConfig(t *testing.T) spec.WorkspaceConfig {
 	t.Helper()
-	c := &spec.AccountConfig{Origins: []string{"https://console.example.com"}, FrontendURL: "https://console.example.com", Workspace: spec.WorkspaceConfig{ClusterCIDRs: []string{"10.96.0.0/12", "10.244.0.0/16", "192.0.2.0/24"}, StorageClasses: []string{"tenant-storage"}, IngressDomain: "apps.example.com", IngressClass: "nginx", IngressNamespace: "ingress-nginx"}}
+	c := &spec.AccountConfig{Origins: []string{"https://console.example.com"}, FrontendURL: "https://console.example.com", Workspace: spec.WorkspaceConfig{ClusterCIDRs: []string{"10.96.0.0/12", "10.244.0.0/16", "192.0.2.0/24"}, StorageClasses: []string{"tenant-storage"}}}
 	require.NoError(t, c.Validate())
+	c.Workspace.Gateway = spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	require.NoError(t, c.Workspace.Gateway.Validate())
 	return c.Workspace
 }
 
@@ -63,11 +66,18 @@ func TestEnsureNamespaceBaselineAndConcurrentInitialization(t *testing.T) {
 	}
 	role, err := client.RbacV1().Roles(w.Namespace).Get(ctx, runnerName, metav1.GetOptions{})
 	require.NoError(t, err)
+	var entryVerbs []string
 	for _, rule := range role.Rules {
 		require.NotContains(t, rule.Resources, "*")
 		require.NotContains(t, rule.Resources, "roles")
 		require.NotContains(t, rule.Resources, "serviceaccounts/token")
+		if slices.Contains(rule.Resources, "ingresses") {
+			entryVerbs = rule.Verbs
+		}
 	}
+	// Must equal the platform ClusterRole entry verbs (Helm and static manifest
+	// tests pin the same set) so granting them never relies on escalate.
+	require.Equal(t, []string{"get", "list", "create", "update", "patch", "delete"}, entryVerbs)
 	quota, err := client.CoreV1().ResourceQuotas(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{})
 	require.NoError(t, err)
 	pods := quota.Spec.Hard["pods"]
@@ -87,6 +97,8 @@ func TestEnsureNamespaceBaselineAndConcurrentInitialization(t *testing.T) {
 	for _, cidr := range m.Config.ClusterCIDRs {
 		require.Contains(t, public.To[0].IPBlock.Except, cidr)
 	}
+	require.Len(t, policy.Spec.Ingress, 2)
+	require.Equal(t, "ingress-nginx", policy.Spec.Ingress[1].From[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
 }
 
 func TestEnsureWrongOwnerAndPartialFailure(t *testing.T) {
@@ -296,4 +308,57 @@ func TestImpersonationAndTraitValidation(t *testing.T) {
 	require.Equal(t, "system:serviceaccount:own:eruun-runner", restConfig.Impersonate.UserName)
 	traits := &spec.Traits{Init: []spec.InitTraitSpec{{Traits: spec.Traits{SecurityPolicy: &corev1.SecurityContext{Privileged: ptr.To(true)}}}}}
 	require.ErrorIs(t, ValidateTraits("own", "app", traits, nil, cfg), bcode.ErrForbidden)
+}
+
+// The gateway selection reaches every write boundary through WorkspaceConfig;
+// a disabled gateway rejects the same inputs that an ingress gateway accepts.
+func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
+	enabled := workspaceConfig(t)
+	disabled := enabled
+	disabled.Gateway = spec.GatewayConfig{}
+	ingress := `{"metadata":{"name":"web"},"spec":{"ingressClassName":"nginx","rules":[{"host":"web.own.apps.example.com"}]}}`
+
+	traits := &spec.Traits{Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}}}
+	require.NoError(t, ValidateTraits("own", "web", traits, nil, enabled))
+	require.Equal(t, []string{"web.own.apps.example.com"}, traits.Ingress[0].Hosts)
+	require.Equal(t, "nginx", traits.Ingress[0].IngressClassName)
+	require.ErrorIs(t, ValidateTraits("own", "web", &spec.Traits{Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}}}, nil, disabled), bcode.ErrForbidden)
+
+	decode := func() map[string]interface{} {
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(ingress), &obj))
+		return obj
+	}
+	require.NoError(t, PrepareResource("own", "ingresses", decode(), enabled))
+	require.ErrorIs(t, PrepareResource("own", "ingresses", decode(), disabled), bcode.ErrForbidden)
+
+	ctx := access.WithScope(context.Background(), access.Scope{WorkspaceID: "a", Namespace: "own", Role: "member"})
+	for _, tc := range []struct {
+		name    string
+		cfg     spec.WorkspaceConfig
+		allowed bool
+	}{{"ingress gateway", enabled, true}, {"disabled gateway", disabled, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: http.StatusCreated, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(ingress))}, nil
+			})
+			_, cfg, err := APIClient(&rest.Config{Host: "https://kubernetes.example", Transport: transport}, tc.cfg)
+			require.NoError(t, err)
+			tr, err := rest.TransportFor(cfg)
+			require.NoError(t, err)
+			req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://kubernetes.example/apis/networking.k8s.io/v1/namespaces/own/ingresses", strings.NewReader(ingress))
+			req.Header.Set("Content-Type", "application/json")
+			response, err := tr.RoundTrip(req)
+			if !tc.allowed {
+				require.ErrorIs(t, err, bcode.ErrForbidden)
+				require.Zero(t, calls)
+				return
+			}
+			require.NoError(t, err)
+			response.Body.Close()
+			require.Equal(t, 1, calls)
+		})
+	}
 }

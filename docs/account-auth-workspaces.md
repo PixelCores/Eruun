@@ -19,7 +19,7 @@
 | `sms` | 阿里云 `accessKeyId`、`accessKeySecret`、已审核 `signName`、`templateCode`；模板参数名为 `code`，使用正式 SendSms HTTPS 接口。禁用时整个对象留空 |
 | `workspace.clusterCIDRs` | 必填，准确列出 Pod、Service、节点及控制平面 CIDR，包括公网地址段（如有），以排除公共出口对集群网络的访问 |
 | `workspace.storageClasses` | 可用存储类名单；空名单拒绝新建 PVC。省略 storageClass 时使用名单首项 |
-| `workspace.ingressDomain` / `ingressClass` / `ingressNamespace` | 同时设置；不设置域名则拒绝 Ingress。生成域名为 `<组件名>.<空间 namespace>.<ingressDomain>`，需部署方提供 DNS 和证书 |
+| 入口（Ingress） | 不在本文件配置。入口后端在部署时由 Helm `gateway` values 或 `--gateway-*` flag 选定，见 [Helm 部署契约](helm-deployment.md#入口网关)；本文件出现 `workspace.ingressDomain` 等已删除字段或 `workspace.gateway` 时启动失败 |
 | `workspace.dnsNamespace` | 默认 `kube-system`；允许其中 `k8s-app=kube-dns` Pod 的 TCP/UDP 53 |
 | `workspace.quota` | 覆盖统一空间配额；缺失条目补默认值：20 Pod，CPU requests 2 / limits 4，内存 requests 4Gi / limits 8Gi，10 PVC、20Gi 存储、GPU 0。NodePort/LoadBalancer 禁用 |
 

@@ -92,6 +92,31 @@ generation/token ownership 始终启用，不提供关闭开关。
 }
 ```
 
+## 入口网关
+
+组件入口的后端在安装时选定，`gateway` values 是唯一来源：Chart 把它渲染为 `ERUUN_GATEWAY_*` 环境变量注入所有节点；账号配置 Secret 不再保存入口配置。当前只支持 `ingress` 后端；设计与后续的 Gateway API 后端见 [Gateway Trait 设计](gateway-trait-design.md)（Draft）。
+
+| Value | 默认值 | 语义 |
+| --- | --- | --- |
+| `gateway.provider` | `""` | `""` 关闭组件入口（Ingress Trait 被拒绝）；`ingress` 生成 Kubernetes Ingress |
+| `gateway.domain` | `""` | 组件 host 的 DNS 后缀；`ingress` 时必填。默认 host 为 `<组件名>.<空间 namespace>.<domain>`，DNS 与证书由部署方提供 |
+| `gateway.proxyNamespace` | `""` | 入口数据面 Pod 所在 namespace，空间基线 NetworkPolicy 放行其入站流量；`ingress` 时必填，须为 DNS-1123 label |
+| `gateway.ingress.className` | `""` | `ingress` 时使用的 IngressClass，必填 |
+
+- `provider` 为空时其余字段必须为空；`ingress` 缺少任一必填字段时渲染失败。
+- `env` 不能设置任何 `ERUUN_GATEWAY_*`，否则渲染失败，避免与上表的值不一致。
+- 不经 Helm 运行时，对应 flag 为 `--gateway-provider`、`--gateway-domain`、`--gateway-proxy-namespace`、`--gateway-ingress-class`，启动时按同样规则校验。
+- 静态清单 `deploy/eruun-stack.yaml` 固定使用 `ingress` 后端，直接在 `eruun-flags` ConfigMap 中写出这些变量。Quickstart 的 Helm 模式可通过 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN`、`GATEWAY_PROXY_NAMESPACE`、`GATEWAY_INGRESS_CLASS` 传值，未设置时保持关闭；manifest 模式拒绝这些变量。
+
+```yaml
+gateway:
+  provider: ingress
+  domain: apps.example.com
+  proxyNamespace: ingress-nginx
+  ingress:
+    className: nginx
+```
+
 ## ServiceAccount 与 RBAC
 
 | Value | 默认值 | 语义 |

@@ -40,3 +40,16 @@ workflow:
   # Maximum timeout for workflow callback requests.
   # Values above this limit are capped to avoid duration overflow.
   callbackTimeoutMax: 72h
+
+# Inbound entry point for component routes. Empty provider disables them.
+# Helm renders these from the gateway values; they are never read from the
+# account configuration Secret.
+gateway:
+  # --gateway-provider / ERUUN_GATEWAY_PROVIDER: "" or ingress
+  provider: ""
+  # --gateway-domain / ERUUN_GATEWAY_DOMAIN: DNS suffix of component hosts
+  domain: ""
+  # --gateway-proxy-namespace / ERUUN_GATEWAY_PROXY_NAMESPACE: gateway data-plane Pods
+  proxyNamespace: ""
+  # --gateway-ingress-class / ERUUN_GATEWAY_INGRESS_CLASS: IngressClass for provider=ingress
+  ingressClass: ""

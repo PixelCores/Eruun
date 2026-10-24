@@ -168,6 +168,61 @@ runHelmSensitiveValuesContract() {
   assertTempFilesCleaned "${case_dir}"
 }
 
+runGatewayValuesContract() {
+  local case_dir
+  case_dir=$(newCase helm-gateway-values)
+  local command_log="${case_dir}/commands.log"
+  local output="${case_dir}/output.log"
+
+  env \
+    ERUUN_QUICKSTART_FAKE_COMMAND=true \
+    FAKE_COMMAND_LOG="${command_log}" \
+    INSTALL_MODE=helm \
+    CHART_PATH="${CHART_SOURCE}" \
+    KUBECTL_BIN="${TEST_SCRIPT}" \
+    HELM_BIN="${TEST_SCRIPT}" \
+    OPENSSL_BIN="${TEST_SCRIPT}" \
+    GATEWAY_PROVIDER=ingress \
+    GATEWAY_DOMAIN=apps.example.com \
+    GATEWAY_PROXY_NAMESPACE=ingress-nginx \
+    GATEWAY_INGRESS_CLASS=nginx \
+    TMPDIR="${case_dir}/tmp" \
+    SKIP_CONFIRM=true \
+    WAIT_READY=false \
+    "${case_dir}/installer.sh" > "${output}" 2>&1
+
+  assertContains "${command_log}" "--set-string gateway.provider=ingress"
+  assertContains "${command_log}" "--set-string gateway.domain=apps.example.com"
+  assertContains "${command_log}" "--set-string gateway.proxyNamespace=ingress-nginx"
+  assertContains "${command_log}" "--set-string gateway.ingress.className=nginx"
+  assertTempFilesCleaned "${case_dir}"
+
+  # An explicitly empty provider is still a gateway setting.
+  local setting
+  for setting in GATEWAY_DOMAIN=apps.example.com GATEWAY_PROVIDER=; do
+    case_dir=$(newCase "manifest-gateway-${setting%%=*}")
+    command_log="${case_dir}/commands.log"
+    output="${case_dir}/output.log"
+    : > "${command_log}"
+    if env \
+      ERUUN_QUICKSTART_FAKE_COMMAND=true \
+      FAKE_COMMAND_LOG="${command_log}" \
+      INSTALL_MODE=manifest \
+      KUBECTL_BIN="${TEST_SCRIPT}" \
+      HELM_BIN="${TEST_SCRIPT}" \
+      OPENSSL_BIN="${TEST_SCRIPT}" \
+      "${setting}" \
+      TMPDIR="${case_dir}/tmp" \
+      SKIP_CONFIRM=true \
+      WAIT_READY=false \
+      "${case_dir}/installer.sh" > "${output}" 2>&1; then
+      fail "manifest mode must reject Helm-only gateway setting ${setting}"
+    fi
+    assertContains "${output}" "GATEWAY_* settings require INSTALL_MODE=helm"
+    assertNotContains "${command_log}" "apply"
+  done
+}
+
 runLegacyBindingCleanupScopeContract() {
   local scenario
   for scenario in helm-other-namespace helm-other-fullname custom-manifest custom-namespace apply-failure; do
@@ -528,6 +583,7 @@ runUnifiedRuntimeContract() {
 
 runManifestGeneratedSecretsContract
 runHelmSensitiveValuesContract
+runGatewayValuesContract
 runLegacyBindingCleanupScopeContract
 runPlaceholderRejectionContract
 runDryRunContract
