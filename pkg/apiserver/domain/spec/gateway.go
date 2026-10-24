@@ -115,9 +115,9 @@ func GatewayHosts(gateway GatewayTraitSpec, componentName, namespace string, cfg
 }
 
 // ResolveGatewayBackend resolves a route backend against the component's
-// Service traits, or its default Service when it declares none. The returned
-// service is the Service trait name; empty means the component's generated
-// Service name.
+// Service traits, or its default Service when it declares none. Service trait
+// names are read the way the Service renderer reads them. The returned service
+// is that name; empty means the component's generated Service name.
 func ResolveGatewayBackend(backend *GatewayBackendSpec, services []ServiceTraitSpec, ports []Ports) (string, int32, error) {
 	var want GatewayBackendSpec
 	if backend != nil {
@@ -135,8 +135,8 @@ func ResolveGatewayBackend(backend *GatewayBackendSpec, services []ServiceTraitS
 	case want.Service != "":
 		found := false
 		for _, candidate := range candidates {
-			if candidate.Name == want.Service {
-				service, declared, found = candidate.Name, tcpServicePorts(candidate.Ports), true
+			if name := strings.TrimSpace(candidate.Name); name == want.Service {
+				service, declared, found = name, tcpServicePorts(candidate.Ports), true
 				break
 			}
 		}
@@ -146,7 +146,7 @@ func ResolveGatewayBackend(backend *GatewayBackendSpec, services []ServiceTraitS
 	case len(candidates) > 1:
 		return "", 0, fmt.Errorf("backend service is required when the component has several non-external Service traits; name them and select one")
 	case len(candidates) == 1:
-		service, declared = candidates[0].Name, tcpServicePorts(candidates[0].Ports)
+		service, declared = strings.TrimSpace(candidates[0].Name), tcpServicePorts(candidates[0].Ports)
 	case len(services) == 0:
 		for _, port := range ports {
 			if port.Port > 0 {

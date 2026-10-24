@@ -79,6 +79,26 @@ func ValidateGateway(component apisv1.CreateComponentRequest, namespace string, 
 	return errors
 }
 
+// ValidateNestedGateway rejects gateway traits of init and sidecar containers.
+// The remaining gateway rules need the resolved component and the platform
+// configuration; ValidateGateway applies them.
+func ValidateNestedGateway(traits spec.Traits, field string) []apisv1.ValidationError {
+	var errors []apisv1.ValidationError
+	check := func(nested spec.Traits, field string) {
+		if nested.Gateway != nil {
+			errors = append(errors, apisv1.ValidationError{Field: field + ".gateway", Code: apisv1.ErrCodeGatewayNotAllowed, Message: "gateway is only supported in component-level traits"})
+		}
+		errors = append(errors, ValidateNestedGateway(nested, field)...)
+	}
+	for i, init := range traits.Init {
+		check(init.Traits, fmt.Sprintf("%s.init[%d].traits", field, i))
+	}
+	for i, sidecar := range traits.Sidecar {
+		check(sidecar.Traits, fmt.Sprintf("%s.sidecar[%d].traits", field, i))
+	}
+	return errors
+}
+
 func validateGatewayRoute(route spec.GatewayRouteSpec, field string, cfg spec.GatewayConfig) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 	add := func(field, code, format string, args ...any) {

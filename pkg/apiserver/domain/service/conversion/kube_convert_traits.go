@@ -2,7 +2,6 @@ package conversion
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -83,7 +82,7 @@ func buildGatewayTrait(ingress *networkingv1.Ingress, services []spec.ServiceTra
 		}
 		if i == 0 {
 			first = routes
-		} else if !reflect.DeepEqual(first, routes) {
+		} else if !sameGatewayRoutes(first, routes) {
 			return nil, unsupportedIngress(ingress, "all hosts must share the same paths")
 		}
 		trait.Hosts = append(trait.Hosts, rule.Host)
@@ -122,6 +121,23 @@ func gatewayRoutesFromPaths(ingress *networkingv1.Ingress, paths []networkingv1.
 		routes = append(routes, route)
 	}
 	return routes, nil
+}
+
+// sameGatewayRoutes compares the routes of two Ingress rules as sets: path
+// order within a rule does not change which request a route matches.
+func sameGatewayRoutes(a, b []spec.GatewayRouteSpec) bool {
+	key := func(route spec.GatewayRouteSpec) string {
+		return fmt.Sprintf("%s %s %s %d", route.Match, route.Path, route.Backend.Service, route.Backend.Port)
+	}
+	keys := func(routes []spec.GatewayRouteSpec) []string {
+		out := make([]string, 0, len(routes))
+		for _, route := range routes {
+			out = append(out, key(route))
+		}
+		slices.Sort(out)
+		return out
+	}
+	return slices.Equal(keys(a), keys(b))
 }
 
 func unsupportedIngress(ingress *networkingv1.Ingress, reason string) error {

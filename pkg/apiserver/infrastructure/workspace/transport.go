@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -159,8 +160,14 @@ func (t *tenantTransport) prepareIngress(obj, specification map[string]interface
 	if t.config.Gateway.Provider != spec.GatewayProviderIngress {
 		return bcode.ErrForbidden
 	}
-	if meta := mapAt(obj, "metadata"); meta != nil && len(mapAt(meta, "annotations")) != 0 {
-		return bcode.ErrForbidden
+	// Ingress controllers read behavior from annotations; only the component
+	// name Eruun records for task aggregation is allowed.
+	if meta := mapAt(obj, "metadata"); meta != nil {
+		for key := range mapAt(meta, "annotations") {
+			if key != config.AnnotationComponentName {
+				return bcode.ErrForbidden
+			}
+		}
 	}
 	if v, _ := specification["ingressClassName"].(string); v != t.config.Gateway.IngressClass || specification["defaultBackend"] != nil {
 		return bcode.ErrForbidden

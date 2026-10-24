@@ -701,12 +701,13 @@ stateDiagram-v2
 
 PR 1 按 1a（平台配置）、1b（`route_deploy` 与执行顺序）、1c（契约替换与 `ingress` 后端）三步合入。与上文不同或上文未写明之处：
 
-- **backend 引用**：`backend.service` 只接受本组件已命名、非 `external` 的 Service Trait 名，不接受生成名；未命名的唯一 Service Trait 和由 `properties.ports` 派生的默认 Service 只能通过省略 `service` 选中。生成名随应用资源名与 `share` 变化，写进 spec 会在模板克隆和改名后失效。`port` 省略时取所选 Service 的第一个 **TCP** 端口；protocol 按 Service 渲染器的方式（忽略大小写与首尾空白）判断。
+- **backend 引用**：`backend.service` 只接受本组件已命名、非 `external` 的 Service Trait 名，不接受生成名；名称与端口协议都按 Service 渲染器的方式读取（名称去除首尾空白，protocol 忽略大小写与首尾空白），保证路由引用与实际 Service 一致；未命名的唯一 Service Trait 和由 `properties.ports` 派生的默认 Service 只能通过省略 `service` 选中。生成名随应用资源名与 `share` 变化，写进 spec 会在模板克隆和改名后失效。`port` 省略时取所选 Service 的第一个 **TCP** 端口。
 - **规范化**：`match` 只接受小写 `prefix`、`exact`，spec 边界不做大小写或空白规范化；host 同样要求小写。默认 host 使用小写组件名（组件名按大小写不敏感的 DNS label 校验，允许大写）。
-- **校验入口**：只有一个规则函数 `traitvalidation.ValidateGateway(component, namespace, cfg, field)`，作用于模板展开后的组件；嵌套 gateway 由 `ValidateTraits` 返回 `GATEWAY_NOT_ALLOWED`。Try、创建与 `/version` 更新只在带空间 scope 的请求中调用它（与 `workspace.ValidateTraits` 一致，业务路由总会绑定 scope）；模板克隆经创建路径校验展开结果。字段前缀沿用现有的 `component[i]`，`/version` 为 `component[<组件名>]`。
+- **校验入口**：只有一个规则函数 `traitvalidation.ValidateGateway(component, namespace, cfg, field)`，作用于模板展开后的组件；嵌套 gateway 由 `ValidateNestedGateway` 返回 `GATEWAY_NOT_ALLOWED`，`ValidateTraits` 与模板覆盖检查（`ValidateTemplateOverrides`，覆盖合并只保留支持的字段）都调用它；保存路径对该错误同样返回安全消息。Try、创建与 `/version` 更新只在带空间 scope 的请求中调用它（与 `workspace.ValidateTraits` 一致，业务路由总会绑定 scope）；模板克隆经创建路径校验展开结果。字段前缀沿用现有的 `component[i]`，`/version` 为 `component[<组件名>]`。
 - **渲染位置**：不经 `TraitContext` 与 processor。Workflow 构建在生成 Service Job 之后调用 `workflow/traits.BuildGatewayRoute`，`GatewayConfig` 从 `GenerateJobTasks` 经各步骤构建函数显式传入；processor 不再处理任何入口字段。资源类型沿用 `ResourceIngress`。
 - **按后端执行清理**：应用清理与 `jobcleanup` 的按 label 清理只在 provider 为 `ingress` 时访问 Ingress。ClusterRole 与空间 Role 都只在 `ingress` 时包含入口规则，关闭入口时服务端不再发出任何 Ingress 请求；从 `ingress` 切到关闭前需先清理已部署的入口（§7.3）。
-- **YAML 导入**：除 §8 所列情况外，缺少 `pathType` 也报错；导入保留原 host，保存时再按 §6.2 校验归属。转换错误经 `WithSafeClientMessage` 返回原因，其他转换错误仍为通用的 `ErrApplicationConfig`。
+- **写入边界**：`prepareIngress` 只放行 Eruun 用于任务聚合的 `eruun.io/component-name` 注解。基线拒绝任何注解，而构建器总会写入这一项，空间内的入口部署因此全部被拒；本次一并修正，并用构建器的完整载荷经 `PrepareTask` 的测试固定。
+- **YAML 导入**：除 §8 所列情况外，缺少 `pathType` 也报错；各 host 的路由按集合比较，顺序不同不算不一致；导入保留原 host，保存时再按 §6.2 校验归属。转换错误经 `WithSafeClientMessage` 返回原因，其他转换错误仍为通用的 `ErrApplicationConfig`。
 - **gRPC**：`AppSpecTraits` 保留字段号 4 与名称 `ingress`，`gateway` 使用 17（main 上从未分配）；`AppDTOApplicationComponent` 保留 12 与 `ingresses`，`gateway` 使用 20。
 - **安装器**：`INSTALL_MODE=helm` 未设置 `GATEWAY_*` 时入口保持关闭，manifest 模式拒绝这些变量。
 - **未处理**：同一空间内两个应用的同名组件使用默认 host 时会得到相同 host，与旧 `traits.ingress` 的默认 host 行为相同，冲突只影响本空间，未做跨应用唯一性检查。

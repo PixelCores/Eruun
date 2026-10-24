@@ -54,11 +54,6 @@ func validateTraits(traits spec.Traits, field string, componentType config.JobTy
 	for i, sidecar := range traits.Sidecar {
 		errors = append(errors, validateSidecarTrait(sidecar, fmt.Sprintf("%s.sidecar[%d]", field, i), nested)...)
 	}
-	// The remaining gateway rules need the resolved component and the platform
-	// configuration; ValidateGateway applies them.
-	if nested && traits.Gateway != nil {
-		errors = append(errors, apisv1.ValidationError{Field: field + ".gateway", Code: apisv1.ErrCodeGatewayNotAllowed, Message: "gateway is only supported in component-level traits"})
-	}
 	for i, service := range traits.Service {
 		errors = append(errors, ValidateServiceTraitSpec(service, fmt.Sprintf("%s.service[%d]", field, i))...)
 	}
@@ -73,6 +68,7 @@ func validateTraits(traits spec.Traits, field string, componentType config.JobTy
 	}
 	if !nested {
 		errors = append(errors, ValidateNestedNodePool(traits, field)...)
+		errors = append(errors, ValidateNestedGateway(traits, field)...)
 	}
 	return append(errors, ValidateRolloutTrait(componentType, traits.Rollout, field+".rollout", nested)...)
 }

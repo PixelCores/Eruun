@@ -145,7 +145,7 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 注册、团队创建、保存应用只写数据库。首次部署在任何工作负载写入前完成 namespace、安全身份、Pod Security Restricted、NetworkPolicy、ResourceQuota 和 LimitRange。已有同名 namespace 的 `eruun.io/workspace-id` 不一致会失败；并发创建重新读取验证归属。初始化部分失败可幂等重试，不删除已有资源，也不开始工作负载。
 
-API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、任意内联 RBAC、跨 namespace、NodePort/LoadBalancer、不允许的存储类，以及不符合平台入口的 Ingress：入口后端不是 `ingress`、IngressClass 不是平台配置、带注解/TLS/默认后端，或 host 不是本空间的单层 host `<前缀>-<空间 namespace>.<domain>`。只有入口后端为 `ingress` 时，空间 Role 才包含 Ingress 权限。
+API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、任意内联 RBAC、跨 namespace、NodePort/LoadBalancer、不允许的存储类，以及不符合平台入口的 Ingress：入口后端不是 `ingress`、IngressClass 不是平台配置、带 `eruun.io/component-name` 以外的注解、带 TLS 或默认后端，或 host 不是本空间的单层 host `<前缀>-<空间 namespace>.<domain>`。只有入口后端为 `ingress` 时，空间 Role 才包含 Ingress 权限。
 
 展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；规范化会完整替换对象内容，包括清除已移除的嵌套字段（如 Localhost seccomp 的 localhostProfile），相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。延迟执行继续使用空间受限身份；节点的统一 RBAC 不取消 namespace 与指定 `eruun-runner` impersonation 的边界。
 

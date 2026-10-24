@@ -249,6 +249,9 @@ func ValidateTemplateOverrides(components []apisv1.CreateComponentRequest) []api
 			errors = append(errors, apisv1.ValidationError{Field: field, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
 		}
 		errors = append(errors, traitvalidation.ValidateNestedJobFailurePolicies(component.Traits, field)...)
+		// Overrides merge only supported fields; reject nested gateways instead
+		// of dropping them.
+		errors = append(errors, traitvalidation.ValidateNestedGateway(component.Traits, field)...)
 	}
 	return errors
 }
@@ -262,8 +265,12 @@ func firstValidationError(base error, errors []apisv1.ValidationError) error {
 }
 
 // componentValidationError keeps the properties error code for rules on
-// component or init container properties.
+// component or init container properties. Gateway errors keep their field and
+// reason for the client, as on the other gateway write paths.
 func componentValidationError(errors []apisv1.ValidationError) error {
+	if len(errors) > 0 && errors[0].Code == apisv1.ErrCodeGatewayNotAllowed {
+		return gatewayWriteError(errors)
+	}
 	if len(errors) > 0 && strings.Contains(errors[0].Field, ".properties.") {
 		return firstValidationError(bcode.ErrInvalidProperties, errors)
 	}

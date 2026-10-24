@@ -329,6 +329,13 @@ func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
 	}
 	require.NoError(t, PrepareResource("own", "ingresses", decode(), enabled))
 	require.ErrorIs(t, PrepareResource("own", "ingresses", decode(), disabled), bcode.ErrForbidden)
+	annotated := func(key string) map[string]interface{} {
+		obj := decode()
+		obj["metadata"].(map[string]interface{})["annotations"] = map[string]interface{}{key: "web"}
+		return obj
+	}
+	require.NoError(t, PrepareResource("own", "ingresses", annotated("eruun.io/component-name"), enabled))
+	require.ErrorIs(t, PrepareResource("own", "ingresses", annotated("nginx.ingress.kubernetes.io/rewrite-target"), enabled), bcode.ErrForbidden)
 
 	ctx := access.WithScope(context.Background(), access.Scope{WorkspaceID: "a", Namespace: "own", Role: "member"})
 	for _, tc := range []struct {

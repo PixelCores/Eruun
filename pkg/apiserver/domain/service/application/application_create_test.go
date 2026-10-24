@@ -1026,9 +1026,10 @@ func TestCreateApplicationsRejectsNestedGateway(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		traits apisv1.Traits
+		field  string
 	}{
-		{"init gateway", apisv1.Traits{Init: []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.36", Traits: apisv1.Traits{Gateway: gateway}}}}},
-		{"sidecar gateway", apisv1.Traits{Sidecar: []spec.SidecarTraitsSpec{{Name: "proxy", Image: "nginx:latest", Traits: apisv1.Traits{Gateway: gateway}}}}},
+		{"init gateway", apisv1.Traits{Init: []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.36", Traits: apisv1.Traits{Gateway: gateway}}}}, "component[0].traits.init[0].traits.gateway"},
+		{"sidecar gateway", apisv1.Traits{Sidecar: []spec.SidecarTraitsSpec{{Name: "proxy", Image: "nginx:latest", Traits: apisv1.Traits{Gateway: gateway}}}}, "component[0].traits.sidecar[0].traits.gateway"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newInMemoryAppStore()
@@ -1044,9 +1045,46 @@ func TestCreateApplicationsRejectsNestedGateway(t *testing.T) {
 				}},
 			})
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-			require.Contains(t, err.Error(), "gateway is only supported in component-level traits")
+			require.Equal(t, tc.field+": gateway is only supported in component-level traits", bcode.SafeClientMessage(err))
 			require.Empty(t, store.apps)
 			require.Empty(t, store.components)
 		})
+	}
+}
+
+// Template overrides merge only supported fields; a nested gateway in an
+// override is rejected instead of being dropped.
+func TestCreateApplicationsFromTemplateRejectsNestedGatewayOverride(t *testing.T) {
+	store := newInMemoryAppStore()
+	templateApp := &model.Applications{ID: "tmpl-gateway-override", Name: "gateway-override-template", TemplateEnabled: true}
+	store.apps[templateApp.ID] = templateApp
+	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
+		Init: []spec.InitTraitSpec{{Name: "setup", Image: "busybox:1.36"}},
+	})
+	require.NoError(t, err)
+	propsJSON, err := model.NewJSONStructByStruct(apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}})
+	require.NoError(t, err)
+	store.components["api"] = &model.ApplicationComponent{
+		Name: "api", AppID: templateApp.ID, Namespace: config.DefaultNamespace, Image: "nginx:1.27", Replicas: 1,
+		ComponentType: config.ServerJob, Properties: propsJSON, Traits: traitsJSON,
+	}
+	svc := newMockServiceWithStore(store)
+	_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Namespace: config.DefaultNamespace,
+		Name:      "gateway-clone",
+		Components: []apisv1.CreateComponentRequest{{
+			Name:     "api",
+			Template: &spec.TemplateRef{ID: templateApp.ID, Target: "api"},
+			Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{
+				Name: "setup", Image: "busybox:1.36",
+				Properties: apisv1.Properties{Env: map[string]string{"MODE": "override"}},
+				Traits:     apisv1.Traits{Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}},
+			}}},
+		}},
+	})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Equal(t, "component[0].traits.init[0].traits.gateway: gateway is only supported in component-level traits", bcode.SafeClientMessage(err))
+	for _, component := range store.components {
+		require.Equal(t, templateApp.ID, component.AppID, "nothing is saved")
 	}
 }

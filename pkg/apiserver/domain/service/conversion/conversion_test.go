@@ -1127,6 +1127,31 @@ metadata:
 		},
 	}, api.Traits.Gateway)
 
+	// Path order within a rule does not matter; the first rule's order is kept.
+	reversed := `
+      http:
+        paths:
+          - path: /v1/models
+            pathType: Exact
+            backend:
+              service:
+                name: api-svc
+                port:
+                  number: 80
+          - path: /healthz
+            pathType: Prefix
+            backend:
+              service:
+                name: api-svc
+                port:
+                  number: 80`
+	resp, err = svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: workload + `spec:
+  rules:
+    - host: api-ws-a.apps.example.com` + paths + `
+    - host: chat-ws-a.apps.example.com` + reversed + "\n"})
+	require.NoError(t, err)
+	require.Equal(t, api.Traits.Gateway, findComponent(resp.Components, "api").Traits.Gateway)
+
 	for _, tt := range []struct{ name, ingress, reason string }{
 		{"annotations", "  annotations:\n    nginx.ingress.kubernetes.io/rewrite-target: /\nspec:\n  rules:\n    - host: a.example.com" + paths, "annotations"},
 		{"tls", "spec:\n  tls:\n    - hosts: [a.example.com]\n      secretName: a-tls\n  rules:\n    - host: a.example.com" + paths, "TLS"},

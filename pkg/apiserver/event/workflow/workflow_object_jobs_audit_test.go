@@ -9,13 +9,16 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -604,6 +607,54 @@ func TestBuildJobsForComponent_RouteRunsAfterService(t *testing.T) {
 	require.Equal(t, wfNaming.NormalizeLabelValue("App-Route"), route.GetLabels()[spec.LabelAppID])
 	require.Equal(t, wfNaming.BoundedLabelValue("Api"), route.GetLabels()[spec.LabelComponentName])
 	require.Equal(t, "web", route.GetLabels()["layer"])
+
+	// The complete route payload, with the metadata the builder adds, passes the
+	// workspace policy the executor applies before writing it.
+	deploy, err := jobexec.PrepareTask(routeJob, component.AppID, &model.Workspace{ID: "space", Namespace: "nvg"}, spec.WorkspaceConfig{Gateway: testIngressGateway})
+	require.NoError(t, err)
+	require.True(t, deploy)
+}
+
+// The route must reference the Service the same build deploys.
+func TestBuildJobsForComponent_RouteTargetsDeployedService(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		services []spec.ServiceTraitSpec
+	}{
+		{name: "default service"},
+		{name: "padded service trait name", services: []spec.ServiceTraitSpec{{Name: " api-svc ", Selector: map[string]string{"tier": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}}}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			propsJSON, err := model.NewJSONStructByStruct(model.Properties{Ports: []model.Ports{{Port: 8080}}})
+			require.NoError(t, err)
+			traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{Service: tt.services, Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}})
+			require.NoError(t, err)
+			component := &model.ApplicationComponent{Name: "api", AppID: "app", Namespace: "nvg", ComponentType: config.ServerJob, Image: "api:1", Properties: propsJSON, Traits: traitsJSON}
+			task := &model.WorkflowQueue{WorkflowID: "wf", ProjectID: "proj", AppID: "app", TaskID: "task"}
+
+			buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, testIngressGateway, "")
+			require.NoError(t, err)
+			var serviceNames []string
+			for _, job := range buckets[config.JobPriorityHigh] {
+				if service, ok := job.JobInfo.(*corev1.Service); ok {
+					serviceNames = append(serviceNames, service.Name)
+				}
+			}
+			require.Len(t, serviceNames, 1)
+			for _, job := range buckets[config.JobPriorityNormal] {
+				if job.JobType != string(config.JobDeployRoute) {
+					continue
+				}
+				route, _, err := jobinfo.RouteFromJobInfo(job)
+				require.NoError(t, err)
+				var ingress networkingv1.Ingress
+				require.NoError(t, runtime.DefaultUnstructuredConverter.FromUnstructured(route.Object, &ingress))
+				require.Equal(t, serviceNames[0], ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name)
+				return
+			}
+			require.Fail(t, "route job missing")
+		})
+	}
 }
 
 func TestBuildJobsForComponent_GatewayRequiresRenderableRoute(t *testing.T) {
