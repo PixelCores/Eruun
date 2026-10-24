@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -42,8 +43,10 @@ type Runtime struct {
 	DelayQueue        msg.Queue
 	ResourceWaiter    informer.ComponentReadyObserver
 	KubeConfig        *rest.Config
-	ShareLocker       locker.Locker
-	ArchiveUploader   ArchiveUploader
+	// Dynamic writes component routes with the same tenant identity as Client.
+	Dynamic         dynamic.Interface
+	ShareLocker     locker.Locker
+	ArchiveUploader ArchiveUploader
 }
 
 func (r *Runtime) Close() {

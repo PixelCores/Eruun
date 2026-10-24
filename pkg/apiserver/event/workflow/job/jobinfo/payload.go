@@ -11,6 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -171,8 +173,26 @@ func PvcFromJobInfo(job *model.JobTask) (*corev1.PersistentVolumeClaim, error) {
 	return RequiredJobInfo[*corev1.PersistentVolumeClaim](job)
 }
 
-func IngressFromJobInfo(job *model.JobTask) (*networkingv1.Ingress, error) {
-	return RequiredJobInfo[*networkingv1.Ingress](job)
+// RouteResource names the API resource a component route payload is written to
+// and the kind used to track it for cleanup.
+type RouteResource struct {
+	Kind spec.ResourceKind
+	GVR  schema.GroupVersionResource
+}
+
+// RouteFromJobInfo returns a route payload and its resource. Only kinds rendered
+// by a supported gateway provider are accepted.
+func RouteFromJobInfo(job *model.JobTask) (*unstructured.Unstructured, RouteResource, error) {
+	route, err := RequiredJobInfo[*unstructured.Unstructured](job)
+	if err != nil {
+		return nil, RouteResource{}, err
+	}
+	switch gvk := route.GroupVersionKind(); gvk {
+	case networkingv1.SchemeGroupVersion.WithKind(string(spec.KubeKindIngress)):
+		return route, RouteResource{Kind: spec.ResourceIngress, GVR: networkingv1.SchemeGroupVersion.WithResource("ingresses")}, nil
+	default:
+		return nil, RouteResource{}, fmt.Errorf("unsupported route kind %s", gvk)
+	}
 }
 
 func BatchJobFromJobInfo(job *model.JobTask) (*batchv1.Job, error) {

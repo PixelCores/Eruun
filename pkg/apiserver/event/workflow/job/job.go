@@ -60,6 +60,7 @@ func newJobRuntime(config *jobexec.Runtime) *jobexec.Runtime {
 		DelayQueue:        config.DelayQueue,
 		ResourceWaiter:    config.ResourceWaiter,
 		KubeConfig:        config.KubeConfig,
+		Dynamic:           config.Dynamic,
 		ShareLocker:       jobexec.NewShareLocker(config.RedisClient),
 		ArchiveUploader:   logarchive.CurrentArchiveUploader(),
 	}
@@ -82,8 +83,8 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 		return jobdeploy.NewDeployConfigMapJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeploySecret):
 		return jobdeploy.NewDeploySecretJobCtl(job, runtime, runtime.ShareLocker)
-	case string(config.JobDeployIngress):
-		return jobdeploy.NewDeployIngressJobCtl(job, runtime, runtime.ShareLocker)
+	case string(config.JobDeployRoute):
+		return jobdeploy.NewDeployRouteJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return jobinstant.NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
@@ -686,7 +687,7 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployPVC,
 		config.JobDeployConfigMap,
 		config.JobDeploySecret,
-		config.JobDeployIngress,
+		config.JobDeployRoute,
 		config.JobDeployInstant,
 		config.JobDeployScheduled,
 		config.JobCleanupResources,

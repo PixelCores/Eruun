@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -53,6 +54,8 @@ type WorkflowCtl struct {
 	terminalCallbackOnce     sync.Once
 	Client                   kubernetes.Interface
 	KubeConfig               *rest.Config
+	// Dynamic shares the tenant identity of Client and writes component routes.
+	Dynamic                  dynamic.Interface
 	Store                    datastore.DataStore
 	RedisClient              *redis.Client
 	Cache                    cache.ICache

@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -100,43 +99,6 @@ func TestPVCJobCtlBasicBranches(t *testing.T) {
 	jobTask.JobInfo = "invalid"
 	_, err = ctl.getPVCStatus(context.Background())
 	require.Error(t, err)
-
-	ctl.Job.Timeout = 0
-	require.Greater(t, ctl.timeout(), int64(0))
-}
-
-func TestIngressJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployIngressJobCtl(nil, &jobexec.Runtime{Client: nil, Store: nil, Ack: nil}, nil))
-
-	ackCount := 0
-	jobTask := &model.JobTask{
-		Name:      "ing-a",
-		Namespace: "default",
-		JobType:   string(config.JobDeployIngress),
-		JobInfo: &networkingv1.Ingress{
-			ObjectMeta: metav1.ObjectMeta{Name: "ing-a", Namespace: "default"},
-		},
-	}
-	ctl := NewDeployIngressJobCtl(jobTask, &jobexec.Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
-	require.NotNil(t, ctl)
-
-	err := ctl.Run(context.Background())
-	require.Error(t, err)
-	require.Equal(t, 1, ackCount)
-	require.Equal(t, config.StatusFailed, jobTask.Status)
-
-	ctl.Client = fake.NewSimpleClientset()
-	jobTask.JobInfo = "invalid"
-	err = ctl.run(context.Background())
-	require.Error(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	err = ctl.wait(ctx)
-	require.Error(t, err)
-	statusErr, ok := jobinfo.ExtractStatusError(err)
-	require.True(t, ok)
-	require.Equal(t, config.StatusCancelled, statusErr.Status)
 
 	ctl.Job.Timeout = 0
 	require.Greater(t, ctl.timeout(), int64(0))

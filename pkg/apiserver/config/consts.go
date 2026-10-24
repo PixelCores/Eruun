@@ -53,7 +53,7 @@ const (
 	JobDeployPVC        JobType = "store_pvc_deploy"
 	JobDeployConfigMap  JobType = "configmap_deploy"
 	JobDeploySecret     JobType = "secret_deploy"
-	JobDeployIngress    JobType = "ingress_deploy"
+	JobDeployRoute      JobType = "route_deploy"
 	JobDeployInstant    JobType = "instant_job"
 	JobDeployScheduled  JobType = "scheduled_job"
 	JobDeployCallback   JobType = "callback"

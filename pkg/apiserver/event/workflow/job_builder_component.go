@@ -10,6 +10,8 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -116,13 +118,19 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 				defaultJobTimeoutSeconds,
 				resourceAppName,
 			)
-			ingressJob.JobType = string(config.JobDeployIngress)
-			ingressJob.JobInfo = ingress
+			route, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ingress)
+			if err != nil {
+				return nil, fmt.Errorf("convert component %s ingress: %w", component.Name, err)
+			}
+			routeObject := &unstructured.Unstructured{Object: route}
+			routeObject.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind(string(domainspec.KubeKindIngress)))
+			ingressJob.JobType = string(config.JobDeployRoute)
+			ingressJob.JobInfo = routeObject
 			ingressJob.Info = buildIngressDeployInfo(ingress, ingress.Name, ingress.Namespace)
 			setDeployTimeout(ingressJob)
 			markJobSkippedIfIgnored(share, ingressJob)
 			jobs = append(jobs, ingressJob)
-			klog.Infof("Created Ingress job for component %s: %s", component.Name, ingress.Name)
+			klog.Infof("Created route job for component %s: %s", component.Name, ingress.Name)
 		}
 	}
 	return jobs, nil
@@ -555,15 +563,15 @@ func queueServiceJobs(
 		buckets[priority] = append(buckets[priority], jobTask)
 	}
 
-	// Traits may emit extra Kubernetes objects (PVC, Ingress, etc.). Schedule them
-	// ahead of the base workload so dependencies are ready before the deployment runs.
+	// Traits may emit extra Kubernetes objects (PVC, Ingress, etc.). Schedule
+	// dependencies ahead of the base workload; routes wait for the Services.
 	if len(result.AdditionalObjects) > 0 {
 		jobs, err := createObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds, share)
 		if err != nil {
 			return fmt.Errorf("create additional resource jobs: %w", err)
 		}
 		for _, jt := range jobs {
-			appendJob(config.JobPriorityHigh, jt)
+			appendJob(objectJobPriority(jt), jt)
 		}
 	}
 
@@ -577,6 +585,16 @@ func queueServiceJobs(
 	markJobSkippedIfIgnored(share, jobTask)
 	appendJob(config.JobPriorityNormal, jobTask)
 	return nil
+}
+
+// objectJobPriority runs routes after every Service of the execution group:
+// generated dependencies and Services share JobPriorityHigh, and priorities
+// execute in order.
+func objectJobPriority(job *model.JobTask) int {
+	if job.JobType == string(config.JobDeployRoute) {
+		return config.JobPriorityNormal
+	}
+	return config.JobPriorityHigh
 }
 
 func applyVersionUpdateImageReadyTimeout(jobTask *model.JobTask, component *model.ApplicationComponent, task *model.WorkflowQueue) {
@@ -611,7 +629,10 @@ func appendBatchJob(
 		if err != nil {
 			return nil, fmt.Errorf("create additional resource jobs: %w", err)
 		}
-		buckets[config.JobPriorityHigh] = append(buckets[config.JobPriorityHigh], jobs...)
+		for _, jt := range jobs {
+			priority := objectJobPriority(jt)
+			buckets[priority] = append(buckets[priority], jt)
+		}
 	}
 
 	jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())

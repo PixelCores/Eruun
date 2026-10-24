@@ -7,7 +7,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -91,4 +93,38 @@ func TestPrepareScheduledPayloadPreservesPointerAndPolicy(t *testing.T) {
 		require.False(t, *pod.Spec.AutomountServiceAccountToken)
 		require.True(t, *pod.Spec.Containers[0].SecurityContext.RunAsNonRoot)
 	}
+}
+
+func TestRouteTaskUsesPayloadResourcePolicy(t *testing.T) {
+	space := &model.Workspace{ID: "space", Namespace: "own"}
+	route := func(host string) *unstructured.Unstructured {
+		object := &unstructured.Unstructured{Object: map[string]interface{}{
+			"metadata": map[string]interface{}{"name": "web", "namespace": "own"},
+			"spec": map[string]interface{}{
+				"ingressClassName": "nginx",
+				"rules":            []interface{}{map[string]interface{}{"host": host}},
+			},
+		}}
+		object.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind("Ingress"))
+		return object
+	}
+
+	payload := route("web.own.apps.example.com")
+	task := &model.JobTask{AppID: "app", Namespace: "own", JobType: string(config.JobDeployRoute), JobInfo: payload}
+	deploy, err := PrepareTask(task, "app", space, taskWorkspaceConfig(t))
+	require.NoError(t, err)
+	require.True(t, deploy)
+	prepared, ok := task.JobInfo.(*unstructured.Unstructured)
+	require.True(t, ok, "the prepared payload keeps its unstructured type")
+	require.Same(t, payload, prepared)
+
+	task.JobInfo = route("victim.other.apps.example.com")
+	_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
+	require.ErrorIs(t, err, bcode.ErrForbidden)
+
+	unsupported := route("web.own.apps.example.com")
+	unsupported.SetAPIVersion("example.io/v1")
+	task.JobInfo = unsupported
+	_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
+	require.ErrorIs(t, err, bcode.ErrForbidden)
 }

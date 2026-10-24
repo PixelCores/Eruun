@@ -488,7 +488,7 @@ func isWorkflowFailureCleanupTriggerJob(jobType config.JobType) bool {
 		config.JobDeployPVC,
 		config.JobDeployConfigMap,
 		config.JobDeploySecret,
-		config.JobDeployIngress,
+		config.JobDeployRoute,
 		config.JobDeployInstant,
 		config.JobDeployScheduled:
 		return true
@@ -510,6 +510,7 @@ func (w *WorkflowCtl) runJobs(ctx context.Context, tasks []*model.JobTask, concu
 		DelayQueue:        w.DelayQueue,
 		ResourceWaiter:    w.ResourceWaiter,
 		KubeConfig:        w.KubeConfig,
+		Dynamic:           w.Dynamic,
 	})
 }
 
@@ -598,7 +599,11 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	if err != nil {
 		return ctx, err
 	}
-	w.Client, w.KubeConfig = client, restConfig
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return ctx, fmt.Errorf("create workspace dynamic client: %w", err)
+	}
+	w.Client, w.KubeConfig, w.Dynamic = client, restConfig, dynamicClient
 	w.Store = access.NewStore(w.Store)
 	ctx = access.WithScope(ctx, access.ForWorkspace(space))
 	if task.Type == config.WorkflowTaskTypeJob {
