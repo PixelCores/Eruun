@@ -103,6 +103,49 @@
           ]
         }
       }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "domain",
+        "proxyNamespace",
+        "ingress"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "",
+            "ingress"
+          ]
+        },
+        "domain": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
+        },
+        "proxyNamespace": {
+          "type": "string",
+          "maxLength": 63,
+          "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$"
+        },
+        "ingress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "className"
+          ],
+          "properties": {
+            "className": {
+              "type": "string",
+              "maxLength": 253,
+              "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [

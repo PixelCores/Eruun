@@ -55,13 +55,13 @@ type SMSConfig struct {
 }
 
 type WorkspaceConfig struct {
-	ClusterCIDRs     []string            `json:"clusterCIDRs"`
-	StorageClasses   []string            `json:"storageClasses"`
-	IngressDomain    string              `json:"ingressDomain"`
-	IngressClass     string              `json:"ingressClass"`
-	IngressNamespace string              `json:"ingressNamespace"`
-	DNSNamespace     string              `json:"dnsNamespace"`
-	Quota            corev1.ResourceList `json:"quota"`
+	ClusterCIDRs   []string            `json:"clusterCIDRs"`
+	StorageClasses []string            `json:"storageClasses"`
+	DNSNamespace   string              `json:"dnsNamespace"`
+	Quota          corev1.ResourceList `json:"quota"`
+	// Gateway is filled from the server configuration during assembly and is
+	// never decoded from the account configuration Secret.
+	Gateway GatewayConfig `json:"-"`
 }
 
 func LoadAccountConfig(path string) (*AccountConfig, error) {
@@ -181,18 +181,13 @@ func (c *AccountConfig) validateWorkspace() error {
 	if c.Workspace.DNSNamespace == "" {
 		c.Workspace.DNSNamespace = "kube-system"
 	}
-	if c.Workspace.IngressDomain != "" && (c.Workspace.IngressClass == "" || c.Workspace.IngressNamespace == "") {
-		return fmt.Errorf("ingress domain requires ingressClass and ingressNamespace")
-	}
 	for _, name := range c.Workspace.StorageClasses {
 		if len(kvalidation.IsDNS1123Subdomain(name)) != 0 || invalidAccountSecret(name) {
 			return fmt.Errorf("workspace storageClasses must contain valid storage class names")
 		}
 	}
-	for _, name := range []string{c.Workspace.DNSNamespace, c.Workspace.IngressNamespace, c.Workspace.IngressClass, c.Workspace.IngressDomain} {
-		if name != "" && len(kvalidation.IsDNS1123Subdomain(name)) != 0 {
-			return fmt.Errorf("workspace DNS and ingress configuration contains an invalid name")
-		}
+	if len(kvalidation.IsDNS1123Subdomain(c.Workspace.DNSNamespace)) != 0 {
+		return fmt.Errorf("workspace dnsNamespace contains an invalid name")
 	}
 	defaults := map[corev1.ResourceName]string{"pods": "20", "requests.cpu": "2", "limits.cpu": "4", "requests.memory": "4Gi", "limits.memory": "8Gi", "persistentvolumeclaims": "10", "requests.storage": "20Gi", "requests.nvidia.com/gpu": "0", "services.nodeports": "0", "services.loadbalancers": "0"}
 	if c.Workspace.Quota == nil {

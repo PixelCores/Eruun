@@ -394,6 +394,11 @@ data:
   ERUUN_WORKFLOW_LEASE_DURATION: "30s"
   ERUUN_WORKFLOW_LEASE_REAPER_INTERVAL: "10s"
   ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT: "60s"
+  # Static installs use the ingress gateway provider; use Helm to select another.
+  ERUUN_GATEWAY_PROVIDER: "ingress"
+  ERUUN_GATEWAY_DOMAIN: "apps.example.com"
+  ERUUN_GATEWAY_PROXY_NAMESPACE: "ingress-nginx"
+  ERUUN_GATEWAY_INGRESS_CLASS: "nginx"
   ERUUN_PROFILING_ADDR: ""
 ---
 apiVersion: v1

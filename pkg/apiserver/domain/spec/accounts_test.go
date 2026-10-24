@@ -25,6 +25,9 @@ func TestAccountConfigurationFailsClosed(t *testing.T) {
 		{"partial SMS", strings.Replace(valid, `"workspace"`, `"sms":{"templateCode":"SMS_TEST"},"workspace"`, 1), false},
 		{"untrusted proxy format", strings.Replace(valid, `"workspace"`, `"trustedProxyCIDRs":["*"],"workspace"`, 1), false},
 		{"placeholder OAuth", strings.Replace(valid, `"workspace"`, `"github":{"enabled":true,"clientId":"__REPLACE__","clientSecret":"__REPLACE__","redirectURI":"https://console.example.com/oauth"},"workspace"`, 1), false},
+		// Gateway selection comes from server configuration only.
+		{"removed workspace ingress field", strings.Replace(valid, `"clusterCIDRs"`, `"ingressDomain":"apps.example.com","clusterCIDRs"`, 1), false},
+		{"workspace gateway field", strings.Replace(valid, `"clusterCIDRs"`, `"gateway":{"Provider":"ingress"},"clusterCIDRs"`, 1), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "accounts.json")

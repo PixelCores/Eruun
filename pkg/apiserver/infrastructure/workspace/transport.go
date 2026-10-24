@@ -156,13 +156,13 @@ func (t *tenantTransport) prepare(kind string, obj map[string]interface{}) error
 }
 
 func (t *tenantTransport) prepareIngress(obj, specification map[string]interface{}) error {
-	if t.config.IngressDomain == "" {
+	if t.config.Gateway.Provider != spec.GatewayProviderIngress {
 		return bcode.ErrForbidden
 	}
 	if meta := mapAt(obj, "metadata"); meta != nil && len(mapAt(meta, "annotations")) != 0 {
 		return bcode.ErrForbidden
 	}
-	if v, _ := specification["ingressClassName"].(string); v != t.config.IngressClass || specification["defaultBackend"] != nil {
+	if v, _ := specification["ingressClassName"].(string); v != t.config.Gateway.IngressClass || specification["defaultBackend"] != nil {
 		return bcode.ErrForbidden
 	}
 	if lenValue(specification["rules"]) == 0 {
@@ -190,7 +190,7 @@ func (t *tenantTransport) prepareIngress(obj, specification map[string]interface
 	return nil
 }
 func (t *tenantTransport) allowedHost(host string) bool {
-	return host != "" && !strings.Contains(host, "*") && strings.HasSuffix(host, "."+t.namespace+"."+t.config.IngressDomain)
+	return host != "" && !strings.Contains(host, "*") && strings.HasSuffix(host, "."+t.namespace+"."+t.config.Gateway.Domain)
 }
 func lenValue(v interface{}) int { a, _ := v.([]interface{}); return len(a) }
 func (t *tenantTransport) pvc(s map[string]interface{}) error {
@@ -410,16 +410,16 @@ func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spe
 func prepareTraitIngresses(namespace, name string, traits *spec.Traits, cfg spec.WorkspaceConfig) error {
 	for i := range traits.Ingress {
 		v := &traits.Ingress[i]
-		if cfg.IngressDomain == "" || len(v.Annotations) > 0 || (v.Namespace != "" && v.Namespace != namespace) || (v.IngressClassName != "" && v.IngressClassName != cfg.IngressClass) {
+		if cfg.Gateway.Provider != spec.GatewayProviderIngress || len(v.Annotations) > 0 || (v.Namespace != "" && v.Namespace != namespace) || (v.IngressClassName != "" && v.IngressClassName != cfg.Gateway.IngressClass) {
 			return bcode.ErrForbidden
 		}
 		v.Namespace = namespace
-		v.IngressClassName = cfg.IngressClass
+		v.IngressClassName = cfg.Gateway.IngressClass
 		check := func(h string) bool {
-			return h != "" && !strings.Contains(h, "*") && strings.HasSuffix(h, "."+namespace+"."+cfg.IngressDomain)
+			return h != "" && !strings.Contains(h, "*") && strings.HasSuffix(h, "."+namespace+"."+cfg.Gateway.Domain)
 		}
 		if len(v.Hosts) == 0 {
-			v.Hosts = []string{name + "." + namespace + "." + cfg.IngressDomain}
+			v.Hosts = []string{name + "." + namespace + "." + cfg.Gateway.Domain}
 		}
 		for _, h := range v.Hosts {
 			if !check(h) {

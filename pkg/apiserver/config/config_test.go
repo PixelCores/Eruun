@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -47,6 +48,27 @@ func TestGRPCBindAddrFlagEnvironmentAndValidation(t *testing.T) {
 	require.Contains(t, errorsJoin(cfg.Validate()), "grpc bind address must differ from http")
 	cfg.GRPCBindAddr = ""
 	require.Contains(t, errorsJoin(cfg.Validate()), "grpc bind address cannot be empty")
+}
+
+func TestGatewayFlagEnvironmentAndValidation(t *testing.T) {
+	cfg := NewConfig()
+	require.Equal(t, spec.GatewayConfig{}, cfg.Gateway)
+	flags := pflag.NewFlagSet("gateway", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	t.Setenv("ERUUN_GATEWAY_PROVIDER", "ingress")
+	t.Setenv("ERUUN_GATEWAY_DOMAIN", "apps.example.com")
+	t.Setenv("ERUUN_GATEWAY_PROXY_NAMESPACE", "ingress-nginx")
+	t.Setenv("ERUUN_GATEWAY_INGRESS_CLASS", "nginx")
+	require.NoError(t, flags.Parse(nil))
+	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+	require.Equal(t, spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}, cfg.Gateway)
+
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+	require.Empty(t, cfg.Validate())
+	cfg.Gateway.IngressClass = ""
+	require.Contains(t, errorsJoin(cfg.Validate()), "gateway ingress class must be a DNS-1123 subdomain")
+	cfg.Gateway = spec.GatewayConfig{Domain: "apps.example.com"}
+	require.Contains(t, errorsJoin(cfg.Validate()), "require a gateway provider")
 }
 
 func TestTracingFlagEnvironmentAndExporter(t *testing.T) {

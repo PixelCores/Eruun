@@ -51,8 +51,10 @@ func TestStandaloneCommandTaskRequiresWorkspaceIdentityAndUsesPodPolicy(t *testi
 
 func taskWorkspaceConfig(t *testing.T) spec.WorkspaceConfig {
 	t.Helper()
-	c := &spec.AccountConfig{Origins: []string{"https://console.example.com"}, FrontendURL: "https://console.example.com", Workspace: spec.WorkspaceConfig{ClusterCIDRs: []string{"10.96.0.0/12", "10.244.0.0/16", "192.0.2.0/24"}, StorageClasses: []string{"tenant-storage"}, IngressDomain: "apps.example.com", IngressClass: "nginx", IngressNamespace: "ingress-nginx"}}
+	c := &spec.AccountConfig{Origins: []string{"https://console.example.com"}, FrontendURL: "https://console.example.com", Workspace: spec.WorkspaceConfig{ClusterCIDRs: []string{"10.96.0.0/12", "10.244.0.0/16", "192.0.2.0/24"}, StorageClasses: []string{"tenant-storage"}}}
 	require.NoError(t, c.Validate())
+	c.Workspace.Gateway = spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	require.NoError(t, c.Workspace.Gateway.Validate())
 	return c.Workspace
 }
 

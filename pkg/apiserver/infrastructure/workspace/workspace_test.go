@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,8 +32,10 @@ import (
 
 func workspaceConfig(t *testing.T) spec.WorkspaceConfig {
 	t.Helper()
-	c := &spec.AccountConfig{Origins: []string{"https://console.example.com"}, FrontendURL: "https://console.example.com", Workspace: spec.WorkspaceConfig{ClusterCIDRs: []string{"10.96.0.0/12", "10.244.0.0/16", "192.0.2.0/24"}, StorageClasses: []string{"tenant-storage"}, IngressDomain: "apps.example.com", IngressClass: "nginx", IngressNamespace: "ingress-nginx"}}
+	c := &spec.AccountConfig{Origins: []string{"https://console.example.com"}, FrontendURL: "https://console.example.com", Workspace: spec.WorkspaceConfig{ClusterCIDRs: []string{"10.96.0.0/12", "10.244.0.0/16", "192.0.2.0/24"}, StorageClasses: []string{"tenant-storage"}}}
 	require.NoError(t, c.Validate())
+	c.Workspace.Gateway = spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	require.NoError(t, c.Workspace.Gateway.Validate())
 	return c.Workspace
 }
 
@@ -63,11 +66,18 @@ func TestEnsureNamespaceBaselineAndConcurrentInitialization(t *testing.T) {
 	}
 	role, err := client.RbacV1().Roles(w.Namespace).Get(ctx, runnerName, metav1.GetOptions{})
 	require.NoError(t, err)
+	var entryVerbs []string
 	for _, rule := range role.Rules {
 		require.NotContains(t, rule.Resources, "*")
 		require.NotContains(t, rule.Resources, "roles")
 		require.NotContains(t, rule.Resources, "serviceaccounts/token")
+		if slices.Contains(rule.Resources, "ingresses") {
+			entryVerbs = rule.Verbs
+		}
 	}
+	// Must equal the platform ClusterRole entry verbs (Helm and static manifest
+	// tests pin the same set) so granting them never relies on escalate.
+	require.Equal(t, []string{"get", "list", "create", "update", "patch", "delete"}, entryVerbs)
 	quota, err := client.CoreV1().ResourceQuotas(w.Namespace).Get(ctx, baselineName, metav1.GetOptions{})
 	require.NoError(t, err)
 	pods := quota.Spec.Hard["pods"]
@@ -87,6 +97,8 @@ func TestEnsureNamespaceBaselineAndConcurrentInitialization(t *testing.T) {
 	for _, cidr := range m.Config.ClusterCIDRs {
 		require.Contains(t, public.To[0].IPBlock.Except, cidr)
 	}
+	require.Len(t, policy.Spec.Ingress, 2)
+	require.Equal(t, "ingress-nginx", policy.Spec.Ingress[1].From[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
 }
 
 func TestEnsureWrongOwnerAndPartialFailure(t *testing.T) {

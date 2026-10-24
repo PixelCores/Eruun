@@ -566,6 +566,58 @@ for managed in ERUUN_POD_NAME ERUUN_BIND_ADDR ERUUN_LEADER_LOCK_NAME ERUUN_LEADE
   fi
 done
 
+
+assertEnvValue() {
+  local manifest="$1"
+  local name="$2"
+  local value="$3"
+  grep -A1 "name: ${name}$" "${manifest}" | grep -q "value: \"${value}\"" ||
+    fail "${name} must render ${value}"
+}
+
+gateway_default_manifest="${TEST_ROOT}/gateway-default.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/runtime-deployments.yaml > "${gateway_default_manifest}"
+if grep -q 'ERUUN_GATEWAY_' "${gateway_default_manifest}"; then
+  fail "a disabled gateway must not render ERUUN_GATEWAY_* variables"
+fi
+gateway_ingress_args=(
+  --set-string gateway.provider=ingress
+  --set-string gateway.domain=apps.example.com
+  --set-string gateway.proxyNamespace=ingress-nginx
+  --set-string gateway.ingress.className=nginx
+)
+gateway_ingress_manifest="${TEST_ROOT}/gateway-ingress.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/runtime-deployments.yaml \
+  "${gateway_ingress_args[@]}" > "${gateway_ingress_manifest}"
+assertEnvValue "${gateway_ingress_manifest}" ERUUN_GATEWAY_PROVIDER ingress
+assertEnvValue "${gateway_ingress_manifest}" ERUUN_GATEWAY_DOMAIN apps.example.com
+assertEnvValue "${gateway_ingress_manifest}" ERUUN_GATEWAY_PROXY_NAMESPACE ingress-nginx
+assertEnvValue "${gateway_ingress_manifest}" ERUUN_GATEWAY_INGRESS_CLASS nginx
+for invalid in \
+  "gateway.domain=apps.example.com" \
+  "gateway.ingress.className=nginx" \
+  "gateway.provider=gatewayapi" \
+  "gateway.provider=ingress" \
+  "gateway.unknown=value" \
+  "gateway.ingress.unknown=value"; do
+  if runHelm template eruun "${TEST_DIR}" --set-string "${invalid}" >/dev/null 2>&1; then
+    fail "inconsistent gateway values must be rejected: ${invalid}"
+  fi
+done
+if runHelm template eruun "${TEST_DIR}" "${gateway_ingress_args[@]}" \
+  --set-string gateway.proxyNamespace=ingress.nginx >/dev/null 2>&1; then
+  fail "gateway.proxyNamespace must be a DNS-1123 label"
+fi
+for managed in ERUUN_GATEWAY_PROVIDER ERUUN_GATEWAY_DOMAIN ERUUN_GATEWAY_PROXY_NAMESPACE ERUUN_GATEWAY_INGRESS_CLASS; do
+  if runHelm template eruun "${TEST_DIR}" "${gateway_ingress_args[@]}" \
+    --set-string "env[0].name=${managed}" --set-string 'env[0].value=override' >/dev/null 2>&1; then
+    fail "runtime must reject gateway environment override: ${managed}"
+  fi
+done
+# Workspace runner Roles grant exactly these entry verbs; the ClusterRole must
+# hold the same set so granting them never relies on escalate.
+assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" networking.k8s.io ingresses)" "get list create update patch delete" "runtime ingress permissions must match workspace runner Roles"
+
 long_runtime_manifest="${TEST_ROOT}/runtime-long-fullname.yaml"
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system \
@@ -645,6 +697,7 @@ done
 assertEqual "$(bindingSubjectNamesFor eruun-platform-runtime "${static_manifest}")" "eruun-runtime" "static cluster permissions must bind only the runtime identity"
 assertEqual "$(bindingRoleRefName "${static_manifest}")" "eruun-platform-runtime" "static binding must target the runtime ClusterRole"
 assertEqual "$(clusterRoleRuleVerbs "${static_manifest}" agents.kruise.io checkpoints)" "get list watch create delete" "static runtime must retain checkpoint lifecycle access"
+assertEqual "$(clusterRoleRuleVerbs "${static_manifest}" networking.k8s.io ingresses)" "get list create update patch delete" "static ingress permissions must match workspace runner Roles"
 grep -q 'eruun.io/runtime-id: unassigned' "${static_manifest}" || fail "static Service must wait for leader identity"
 if grep -Eq 'name: eruun-(api|controller|scheduler|worker)$|ERUUN_ROLE|ERUUN_CONTROLLER_LOCK_NAME|ERUUN_SCHEDULER_LOCK_NAME' "${static_manifest}"; then
   fail "static runtime must not retain removed role configuration or identities"

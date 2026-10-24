@@ -35,9 +35,6 @@
   "workspace": {
     "clusterCIDRs": ["__REPLACE_WITH_CLUSTER_POD_SERVICE_NODE_CONTROL_PLANE_CIDRS"],
     "storageClasses": ["__REPLACE_WITH_ALLOWED_STORAGE_CLASS"],
-    "ingressDomain": "apps.example.com",
-    "ingressClass": "nginx",
-    "ingressNamespace": "ingress-nginx",
     "dnsNamespace": "kube-system",
     "quota": {
       "pods": "20",

@@ -41,6 +41,9 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load authentication configuration: %w", err)
 	}
+	// Every consumer of the workspace policy receives the validated gateway
+	// selection through WorkspaceConfig.
+	accountsConfig.Workspace.Gateway = s.cfg.Gateway
 	s.cfg.Accounts = accountsConfig
 	s.cfg.Jobs, err = spec.LoadJobsRuntimeConfig(s.cfg.JobsConfigFile)
 	if err != nil {

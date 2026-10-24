@@ -109,8 +109,21 @@ app.kubernetes.io/managed-by: eruun
 {{- if le (int .Values.runtime.terminationGracePeriodSeconds) (int .Values.runtime.workerDrainTimeoutSeconds) -}}
 {{- fail "runtime.terminationGracePeriodSeconds must be greater than runtime.workerDrainTimeoutSeconds" -}}
 {{- end -}}
+{{- $gateway := .Values.gateway -}}
+{{- if eq $gateway.provider "" -}}
+{{- if or $gateway.domain $gateway.proxyNamespace $gateway.ingress.className -}}
+{{- fail "gateway.domain, gateway.proxyNamespace and gateway.ingress.className require gateway.provider" -}}
+{{- end -}}
+{{- else if eq $gateway.provider "ingress" -}}
+{{- if or (empty $gateway.domain) (empty $gateway.proxyNamespace) (empty $gateway.ingress.className) -}}
+{{- fail "gateway.provider=ingress requires gateway.domain, gateway.proxyNamespace and gateway.ingress.className" -}}
+{{- end -}}
+{{- end -}}
 {{- range $env := .Values.env -}}
 {{- $name := trim (default "" $env.name) -}}
+{{- if hasPrefix "ERUUN_GATEWAY_" $name -}}
+{{- fail (printf "env must not override Chart-managed variable %s; use the gateway values" $name) -}}
+{{- end -}}
 {{- if or (eq $name "ERUUN_AUTH_CONFIG_FILE") (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_POD_NAME") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") (eq $name "ERUUN_GRPC_BIND_ADDR") (eq $name "ERUUN_BIND_ADDR") (eq $name "ERUUN_LEADER_LOCK_NAME") (eq $name "ERUUN_LEADER_NAMESPACE") (eq $name "ERUUN_LEADER_SERVICE_NAME") (eq $name "ERUUN_CONTROLLER_LOCK_NAME") (eq $name "ERUUN_SCHEDULER_LOCK_NAME") -}}
 {{- fail (printf "env must not override Chart-managed variable %s" $name) -}}
 {{- end -}}

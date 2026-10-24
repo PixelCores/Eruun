@@ -81,6 +81,9 @@ type Config struct {
 
 	// Workflow configures workflow scheduling behaviour.
 	Workflow workflowconfig.RuntimeConfig
+
+	// Gateway selects the platform entry point for component routes.
+	Gateway spec.GatewayConfig
 }
 
 type RedisCacheConfig struct {
@@ -187,6 +190,9 @@ func (c *Config) Validate() []error {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
 	errs = append(errs, c.Workflow.Validate()...)
+	if err := c.Gateway.Validate(); err != nil {
+		errs = append(errs, err)
+	}
 	return errs
 }
 
@@ -271,6 +277,10 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.DurationVar(&c.Workflow.LeaseReaperInterval, "workflow-lease-reaper-interval", configParameter.Workflow.LeaseReaperInterval, "interval for recovering expired workflow leases")
 	fs.IntVar(&c.Workflow.LeaseReaperBatchSize, "workflow-lease-reaper-batch-size", configParameter.Workflow.LeaseReaperBatchSize, "maximum expired workflow leases recovered per pass (1..10000)")
 	fs.DurationVar(&c.Workflow.WorkerDrainTimeout, "workflow-worker-drain-timeout", configParameter.Workflow.WorkerDrainTimeout, "maximum graceful worker drain duration")
+	fs.StringVar((*string)(&c.Gateway.Provider), "gateway-provider", string(configParameter.Gateway.Provider), "inbound gateway provider: empty disables component routes; ingress renders Kubernetes Ingress")
+	fs.StringVar(&c.Gateway.Domain, "gateway-domain", configParameter.Gateway.Domain, "DNS suffix of component hosts (required with a gateway provider)")
+	fs.StringVar(&c.Gateway.ProxyNamespace, "gateway-proxy-namespace", configParameter.Gateway.ProxyNamespace, "namespace of the gateway data-plane Pods admitted by workspace NetworkPolicy (required with a gateway provider)")
+	fs.StringVar(&c.Gateway.IngressClass, "gateway-ingress-class", configParameter.Gateway.IngressClass, "IngressClass used by the ingress gateway provider")
 	// profiling flags live in the profiling package; wire them here for convenience
 	profiling.AddFlags(fs)
 }

@@ -88,7 +88,9 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 		{APIGroups: []string{""}, Resources: []string{"pods", "pods/log", "pods/exec", "services", "configmaps", "secrets", "persistentvolumeclaims", "events"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "replicasets"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"batch"}, Resources: []string{"jobs", "cronjobs"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-		{APIGroups: []string{"networking.k8s.io"}, Resources: []string{"ingresses"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+		// Ingress readiness and cleanup use GET/LIST only; the platform ClusterRole
+		// holds exactly these verbs, so granting them does not need escalate.
+		{APIGroups: []string{"networking.k8s.io"}, Resources: []string{"ingresses"}, Verbs: []string{"get", "list", "create", "update", "patch", "delete"}},
 	}}
 	if err := upsert(ctx, m.Client.RbacV1().Roles(w.Namespace), role); err != nil {
 		return fmt.Errorf("ensure workspace role: %w", err)
@@ -153,8 +155,8 @@ func (m *Manager) networkPolicy(w *model.Workspace) *networkv1.NetworkPolicy {
 	ports := []networkv1.NetworkPolicyPort{{Protocol: ptr.To(corev1.ProtocolTCP), Port: ptr.To(intstr.FromInt32(80))}, {Protocol: ptr.To(corev1.ProtocolTCP), Port: ptr.To(intstr.FromInt32(443))}}
 	dns := networkv1.NetworkPolicyPeer{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": m.Config.DNSNamespace}}, PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"k8s-app": "kube-dns"}}}
 	policy := &networkv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: baselineName, Namespace: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID}}, Spec: networkv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{}, PolicyTypes: []networkv1.PolicyType{networkv1.PolicyTypeIngress, networkv1.PolicyTypeEgress}, Ingress: []networkv1.NetworkPolicyIngressRule{{From: []networkv1.NetworkPolicyPeer{same}}}, Egress: []networkv1.NetworkPolicyEgressRule{{To: []networkv1.NetworkPolicyPeer{same}}, {To: []networkv1.NetworkPolicyPeer{dns}, Ports: []networkv1.NetworkPolicyPort{{Protocol: ptr.To(corev1.ProtocolUDP), Port: ptr.To(intstr.FromInt32(53))}, {Protocol: ptr.To(corev1.ProtocolTCP), Port: ptr.To(intstr.FromInt32(53))}}}, {To: []networkv1.NetworkPolicyPeer{{IPBlock: &networkv1.IPBlock{CIDR: "0.0.0.0/0", Except: except4}}, {IPBlock: &networkv1.IPBlock{CIDR: "::/0", Except: except6}}}, Ports: ports}}}}
-	if m.Config.IngressNamespace != "" {
-		policy.Spec.Ingress = append(policy.Spec.Ingress, networkv1.NetworkPolicyIngressRule{From: []networkv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": m.Config.IngressNamespace}}}}})
+	if m.Config.Gateway.ProxyNamespace != "" {
+		policy.Spec.Ingress = append(policy.Spec.Ingress, networkv1.NetworkPolicyIngressRule{From: []networkv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": m.Config.Gateway.ProxyNamespace}}}}})
 	}
 	return policy
 }

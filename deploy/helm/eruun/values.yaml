@@ -76,6 +76,19 @@ jobs:
   existingSecret: ""
   key: jobs.json
 
+# Inbound entry point for component routes, chosen at install time. This is the
+# only source of ERUUN_GATEWAY_*; see docs/gateway-trait-design.md.
+gateway:
+  # "" disables component routes; ingress renders Kubernetes Ingress objects.
+  provider: ""
+  # DNS suffix of component hosts, for example apps.example.com.
+  domain: ""
+  # Namespace of the gateway data-plane Pods; workspace NetworkPolicy admits them.
+  proxyNamespace: ""
+  ingress:
+    # IngressClass used when provider=ingress, for example nginx.
+    className: ""
+
 env:
   # Example extra environment variables for the application
   # - name: SOME_ENV

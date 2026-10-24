@@ -421,7 +421,7 @@ type WorkspaceConfig struct {
 
 **“唯一来源”的范围**：上述保证只对 Helm 管理的部署成立。
 
-- **一键安装器**：`INSTALL_MODE=helm` 分支把脚本的 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN` 等环境变量写入它生成的 `gateway` values，默认 `provider=ingress`；选择 `gatewayapi` 时，在 `rollout status` 之外再等待 Gateway 就绪（§6.4 第 3 步）。`INSTALL_MODE=manifest`（默认）分支使用静态清单，只支持 `ingress`。两个分支都要测试。
+- **一键安装器**：`INSTALL_MODE=helm` 分支把脚本的 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN` 等环境变量写入它生成的 `gateway` values，未设置时保持关闭，与 chart 默认一致；选择 `gatewayapi` 时，在 `rollout status` 之外再等待 Gateway 就绪（§6.4 第 3 步）。`INSTALL_MODE=manifest`（默认）分支使用静态清单，只支持 `ingress`，设置任一 `GATEWAY_*` 时直接失败。两个分支都要测试。
 - **静态清单**：`deploy/eruun-stack.yaml` 固定 `ingress` 后端，直接写出 `ERUUN_GATEWAY_*` 与 ClusterRole 规则，两者的一致由清单本身与 `eruun_stack_test.go` 保证。
 - **本地运行**：不经部署清单运行（`go run ./cmd/main.go`）时，`--gateway-*` flag 由使用者自行提供，`Config.Validate` 是唯一的检查。
 - `gatewayapi` 只能通过 Helm 安装，因为它依赖 chart 创建的 Gateway 对象。
