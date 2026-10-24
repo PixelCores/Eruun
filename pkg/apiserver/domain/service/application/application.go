@@ -235,6 +235,9 @@ func (c *applicationsServiceImpl) createApplications(
 	if err := c.validateComponentNodePools(ctx, resolvedComponents); err != nil {
 		return nil, err
 	}
+	if err := validateGatewayForWrite(ctx, c.Cfg, resolvedComponents); err != nil {
+		return nil, err
+	}
 	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, application, resolvedComponents); err != nil {
 		return nil, err
 	}

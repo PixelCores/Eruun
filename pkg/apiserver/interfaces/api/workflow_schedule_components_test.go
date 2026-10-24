@@ -100,13 +100,7 @@ func TestListApplicationComponentsIncludesStatusAndLinks(t *testing.T) {
 				Image: "vector:0.36",
 			},
 		},
-		Ingress: []model.IngressTraitsSpec{
-			{
-				Routes: []model.IngressRoutes{
-					{Host: "example.com", Path: "/"},
-				},
-			},
-		},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}},
 	}
 	properties := model.Properties{
 		Ports: []model.Ports{{Port: 80}},
@@ -131,6 +125,7 @@ func TestListApplicationComponentsIncludesStatusAndLinks(t *testing.T) {
 		},
 	}
 	appHandler := &applications{
+		Cfg:                componentListConfig,
 		ApplicationService: componentListApplicationService{components: components},
 		WorkflowService:    &fakeWorkflowService{},
 	}
@@ -153,7 +148,7 @@ func TestListApplicationComponentsIncludesStatusAndLinks(t *testing.T) {
 	if payload.Components[0].Status != string(config.ComponentStatusNotDeploy) {
 		t.Fatalf("unexpected status: %s", payload.Components[0].Status)
 	}
-	if len(payload.Components[0].ExternalLinks) != 1 || payload.Components[0].ExternalLinks[0].Type != "ingress" || payload.Components[0].ExternalLinks[0].Value != "example.com/" {
+	if len(payload.Components[0].ExternalLinks) != 1 || payload.Components[0].ExternalLinks[0].Type != "gateway" || payload.Components[0].ExternalLinks[0].Value != "backend-default.apps.example.com/" {
 		t.Fatalf("unexpected external links: %+v", payload.Components[0].ExternalLinks)
 	}
 	if len(payload.Components[0].Sidecars) != 1 || payload.Components[0].Sidecars[0].Name != "log-agent" || payload.Components[0].Sidecars[0].Image != "vector:0.36" {
@@ -182,13 +177,7 @@ func TestListApplicationComponentsIncludesResourceDetailsAndCredentials(t *testi
 				},
 			},
 		},
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{Host: "api.example.com", Path: "/api"},
-				},
-			},
-		},
+		Gateway:   &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Path: "/api"}}},
 		Resources: &spec.ResourceTraitsSpec{CPU: "500m", Memory: "256Mi"},
 		Envs: []spec.SimplifiedEnvSpec{
 			{
@@ -225,6 +214,7 @@ func TestListApplicationComponentsIncludesResourceDetailsAndCredentials(t *testi
 		},
 	}
 	appHandler := &applications{
+		Cfg:                componentListConfig,
 		ApplicationService: componentListApplicationService{components: components},
 		WorkflowService:    &fakeWorkflowService{},
 	}
@@ -263,10 +253,10 @@ func TestListApplicationComponentsIncludesResourceDetailsAndCredentials(t *testi
 			},
 		},
 	}, apiComponent.Services)
-	require.Len(t, apiComponent.Ingresses, 1)
-	require.Equal(t, []apis.ComponentIngressRouteInfo{
-		{Host: "api.example.com", Path: "/api", PathType: "Prefix", ServiceName: "api-svc", ServicePort: 80},
-	}, apiComponent.Ingresses[0].Routes)
+	require.Equal(t, &apis.ComponentGatewayInfo{
+		Hosts:  []string{"api-default.apps.example.com"},
+		Routes: []apis.ComponentGatewayRouteInfo{{Path: "/api", Match: spec.GatewayMatchPrefix, Service: "api-svc", Port: 80}},
+	}, apiComponent.Gateway)
 	require.Equal(t, []apis.ComponentResourceConfig{
 		{Scope: "main", Name: "api", CPU: "500m", Memory: "256Mi"},
 	}, apiComponent.ResourceConfigs)
@@ -304,6 +294,7 @@ func TestListApplicationComponentsTreatsEmptySecretValuesAsUnresolved(t *testing
 	require.NoError(t, err)
 
 	appHandler := &applications{
+		Cfg: componentListConfig,
 		ApplicationService: componentListApplicationService{
 			components: []*model.ApplicationComponent{
 				{
@@ -384,7 +375,7 @@ func TestListApplicationComponentsTreatsEmptySecretValuesAsUnresolved(t *testing
 	require.Equal(t, 2, matchedPasswordRecords)
 }
 
-func TestListApplicationComponentsSkipsSyntheticServicesAndNormalizesIngressDefaults(t *testing.T) {
+func TestListApplicationComponentsSkipsSyntheticServicesAndShowsGatewayDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	jobPropsJSON, err := model.NewJSONStructByStruct(&model.Properties{
@@ -404,17 +395,12 @@ func TestListApplicationComponentsSkipsSyntheticServicesAndNormalizesIngressDefa
 	})
 	require.NoError(t, err)
 	apiTraitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{Host: "api.example.com"},
-				},
-			},
-		},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}},
 	})
 	require.NoError(t, err)
 
 	appHandler := &applications{
+		Cfg: componentListConfig,
 		ApplicationService: componentListApplicationService{
 			components: []*model.ApplicationComponent{
 				{
@@ -432,6 +418,7 @@ func TestListApplicationComponentsSkipsSyntheticServicesAndNormalizesIngressDefa
 					Name:          "api",
 					Namespace:     "default",
 					ComponentType: config.ServerJob,
+					Properties:    jobPropsJSON,
 					Traits:        apiTraitsJSON,
 				},
 			},
@@ -467,43 +454,24 @@ func TestListApplicationComponentsSkipsSyntheticServicesAndNormalizesIngressDefa
 	require.Empty(t, jobComponent.ExternalLinks)
 
 	require.NotNil(t, apiComponent)
-	require.Len(t, apiComponent.Ingresses, 1)
-	require.Equal(t, []apis.ComponentIngressRouteInfo{
-		{
-			Host:        "api.example.com",
-			Path:        "/",
-			PathType:    "Prefix",
-			ServiceName: naming.ServiceName("api", "app-2"),
-			ServicePort: 80,
-		},
-	}, apiComponent.Ingresses[0].Routes)
+	require.Equal(t, &apis.ComponentGatewayInfo{
+		Hosts:  []string{"api-default.apps.example.com"},
+		Routes: []apis.ComponentGatewayRouteInfo{{Path: "/", Match: spec.GatewayMatchPrefix, Service: naming.ServiceName("api", "app-2"), Port: 8080}},
+	}, apiComponent.Gateway)
 }
 
-func TestListApplicationComponentsSkipsIngressForUnsupportedComponentTypes(t *testing.T) {
+func TestListApplicationComponentsSkipsGatewayForUnsupportedComponentTypes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	configTraitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{Host: "config.example.com", Path: "/"},
-				},
-			},
-		},
+	gatewayTraitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}},
 	})
 	require.NoError(t, err)
-	apiTraitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{Host: "api.example.com", Path: "/"},
-				},
-			},
-		},
-	})
+	apiPropsJSON, err := model.NewJSONStructByStruct(&model.Properties{Ports: []model.Ports{{Port: 8080}}})
 	require.NoError(t, err)
 
 	appHandler := &applications{
+		Cfg: componentListConfig,
 		ApplicationService: componentListApplicationService{
 			components: []*model.ApplicationComponent{
 				{
@@ -512,7 +480,7 @@ func TestListApplicationComponentsSkipsIngressForUnsupportedComponentTypes(t *te
 					Name:          "app-config",
 					Namespace:     "default",
 					ComponentType: config.ConfJob,
-					Traits:        configTraitsJSON,
+					Traits:        gatewayTraitsJSON,
 				},
 				{
 					ID:            2,
@@ -520,7 +488,8 @@ func TestListApplicationComponentsSkipsIngressForUnsupportedComponentTypes(t *te
 					Name:          "api",
 					Namespace:     "default",
 					ComponentType: config.ServerJob,
-					Traits:        apiTraitsJSON,
+					Properties:    apiPropsJSON,
+					Traits:        gatewayTraitsJSON,
 				},
 			},
 		},
@@ -551,13 +520,13 @@ func TestListApplicationComponentsSkipsIngressForUnsupportedComponentTypes(t *te
 	}
 
 	require.NotNil(t, configComponent)
-	require.Empty(t, configComponent.Ingresses)
+	require.Nil(t, configComponent.Gateway)
 	require.Empty(t, configComponent.ExternalLinks)
 
 	require.NotNil(t, apiComponent)
-	require.Len(t, apiComponent.Ingresses, 1)
+	require.NotNil(t, apiComponent.Gateway)
 	require.Equal(t, []apis.ExternalLink{
-		{Type: "ingress", Value: "api.example.com/"},
+		{Type: "gateway", Value: "api-default.apps.example.com/"},
 	}, apiComponent.ExternalLinks)
 }
 
@@ -582,6 +551,7 @@ func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T
 		store: store,
 	}
 	appHandler := &applications{
+		Cfg:                componentListConfig,
 		ApplicationService: appService,
 		WorkflowService:    &fakeWorkflowService{},
 	}

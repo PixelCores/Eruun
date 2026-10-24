@@ -163,7 +163,7 @@ func TestJobCommandTraitValidation(t *testing.T) {
 		{"existing PVC name fallback", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", MountPath: "/data"}}}, ""},
 		{"ephemeral", Traits{Storage: []StorageTraitSpec{{Name: "temp", Type: "ephemeral", MountPath: "/tmp"}}}, ""},
 		{"config", Traits{Storage: []StorageTraitSpec{{Name: "config", Type: "config", SourceName: "settings", MountPath: "/config"}}}, ""},
-		{"ingress", Traits{Ingress: []IngressTraitsSpec{{}}}, "traits.ingress"},
+		{"gateway", Traits{Gateway: &GatewayTraitSpec{}}, "traits.gateway"},
 		{"service", Traits{Service: []ServiceTraitSpec{{}}}, "traits.service"},
 		{"rollout", Traits{Rollout: &RolloutTraitSpec{}}, "traits.rollout"},
 		{"share", Traits{Share: &ShareTraitSpec{}}, "traits.share"},
@@ -230,7 +230,7 @@ func TestJobVolumeRejectsConflictingTraitMounts(t *testing.T) {
 func TestJobEvaluationRetainsRestrictedTraits(t *testing.T) {
 	for _, traits := range []Traits{
 		{Init: []InitTraitSpec{{}}}, {Sidecar: []SidecarTraitsSpec{{}}},
-		{Ingress: []IngressTraitsSpec{{}}}, {Service: []ServiceTraitSpec{{}}},
+		{Gateway: &GatewayTraitSpec{}}, {Service: []ServiceTraitSpec{{}}},
 		{Probes: []ProbeTraitsSpec{{}}},
 		{NodePool: "batch"}, {Share: &ShareTraitSpec{}},
 		{Rollout: &RolloutTraitSpec{}}, {SecurityPolicy: &SecurityPolicySpec{}},

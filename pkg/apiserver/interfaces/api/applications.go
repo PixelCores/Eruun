@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
@@ -15,6 +16,7 @@ type applications struct {
 	WorkflowService        workflowservice.WorkflowService        `inject:""`
 	ValidationService      validation.ValidationService           `inject:""`
 	ConversionService      conversion.ConversionService           `inject:""`
+	Cfg                    *config.Config                         `inject:""`
 }
 
 // NewApplications new applications manage

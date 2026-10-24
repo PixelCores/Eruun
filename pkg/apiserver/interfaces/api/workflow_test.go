@@ -8,6 +8,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -220,6 +221,8 @@ type templateApplicationService struct {
 	err       error
 	lastOpts  applicationservice.ListApplicationsOptions
 }
+
+var componentListConfig = &config.Config{Gateway: spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}}
 
 type componentListApplicationService struct {
 	noopApplicationsService

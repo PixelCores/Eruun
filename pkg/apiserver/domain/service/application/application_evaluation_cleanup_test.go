@@ -143,7 +143,7 @@ func TestComponentCleanupReportsLabelListFailuresWithoutNameFallback(t *testing.
 			client.PrependReactor("list", resource, func(ktesting.Action) (bool, runtime.Object, error) {
 				return true, nil, failure
 			})
-			svc := &applicationsServiceImpl{KubeClient: client}
+			svc := &applicationsServiceImpl{KubeClient: client, Cfg: &config.Config{Gateway: spec.GatewayConfig{Provider: spec.GatewayProviderIngress}}}
 			require.ErrorIs(t, svc.cleanupVersionUpdateRemovedComponent(context.Background(), component), failure)
 			_, err := client.CoreV1().Services(component.Namespace).Get(context.Background(), serviceName, metav1.GetOptions{})
 			require.NoError(t, err, "unlabeled Service must not be deleted by its generated name")

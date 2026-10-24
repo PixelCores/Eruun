@@ -29,7 +29,7 @@ func (app *applications) listApplicationComponents(c *gin.Context) {
 		if err != nil {
 			return apis.ListApplicationComponentsResponse{}, err
 		}
-		resp, err := assembler.ConvertComponentModelsToDTO(components)
+		resp, err := assembler.ConvertComponentModelsToDTO(components, app.Cfg.Gateway)
 		if err != nil {
 			klog.ErrorS(err, "convert components dto failed", "appID", appID)
 			return apis.ListApplicationComponentsResponse{}, err

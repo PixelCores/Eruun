@@ -218,7 +218,6 @@ func versionUpdateCleanupTraitsDescriptor(raw *model.JSONStruct) (*model.JSONStr
 		Init:    versionUpdateCleanupInitTraits(traits.Init),
 		Sidecar: versionUpdateCleanupSidecarTraits(traits.Sidecar),
 		Service: versionUpdateCleanupServiceTraits(traits.Service),
-		Ingress: versionUpdateCleanupIngressTraits(traits.Ingress),
 	}
 	if traits.Share != nil {
 		descriptor.Share = &spec.ShareTraitSpec{Strategy: strings.TrimSpace(traits.Share.Strategy)}
@@ -227,8 +226,7 @@ func versionUpdateCleanupTraitsDescriptor(raw *model.JSONStruct) (*model.JSONStr
 		len(descriptor.Storage) == 0 &&
 		len(descriptor.Init) == 0 &&
 		len(descriptor.Sidecar) == 0 &&
-		len(descriptor.Service) == 0 &&
-		len(descriptor.Ingress) == 0 {
+		len(descriptor.Service) == 0 {
 		return nil, nil
 	}
 	return model.NewJSONStructByStruct(descriptor)
@@ -323,44 +321,6 @@ func versionUpdateCleanupServicePorts(ports []spec.ServicePortTraitSpec) []spec.
 			Port:       port.Port,
 			TargetPort: port.TargetPort,
 			Protocol:   strings.TrimSpace(port.Protocol),
-		})
-	}
-	return out
-}
-
-func versionUpdateCleanupIngressTraits(ingresses []spec.IngressTraitsSpec) []spec.IngressTraitsSpec {
-	if len(ingresses) == 0 {
-		return nil
-	}
-	out := make([]spec.IngressTraitsSpec, 0, len(ingresses))
-	for _, item := range ingresses {
-		out = append(out, spec.IngressTraitsSpec{
-			Name:             strings.TrimSpace(item.Name),
-			Namespace:        strings.TrimSpace(item.Namespace),
-			Hosts:            append([]string(nil), item.Hosts...),
-			IngressClassName: strings.TrimSpace(item.IngressClassName),
-			DefaultPathType:  strings.TrimSpace(item.DefaultPathType),
-			Routes:           versionUpdateCleanupIngressRoutes(item.Routes),
-		})
-	}
-	return out
-}
-
-func versionUpdateCleanupIngressRoutes(routes []spec.IngressRoutes) []spec.IngressRoutes {
-	if len(routes) == 0 {
-		return nil
-	}
-	out := make([]spec.IngressRoutes, 0, len(routes))
-	for _, route := range routes {
-		out = append(out, spec.IngressRoutes{
-			Path:     strings.TrimSpace(route.Path),
-			PathType: strings.TrimSpace(route.PathType),
-			Host:     strings.TrimSpace(route.Host),
-			Backend: spec.IngressRoute{
-				ServiceName: strings.TrimSpace(route.Backend.ServiceName),
-				ServicePort: route.Backend.ServicePort,
-				Weight:      route.Backend.Weight,
-			},
 		})
 	}
 	return out

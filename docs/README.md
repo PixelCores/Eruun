@@ -72,7 +72,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
 | `pkg/apiserver/event/workflow/job` | Job 执行入口（`RunJobs`、`initJobCtl` 工厂、`Pool`、评测恢复），具体能力分在子包 | 新增 Job 类型、调整执行主流程；Deployment、StatefulSet、Service、PVC、Secret 等资源执行在 `jobdeploy` | 子包单向依赖：`jobinfo`（JobInfo 记录、载荷、检查点）→ `jobexec`（Runtime、控制器基类、K8s Job 原语、共享资源保护、清理跟踪、取消恢复）→ `jobdeploy` → `jobcleanup`、`jobresult` → `jobinstant`、`jobdelay`、`databasereset`、`logarchive`、`jobcallback`；ConfigMap/Secret 内部执行输入在 `jobinfo/configmap_input.go`；分层见 `job-package-layering-design.md` |
-| `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、nodePool、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
+| `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、nodePool 等 Trait，以及 gateway 路由渲染（`BuildGatewayRoute`） | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
 | `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、MySQL、Informer、锁、可观测性 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则 |
@@ -196,7 +196,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |
-| [`gateway-trait-design.md`](gateway-trait-design.md) | Draft / Proposal | 以 `traits.gateway` 直接替换 `traits.ingress`，定义为组件跨空间的入站与出站声明（首期只实现入站）：平台选择 Gateway API（含 Istio）或 Ingress 后端，统一 LLM 与 Agent 的对外入口、请求超时与单层 host 命名 |
+| [`gateway-trait-design.md`](gateway-trait-design.md) | Draft / Proposal | 以 `traits.gateway` 直接替换 `traits.ingress`，定义为组件跨空间的入站与出站声明（首期只实现入站）：平台选择 Gateway API（含 Istio）或 Ingress 后端，统一 LLM 与 Agent 的对外入口、请求超时与单层 host 命名。PR 1（契约替换与 `ingress` 后端）已实现，现行契约见 `validation-api-guide.md`；Gateway API 后端未实现 |
 | `vectorization-job-design.md` | Draft / Proposal | Provider-neutral 向量化批处理方向 |
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |

@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -159,38 +160,31 @@ func (t *tenantTransport) prepareIngress(obj, specification map[string]interface
 	if t.config.Gateway.Provider != spec.GatewayProviderIngress {
 		return bcode.ErrForbidden
 	}
-	if meta := mapAt(obj, "metadata"); meta != nil && len(mapAt(meta, "annotations")) != 0 {
-		return bcode.ErrForbidden
+	// Ingress controllers read behavior from annotations; only the component
+	// name Eruun records for task aggregation is allowed.
+	if meta := mapAt(obj, "metadata"); meta != nil {
+		for key := range mapAt(meta, "annotations") {
+			if key != config.AnnotationComponentName {
+				return bcode.ErrForbidden
+			}
+		}
 	}
 	if v, _ := specification["ingressClassName"].(string); v != t.config.Gateway.IngressClass || specification["defaultBackend"] != nil {
 		return bcode.ErrForbidden
 	}
-	if lenValue(specification["rules"]) == 0 {
+	// TLS terminates at the platform entry point; Ingress objects carry none.
+	if specification["tls"] != nil || lenValue(specification["rules"]) == 0 {
 		return bcode.ErrForbidden
 	}
-	for _, field := range []string{"rules", "tls"} {
-		items, _ := specification[field].([]interface{})
-		for _, item := range items {
-			v, _ := item.(map[string]interface{})
-			if field == "rules" {
-				host, _ := v["host"].(string)
-				if !t.allowedHost(host) {
-					return bcode.ErrForbidden
-				}
-			}
-			hosts, _ := v["hosts"].([]interface{})
-			for _, host := range hosts {
-				h, _ := host.(string)
-				if !t.allowedHost(h) {
-					return bcode.ErrForbidden
-				}
-			}
+	rules, _ := specification["rules"].([]interface{})
+	for _, item := range rules {
+		rule, _ := item.(map[string]interface{})
+		host, _ := rule["host"].(string)
+		if !spec.GatewayHostAllowed(host, t.namespace, t.config.Gateway.Domain) {
+			return bcode.ErrForbidden
 		}
 	}
 	return nil
-}
-func (t *tenantTransport) allowedHost(host string) bool {
-	return host != "" && !strings.Contains(host, "*") && strings.HasSuffix(host, "."+t.namespace+"."+t.config.Gateway.Domain)
 }
 func lenValue(v interface{}) int { a, _ := v.([]interface{}); return len(a) }
 func (t *tenantTransport) pvc(s map[string]interface{}) error {
@@ -389,9 +383,6 @@ func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spe
 			return bcode.ErrForbidden
 		}
 	}
-	if err := prepareTraitIngresses(namespace, name, traits, cfg); err != nil {
-		return err
-	}
 	for i := range traits.Init {
 		c := &traits.Init[i]
 		if err := ValidateTraits(namespace, name, &c.Traits, &c.Properties, cfg); err != nil {
@@ -402,44 +393,6 @@ func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spe
 		c := &traits.Sidecar[i]
 		if err := ValidateTraits(namespace, name, &c.Traits, nil, cfg); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-func prepareTraitIngresses(namespace, name string, traits *spec.Traits, cfg spec.WorkspaceConfig) error {
-	for i := range traits.Ingress {
-		v := &traits.Ingress[i]
-		if cfg.Gateway.Provider != spec.GatewayProviderIngress || len(v.Annotations) > 0 || (v.Namespace != "" && v.Namespace != namespace) || (v.IngressClassName != "" && v.IngressClassName != cfg.Gateway.IngressClass) {
-			return bcode.ErrForbidden
-		}
-		v.Namespace = namespace
-		v.IngressClassName = cfg.Gateway.IngressClass
-		check := func(h string) bool {
-			return h != "" && !strings.Contains(h, "*") && strings.HasSuffix(h, "."+namespace+"."+cfg.Gateway.Domain)
-		}
-		if len(v.Hosts) == 0 {
-			v.Hosts = []string{name + "." + namespace + "." + cfg.Gateway.Domain}
-		}
-		for _, h := range v.Hosts {
-			if !check(h) {
-				return bcode.ErrForbidden
-			}
-		}
-		for j := range v.Routes {
-			if v.Routes[j].Host == "" {
-				v.Routes[j].Host = v.Hosts[0]
-			}
-			if !check(v.Routes[j].Host) {
-				return bcode.ErrForbidden
-			}
-		}
-		for _, tls := range v.TLS {
-			for _, h := range tls.Hosts {
-				if !check(h) {
-					return bcode.ErrForbidden
-				}
-			}
 		}
 	}
 	return nil

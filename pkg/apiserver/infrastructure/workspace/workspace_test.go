@@ -183,7 +183,10 @@ func TestTransportRejectsEscapesWithoutUpstreamCalls(t *testing.T) {
 		{"storage class", "/api/v1/namespaces/own/persistentvolumeclaims", `{"spec":{"storageClassName":"administrator"}}`},
 		{"foreign host", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"rules":[{"host":"victim.apps.example.com"}]}}`},
 		{"catchall ingress", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"ingressClassName":"nginx","rules":[{}]}}`},
-		{"default backend", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"ingressClassName":"nginx","defaultBackend":{},"rules":[{"host":"web.own.apps.example.com"}]}}`},
+		{"default backend", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"ingressClassName":"nginx","defaultBackend":{},"rules":[{"host":"web-own.apps.example.com"}]}}`},
+		{"ingress tls", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"ingressClassName":"nginx","tls":[{"hosts":["web-own.apps.example.com"],"secretName":"own-tls"}],"rules":[{"host":"web-own.apps.example.com"}]}}`},
+		{"multi-label host", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"ingressClassName":"nginx","rules":[{"host":"web.own.apps.example.com"}]}}`},
+		{"foreign workspace host", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"spec":{"ingressClassName":"nginx","rules":[{"host":"web-other.apps.example.com"}]}}`},
 		{"ephemeral container", "/api/v1/namespaces/own/pods", `{"spec":{"ephemeralContainers":[{"name":"debug"}]}}`},
 		{"ingress annotations", "/apis/networking.k8s.io/v1/namespaces/own/ingresses", `{"metadata":{"annotations":{"nginx.ingress.kubernetes.io/server-snippet":"x"}},"spec":{"rules":[]}}`},
 	} {
@@ -311,18 +314,13 @@ func TestImpersonationAndTraitValidation(t *testing.T) {
 }
 
 // The gateway selection reaches every write boundary through WorkspaceConfig;
-// a disabled gateway rejects the same inputs that an ingress gateway accepts.
+// a disabled gateway rejects the same payload that an ingress gateway accepts
+// and grants workspace runners no Ingress permissions.
 func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
 	enabled := workspaceConfig(t)
 	disabled := enabled
 	disabled.Gateway = spec.GatewayConfig{}
-	ingress := `{"metadata":{"name":"web"},"spec":{"ingressClassName":"nginx","rules":[{"host":"web.own.apps.example.com"}]}}`
-
-	traits := &spec.Traits{Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}}}
-	require.NoError(t, ValidateTraits("own", "web", traits, nil, enabled))
-	require.Equal(t, []string{"web.own.apps.example.com"}, traits.Ingress[0].Hosts)
-	require.Equal(t, "nginx", traits.Ingress[0].IngressClassName)
-	require.ErrorIs(t, ValidateTraits("own", "web", &spec.Traits{Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}}}, nil, disabled), bcode.ErrForbidden)
+	ingress := `{"metadata":{"name":"web"},"spec":{"ingressClassName":"nginx","rules":[{"host":"web-own.apps.example.com"}]}}`
 
 	decode := func() map[string]interface{} {
 		var obj map[string]interface{}
@@ -331,6 +329,13 @@ func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
 	}
 	require.NoError(t, PrepareResource("own", "ingresses", decode(), enabled))
 	require.ErrorIs(t, PrepareResource("own", "ingresses", decode(), disabled), bcode.ErrForbidden)
+	annotated := func(key string) map[string]interface{} {
+		obj := decode()
+		obj["metadata"].(map[string]interface{})["annotations"] = map[string]interface{}{key: "web"}
+		return obj
+	}
+	require.NoError(t, PrepareResource("own", "ingresses", annotated("eruun.io/component-name"), enabled))
+	require.ErrorIs(t, PrepareResource("own", "ingresses", annotated("nginx.ingress.kubernetes.io/rewrite-target"), enabled), bcode.ErrForbidden)
 
 	ctx := access.WithScope(context.Background(), access.Scope{WorkspaceID: "a", Namespace: "own", Role: "member"})
 	for _, tc := range []struct {
@@ -360,5 +365,14 @@ func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
 			response.Body.Close()
 			require.Equal(t, 1, calls)
 		})
+	}
+
+	client := fake.NewSimpleClientset()
+	w := &model.Workspace{ID: "workspace-a", Namespace: "eruun-ws-a"}
+	require.NoError(t, (&Manager{Client: client, Config: disabled}).Ensure(context.Background(), w))
+	role, err := client.RbacV1().Roles(w.Namespace).Get(context.Background(), runnerName, metav1.GetOptions{})
+	require.NoError(t, err)
+	for _, rule := range role.Rules {
+		require.NotContains(t, rule.Resources, "ingresses", "a disabled gateway grants no route permissions")
 	}
 }

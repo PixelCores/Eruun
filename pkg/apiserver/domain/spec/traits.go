@@ -16,13 +16,14 @@ type Traits struct {
 	Init       []InitTraitSpec      `json:"init,omitempty"`
 	Storage    []StorageTraitSpec   `json:"storage,omitempty"`
 	Sidecar    []SidecarTraitsSpec  `json:"sidecar,omitempty"`
-	Ingress    []IngressTraitsSpec  `json:"ingress,omitempty"`
-	Service    []ServiceTraitSpec   `json:"service,omitempty"`
-	EnvFrom    []EnvFromSourceSpec  `json:"envFrom,omitempty"`
-	Envs       []SimplifiedEnvSpec  `json:"envs,omitempty"`
-	Probes     []ProbeTraitsSpec    `json:"probes,omitempty"`
-	NodePool   string               `json:"nodePool,omitempty"`
-	Resources  *ResourceTraitsSpec  `json:"resources,omitempty"`
+	// Gateway declares the component's traffic across the workspace boundary.
+	Gateway   *GatewayTraitSpec   `json:"gateway,omitempty"`
+	Service   []ServiceTraitSpec  `json:"service,omitempty"`
+	EnvFrom   []EnvFromSourceSpec `json:"envFrom,omitempty"`
+	Envs      []SimplifiedEnvSpec `json:"envs,omitempty"`
+	Probes    []ProbeTraitsSpec   `json:"probes,omitempty"`
+	NodePool  string              `json:"nodePool,omitempty"`
+	Resources *ResourceTraitsSpec `json:"resources,omitempty"`
 	// SecurityPolicy defines container-level security settings (securityContext).
 	SecurityPolicy *SecurityPolicySpec `json:"securityPolicy,omitempty"`
 	Share          *ShareTraitSpec     `json:"share,omitempty"`
@@ -176,46 +177,6 @@ type ResourceTraitsSpec struct {
 
 // SecurityPolicySpec mirrors corev1.SecurityContext for container-level security controls.
 type SecurityPolicySpec = corev1.SecurityContext
-
-// IngressTraitsSpec captures the high-level ingress description.
-// All configuration is done through the unified Routes field.
-type IngressTraitsSpec struct {
-	Name             string             `json:"name"`
-	Namespace        string             `json:"namespace"`
-	Hosts            []string           `json:"hosts,omitempty"`
-	Label            map[string]string  `json:"label"`
-	Annotations      map[string]string  `json:"annotations,omitempty"`
-	IngressClassName string             `json:"ingressClassName,omitempty"`
-	DefaultPathType  string             `json:"defaultPathType,omitempty"`
-	TLS              []IngressTLSConfig `json:"tls,omitempty"`
-	Routes           []IngressRoutes    `json:"routes"`
-}
-type IngressTLSConfig struct {
-	SecretName string   `json:"secretName"`
-	Hosts      []string `json:"hosts,omitempty"`
-}
-
-type IngressRoutes struct {
-	Path     string       `json:"path,omitempty"`
-	PathType string       `json:"pathType,omitempty"`
-	Host     string       `json:"host,omitempty"`
-	Backend  IngressRoute `json:"backend"`
-	// Route-level optional features
-	Rewrite *RewritePolicy `json:"rewrite,omitempty"`
-}
-
-type IngressRoute struct {
-	ServiceName string            `json:"serviceName"`
-	ServicePort int32             `json:"servicePort,omitempty"`
-	Weight      int32             `json:"weight,omitempty"`
-	Headers     map[string]string `json:"headers,omitempty"`
-}
-
-type RewritePolicy struct {
-	Type        string `json:"type"` // e.g. "replace", "regexReplace", "prefix"
-	Match       string `json:"match,omitempty"`
-	Replacement string `json:"replacement,omitempty"`
-}
 
 // ServiceTraitSpec describes a Service generated for the component.
 type ServiceTraitSpec struct {

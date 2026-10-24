@@ -107,7 +107,12 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 	klog.V(4).Infof("cleanup resources: preserving labeled serviceaccounts in namespace %s selector=%s", ns, listOptions.LabelSelector)
 }
 
+// deleteLabeledNetworkingResources removes the component route of the current
+// gateway provider; without one the workspace holds no route resources.
 func (c *CleanupResourcesJobCtl) deleteLabeledNetworkingResources(ctx context.Context, ns string, listOptions metav1.ListOptions, deleted *cleanupResourceSet) {
+	if c.Runtime == nil || c.Runtime.Gateway.Provider != domainspec.GatewayProviderIngress {
+		return
+	}
 	if list, err := c.Client.NetworkingV1().Ingresses(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled ingresses: %w", err))
 	} else {

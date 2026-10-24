@@ -54,10 +54,6 @@ func validateTraits(traits spec.Traits, field string, componentType config.JobTy
 	for i, sidecar := range traits.Sidecar {
 		errors = append(errors, validateSidecarTrait(sidecar, fmt.Sprintf("%s.sidecar[%d]", field, i), nested)...)
 	}
-	for i, ingress := range traits.Ingress {
-		errors = append(errors, ValidateIngressTraitSpec(ingress, fmt.Sprintf("%s.ingress[%d]", field, i))...)
-	}
-	errors = append(errors, ValidateIngressBackendServiceReferences(traits, field)...)
 	for i, service := range traits.Service {
 		errors = append(errors, ValidateServiceTraitSpec(service, fmt.Sprintf("%s.service[%d]", field, i))...)
 	}
@@ -72,6 +68,7 @@ func validateTraits(traits spec.Traits, field string, componentType config.JobTy
 	}
 	if !nested {
 		errors = append(errors, ValidateNestedNodePool(traits, field)...)
+		errors = append(errors, ValidateNestedGateway(traits, field)...)
 	}
 	return append(errors, ValidateRolloutTrait(componentType, traits.Rollout, field+".rollout", nested)...)
 }

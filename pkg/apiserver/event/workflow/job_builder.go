@@ -127,7 +127,11 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		}
 	}
 
-	stepGroups, err := buildWorkflowStepExecutionGroups(ctx, ds, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
+	var gateway spec.GatewayConfig
+	if cfg != nil {
+		gateway = cfg.Gateway
+	}
+	stepGroups, err := buildWorkflowStepExecutionGroups(ctx, ds, workflowSteps, componentMap, task, defaultJobTimeoutSeconds, gateway)
 	if err != nil {
 		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 	}

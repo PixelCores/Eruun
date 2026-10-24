@@ -1,13 +1,17 @@
 package application
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 func TestValidateComponentTraitsForWriteRejectsInvalidServiceTrait(t *testing.T) {
@@ -76,73 +80,6 @@ func TestValidateComponentTraitsForWriteValidatesResources(t *testing.T) {
 	}
 }
 
-func TestValidateComponentTraitsForWriteRejectsReservedIngressLabels(t *testing.T) {
-	err := validateComponentTraitsForWrite(config.ServerJob, apisv1.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Label: map[string]string{
-					spec.LabelComponentName: "custom-backend",
-				},
-				Routes: []spec.IngressRoutes{
-					{
-						Path: "/",
-						Backend: spec.IngressRoute{
-							ServiceName: "backend",
-							ServicePort: 8080,
-						},
-					},
-				},
-			},
-		},
-	}, "component[0].traits")
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "traits.ingress.label")
-	require.Contains(t, err.Error(), spec.LabelComponentName)
-}
-
-func TestValidateComponentTraitsForWriteRejectsAmbiguousIngressBackend(t *testing.T) {
-	err := validateComponentTraitsForWrite(config.ServerJob, apisv1.Traits{
-		Service: []spec.ServiceTraitSpec{
-			{
-				Name: "backend-v1",
-				Type: "internal",
-				Selector: map[string]string{
-					"version": "v1",
-				},
-				Ports: []spec.ServicePortTraitSpec{
-					{Port: 8080},
-				},
-			},
-			{
-				Name: "backend-v2",
-				Type: "internal",
-				Selector: map[string]string{
-					"version": "v2",
-				},
-				Ports: []spec.ServicePortTraitSpec{
-					{Port: 8081},
-				},
-			},
-		},
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{
-						Path: "/",
-						Backend: spec.IngressRoute{
-							ServicePort: 8080,
-						},
-					},
-				},
-			},
-		},
-	}, "component[0].traits")
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "serviceName is required")
-}
-
 func TestValidateComponentTraitsForWriteRejectsNestedStorageSubPathConflict(t *testing.T) {
 	err := validateComponentTraitsForWrite(config.ServerJob, apisv1.Traits{
 		Sidecar: []spec.SidecarTraitsSpec{
@@ -164,4 +101,25 @@ func TestValidateComponentTraitsForWriteRejectsNestedStorageSubPathConflict(t *t
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "storage subPath and subPathExpr cannot both be set")
+}
+
+func TestValidateVersionUpdateWorkspaceComponentsChecksGateway(t *testing.T) {
+	ctx := access.WithScope(context.Background(), access.Scope{WorkspaceID: "workspace-a", Namespace: "ws-a", Role: "member"})
+	svc := &applicationsServiceImpl{Cfg: &config.Config{
+		Accounts: &spec.AccountConfig{},
+		Gateway:  spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"},
+	}}
+	gateway := &spec.GatewayTraitSpec{Hosts: []string{"api-ws-b.apps.example.com"}, Routes: []spec.GatewayRouteSpec{{}}}
+	components := []apisv1.CreateComponentRequest{{
+		Name: "api", ComponentType: config.ServerJob,
+		Properties: apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}},
+		Traits:     apisv1.Traits{Gateway: gateway},
+	}}
+
+	err := svc.validateVersionUpdateWorkspaceComponents(ctx, &versionUpdateRun{}, components)
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.True(t, strings.HasPrefix(bcode.SafeClientMessage(err), "component[api].traits.gateway.hosts: "), bcode.SafeClientMessage(err))
+
+	gateway.Hosts = nil
+	require.NoError(t, svc.validateVersionUpdateWorkspaceComponents(ctx, &versionUpdateRun{}, components))
 }

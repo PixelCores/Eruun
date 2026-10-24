@@ -5,7 +5,7 @@
 ## 背景
 
 `GET /api/v1/applications/:appID/components` 原有响应已经返回组件基础信息、`properties`、`traits`、`sidecars` 和外部访问链接。
-为了让前端和集成方基于一个 `APP_ID` 直接拿到组件关联的服务入口、Ingress 路由、资源配置和密钥引用信息，本次在组件对象顶层补充汇总字段。
+为了让前端和集成方基于一个 `APP_ID` 直接拿到组件关联的服务入口、入口路由、资源配置和密钥引用信息，本次在组件对象顶层补充汇总字段。
 
 ## 统一契约来源
 
@@ -22,7 +22,7 @@
 - 变更：响应 `data.components[]` 新增或继续保留以下可选字段：
   - `sidecars []`：组件边车配置，语义与 `traits.sidecar` 一致。
   - `services []`：组件对应的 Service 端口信息。
-  - `ingresses []`：组件对应的 Ingress 信息和路由后端。
+  - `gateway`：组件 `traits.gateway` 在当前平台入口配置下的有效 host 与路由后端。
   - `resourceConfigs []`：组件主容器、init 容器、sidecar 容器的资源配置集合。
   - `credentials []`：组件引用的 Secret 账号密码等密钥信息。
 
@@ -32,7 +32,7 @@
 
 `services` 来自组件的 `traits.service`；当组件未显式配置 service trait 但 `properties.ports` 有端口时，会按现有组件服务命名规则返回默认内部 Service 信息。
 
-没有 Ingress 链接时，`externalLinks` 从 `services` 中选择第一个非 `external` Service；全部为 `external` 时选择第一项。链接使用该 Service 的名称、命名空间和去重后的 `ports[].port`，不使用容器的 `targetPort`。例如 Service 的 `port: 80` 转发到 `targetPort: 8080` 时，链接端口为 `80`；仅配置 `traits.service.ports` 也会生成链接。
+没有入口路由链接时，`externalLinks` 从 `services` 中选择第一个非 `external` Service；全部为 `external` 时选择第一项。链接使用该 Service 的名称、命名空间和去重后的 `ports[].port`，不使用容器的 `targetPort`。例如 Service 的 `port: 80` 转发到 `targetPort: 8080` 时，链接端口为 `80`；仅配置 `traits.service.ports` 也会生成链接。
 
 每个 Service 包含：
 
@@ -50,34 +50,14 @@
 - `targetPort`
 - `protocol`
 
-### ingresses
+### gateway
 
-`ingresses` 只会对当前 workflow 实际会部署 Ingress 资源的组件类型生效，并基于对应的 `traits.ingress` 补齐名称、命名空间和默认后端服务。像 `config`、`secret` 这类不会走 Ingress trait 落地链路的组件，即使请求体里带了 `traits.ingress`，这里也会返回空。`routes[].host` 优先使用路由级 `host`；当路由级 `host` 为空且 Ingress 级 `hosts` 有值时，按 `hosts` 展开路由摘要；两者都为空时保留无 host 规则。
+`gateway` 只在组件声明了 `traits.gateway`、组件类型为 `webservice` 或 `store`、且平台配置了入口后端时返回；其他情况省略该字段，`traits.gateway` 仍按保存时原样返回。字段按平台配置计算，不改写保存的组件：
 
-其中 `ingresses[].name` 和 `ingresses[].namespace` 表示 workflow 实际会部署的 Ingress 资源标识，可用于定位集群中的 Ingress 对象；它们仍然不应视为对外访问入口。调用方如果需要对外可访问的固定路由，应优先使用：
+- `hosts`：声明的 `hosts`；未声明时为默认 host `<小写组件名>-<空间 namespace>.<domain>`。
+- `routes[]`：每条路由包含 `path`（省略时为 `/`）、`match`（省略时为 `prefix`）、`rewrite`、`timeout`，以及解析出的后端 `service` 与 `port`。后端解析规则与部署一致，见 [Validation API 的 Gateway 规则](validation-api-guide.md#gateway-规则)；已无法解析时（例如引用的 Service Trait 被删除）`service` 与 `port` 为空，下一次部署会失败。
 
-- `externalLinks` 中 `type=ingress` 的链接
-- `ingresses[].routes[]` 里的 `host + path`
-
-每个 Ingress 包含：
-
-- `name`
-- `namespace`
-- `ingressClassName`
-- `annotations`
-- `tls`
-- `routes[]`
-
-`routes[]` 包含：
-
-- `host`
-- `path`
-- `pathType`
-- `serviceName`
-- `servicePort`
-- `weight`
-- `headers`
-- `rewrite`
+`externalLinks` 为每个 host 与每条路由各生成一条 `type=gateway` 的链接，值为 `host + path`，例如 `api-default.apps.example.com/v1`。有入口路由链接时不再生成 Service 链接。响应示例见 `examples/components/list-application-components-response-sidecar.json`。
 
 ### resourceConfigs
 

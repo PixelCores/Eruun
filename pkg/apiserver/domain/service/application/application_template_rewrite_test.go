@@ -410,18 +410,15 @@ func TestCreateApplicationsFromTemplateDoesNotRewriteBareServiceNameText(t *test
 	require.Equal(t, "cloned-app-mysql", clonedProps.Labels["role"])
 }
 
-func TestCreateApplicationsFromTemplatePreservesUndeclaredIngressBackend(t *testing.T) {
+func TestCreateApplicationsFromTemplatePreservesUndeclaredGatewayBackend(t *testing.T) {
 	store := newInMemoryAppStore()
-	templateApp := &model.Applications{ID: "tmpl-shared-ingress", Name: "shared-ingress-template", TemplateEnabled: true}
+	templateApp := &model.Applications{ID: "tmpl-shared-gateway", Name: "shared-gateway-template", TemplateEnabled: true}
 	store.apps[templateApp.ID] = templateApp
 
 	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
-		Ingress: []spec.IngressTraitsSpec{{
-			Name: "mysql",
-			Routes: []spec.IngressRoutes{{
-				Backend: spec.IngressRoute{ServiceName: "mysql-master"},
-			}},
-		}},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{
+			Backend: &spec.GatewayBackendSpec{Service: "mysql-master"},
+		}}},
 	})
 	require.NoError(t, err)
 	propsJSON, err := model.NewJSONStructByStruct(apisv1.Properties{})
@@ -461,15 +458,14 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredIngressBackend(t *test
 
 	var clonedTraits apisv1.Traits
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, createdStore.Traits)), &clonedTraits))
-	require.Len(t, clonedTraits.Ingress, 1)
-	require.Equal(t, "new-mysql", clonedTraits.Ingress[0].Name)
-	require.Len(t, clonedTraits.Ingress[0].Routes, 1)
-	require.Equal(t, "mysql-master", clonedTraits.Ingress[0].Routes[0].Backend.ServiceName)
+	require.NotNil(t, clonedTraits.Gateway)
+	require.Len(t, clonedTraits.Gateway.Routes, 1)
+	require.Equal(t, "mysql-master", clonedTraits.Gateway.Routes[0].Backend.Service)
 }
 
-func TestCreateApplicationsFromTemplateRejectsAmbiguousIngressBackendServiceReference(t *testing.T) {
+func TestCreateApplicationsFromTemplateRejectsAmbiguousGatewayBackendServiceReference(t *testing.T) {
 	store := newInMemoryAppStore()
-	templateApp := &model.Applications{ID: "tmpl-ambiguous-ingress-service", Name: "ambiguous-ingress-service", TemplateEnabled: true}
+	templateApp := &model.Applications{ID: "tmpl-ambiguous-gateway-service", Name: "ambiguous-gateway-service", TemplateEnabled: true}
 	store.apps[templateApp.ID] = templateApp
 
 	addServiceComponent := func(name string) {
@@ -499,12 +495,9 @@ func TestCreateApplicationsFromTemplateRejectsAmbiguousIngressBackendServiceRefe
 	addServiceComponent("redis")
 
 	gatewayTraitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
-		Ingress: []spec.IngressTraitsSpec{{
-			Name: "gateway",
-			Routes: []spec.IngressRoutes{{
-				Backend: spec.IngressRoute{ServiceName: "primary"},
-			}},
-		}},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{
+			Backend: &spec.GatewayBackendSpec{Service: "primary"},
+		}}},
 	})
 	require.NoError(t, err)
 	gatewayPropsJSON, err := model.NewJSONStructByStruct(apisv1.Properties{})
@@ -532,7 +525,7 @@ func TestCreateApplicationsFromTemplateRejectsAmbiguousIngressBackendServiceRefe
 	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-	require.Contains(t, err.Error(), "component new-gateway traits.ingress[0].routes[0].backend.serviceName")
+	require.Contains(t, err.Error(), "component new-gateway traits.gateway.routes[0].backend.service")
 	require.Contains(t, err.Error(), `ambiguous template service "primary"`)
 	require.Contains(t, err.Error(), "new-mysql-primary")
 	require.Contains(t, err.Error(), "new-redis-primary")
@@ -989,12 +982,9 @@ func TestCreateApplicationsFromTemplateScopesDuplicateServiceTraitNames(t *testi
 
 	addTemplateComponent := func(name string) {
 		traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
-			Ingress: []spec.IngressTraitsSpec{{
-				Name: name,
-				Routes: []spec.IngressRoutes{{
-					Backend: spec.IngressRoute{ServiceName: "primary"},
-				}},
-			}},
+			Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{
+				Backend: &spec.GatewayBackendSpec{Service: "primary"},
+			}}},
 			Service: []spec.ServiceTraitSpec{{
 				Name:     "primary",
 				Type:     string(spec.ServiceAccessPublic),
@@ -1051,9 +1041,9 @@ func TestCreateApplicationsFromTemplateScopesDuplicateServiceTraitNames(t *testi
 		require.Equal(t, serviceName, traits.Service[0].Name)
 		require.Equal(t, serviceName, traits.Service[0].Selector["role"])
 		require.Equal(t, serviceName, traits.Service[0].Labels["role"])
-		require.Len(t, traits.Ingress, 1)
-		require.Len(t, traits.Ingress[0].Routes, 1)
-		require.Equal(t, serviceName, traits.Ingress[0].Routes[0].Backend.ServiceName)
+		require.NotNil(t, traits.Gateway)
+		require.Len(t, traits.Gateway.Routes, 1)
+		require.Equal(t, serviceName, traits.Gateway.Routes[0].Backend.Service)
 
 		var props apisv1.Properties
 		require.NoError(t, json.Unmarshal([]byte(mustJSON(t, component.Properties)), &props))

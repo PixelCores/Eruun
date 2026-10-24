@@ -376,7 +376,7 @@ func TestCreateApplicationsFromTemplatePreservesSecretTextOverrides(t *testing.T
 	require.NoError(t, decodeJSONStruct(secretComponent.Properties, &decodedSecretProps))
 	require.Equal(t, "override-secret", decodedSecretProps.Secret["PASSWORD"])
 
-	dtos, err := assembler.ConvertComponentModelsToDTO(components)
+	dtos, err := assembler.ConvertComponentModelsToDTO(components, spec.GatewayConfig{})
 	require.NoError(t, err)
 	var apiComponent *apisv1.ApplicationComponent
 	for _, component := range dtos {

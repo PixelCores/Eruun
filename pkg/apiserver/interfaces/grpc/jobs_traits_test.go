@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/structpb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
@@ -203,17 +204,21 @@ func TestNamedProfilesHTTPGRPCParity(t *testing.T) {
 	require.True(t, proto.Equal(input, output))
 	descriptor := input.ProtoReflect().Descriptor()
 	require.EqualValues(t, 16, descriptor.Fields().ByName("node_pool").Number())
-	require.True(t, descriptor.ReservedRanges().Has(6))
-	require.True(t, descriptor.ReservedRanges().Has(10))
-	require.True(t, descriptor.ReservedNames().Has("rbac"))
-	require.True(t, descriptor.ReservedNames().Has("target_work_env"))
+	require.EqualValues(t, 17, descriptor.Fields().ByName("gateway").Number())
+	for _, number := range []protoreflect.FieldNumber{4, 6, 10} {
+		require.True(t, descriptor.ReservedRanges().Has(number))
+	}
+	for _, name := range []protoreflect.Name{"ingress", "rbac", "target_work_env"} {
+		require.True(t, descriptor.ReservedNames().Has(name))
+	}
 }
 
-func TestTraitsRejectRemovedComponentPermissions(t *testing.T) {
-	for _, field := range []string{"rbac", "rbac" + "Profile"} {
+// Removed traits (ingress, rbac) and unassigned field numbers fail closed.
+func TestTraitsRejectRemovedFields(t *testing.T) {
+	for _, field := range []string{"ingress", "rbac", "rbac" + "Profile"} {
 		require.Error(t, protojson.Unmarshal([]byte(`{"`+field+`":null}`), &eruunv1.AppSpecTraits{}))
 	}
-	for _, number := range []protowire.Number{6, 17} {
+	for _, number := range []protowire.Number{4, 6, 18} {
 		wire := protowire.AppendTag(nil, number, protowire.BytesType)
 		wire = protowire.AppendBytes(wire, []byte("removed"))
 		input := &eruunv1.AppSpecTraits{}

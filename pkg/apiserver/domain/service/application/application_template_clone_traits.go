@@ -270,23 +270,18 @@ func rewriteTemplateNetworkTraits(traits *apisv1.Traits, oldName, newName, baseN
 		return name, nil
 	}
 
-	for i := range traits.Ingress {
-		ingress := &traits.Ingress[i]
-		if ingress.Name == "" || ingress.Name == oldName {
-			ingress.Name = newName
-		} else {
-			ingress.Name = rewriteNameCandidate(ingress.Name)
-		}
-		if ingress.Namespace == "" {
-			ingress.Namespace = namespace
-		}
-		for j := range ingress.Routes {
-			field := fmt.Sprintf("component %s traits.ingress[%d].routes[%d].backend.serviceName", newName, i, j)
-			serviceName, err := rewriteServiceReference(ingress.Routes[j].Backend.ServiceName, field)
+	if traits.Gateway != nil {
+		for j := range traits.Gateway.Routes {
+			backend := traits.Gateway.Routes[j].Backend
+			if backend == nil || backend.Service == "" {
+				continue
+			}
+			field := fmt.Sprintf("component %s traits.gateway.routes[%d].backend.service", newName, j)
+			serviceName, err := rewriteServiceReference(backend.Service, field)
 			if err != nil {
 				return err
 			}
-			ingress.Routes[j].Backend.ServiceName = serviceName
+			backend.Service = serviceName
 		}
 	}
 

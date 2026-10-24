@@ -127,6 +127,8 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				}
 				if err != nil {
 					errors = append(errors, apisv1.ValidationError{Field: fieldPrefix, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+				} else {
+					errors = append(errors, traitvalidation.ValidateGateway(comp, scope.Namespace, v.Cfg.Gateway, fieldPrefix+".traits.gateway")...)
 				}
 			}
 			errors = append(errors, applicationservice.ValidateComponent(&comp, fieldPrefix, componentNames)...)

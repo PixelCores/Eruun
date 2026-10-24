@@ -1,5 +1,5 @@
 {
-  "name": "ingress-derive-service-trait",
+  "name": "gateway-service-trait",
   "namespace": "default",
   "version": "1.0.0",
   "workflow": [
@@ -41,18 +41,18 @@
             ]
           }
         ],
-        "ingress": [
-          {
-            "name": "backend-ingress",
-            "ingressClassName": "nginx",
-            "routes": [
-              {
-                "path": "/api",
-                "backend": {}
+        "gateway": {
+          "routes": [
+            {
+              "path": "/api",
+              "match": "exact",
+              "backend": {
+                "service": "backend-internal",
+                "port": 9000
               }
-            ]
-          }
-        ]
+            }
+          ]
+        }
       }
     }
   ]

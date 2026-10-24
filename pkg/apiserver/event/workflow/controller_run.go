@@ -210,7 +210,7 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 	if len(stepExecutions) == 1 && stepExecutions[0].generationError != nil {
 		err := stepExecutions[0].generationError
 		for _, task := range stepExecutions[0].Jobs[config.JobPriorityLow] {
-			controller := jobcleanup.NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: r.Client, Store: r.Store})
+			controller := jobcleanup.NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: r.Client, Store: r.Store, Gateway: r.gateway()})
 			if persistErr := controller.SaveInfo(ctx); persistErr != nil {
 				return r.stopForJobInfrastructure(fmt.Errorf("persist workflow generation failure: %w", persistErr))
 			}
@@ -511,7 +511,16 @@ func (w *WorkflowCtl) runJobs(ctx context.Context, tasks []*model.JobTask, concu
 		ResourceWaiter:    w.ResourceWaiter,
 		KubeConfig:        w.KubeConfig,
 		Dynamic:           w.Dynamic,
+		Gateway:           w.gateway(),
 	})
+}
+
+// gateway is the platform entry point the workflow's routes are rendered for.
+func (w *WorkflowCtl) gateway() spec.GatewayConfig {
+	if w.accountConfig == nil {
+		return spec.GatewayConfig{}
+	}
+	return w.accountConfig.Workspace.Gateway
 }
 
 func (w *WorkflowCtl) runWorkflowFailureCleanup(ctx context.Context, logger klog.Logger) error {

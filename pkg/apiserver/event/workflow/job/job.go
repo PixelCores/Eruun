@@ -61,6 +61,7 @@ func newJobRuntime(config *jobexec.Runtime) *jobexec.Runtime {
 		ResourceWaiter:    config.ResourceWaiter,
 		KubeConfig:        config.KubeConfig,
 		Dynamic:           config.Dynamic,
+		Gateway:           config.Gateway,
 		ShareLocker:       jobexec.NewShareLocker(config.RedisClient),
 		ArchiveUploader:   logarchive.CurrentArchiveUploader(),
 	}

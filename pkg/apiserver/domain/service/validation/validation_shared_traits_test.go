@@ -16,17 +16,6 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 	zero := intstr.FromInt32(0)
 	req := validCallbackTryApplicationRequest()
 	req.Components[0].Traits = spec.Traits{
-		Ingress: []spec.IngressTraitsSpec{{
-			Name: "BAD_INGRESS",
-			Label: map[string]string{
-				spec.LabelComponentName: "other-component",
-				spec.LabelAppID:         "other-app",
-			},
-			Hosts: []string{"192.0.2.1"},
-			Routes: []spec.IngressRoutes{{
-				Path: "/", Backend: spec.IngressRoute{ServiceName: "backend", ServicePort: 8080},
-			}},
-		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: "BAD_SERVICE", Type: "unknown", Headless: true,
 			Labels: map[string]string{
@@ -44,7 +33,7 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 	resp := (&validationServiceImpl{}).TryApplication(context.Background(), req)
 	require.False(t, resp.Valid)
 	// Keep the trait sequence separate from the later application-wide resource
-	// name checks, which also reject the two invalid resource names.
+	// name checks, which also reject the invalid Service name.
 	var traitErrors []apisv1.ValidationError
 	for _, validationErr := range resp.Errors {
 		if strings.HasPrefix(validationErr.Field, "component[0].traits.") {
@@ -54,10 +43,6 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 		}
 	}
 	require.Equal(t, []apisv1.ValidationError{
-		{Field: "component[0].traits.ingress[0].label.eruun.io/app-id", Code: apisv1.ErrCodeInvalidTraitConfig, Message: `traits.ingress.label key "eruun.io/app-id" is reserved and cannot be overridden`},
-		{Field: "component[0].traits.ingress[0].label.eruun.io/component-name", Code: apisv1.ErrCodeInvalidTraitConfig, Message: `traits.ingress.label key "eruun.io/component-name" is reserved and cannot be overridden`},
-		{Field: "component[0].traits.ingress[0].name", Code: apisv1.ErrCodeInvalidNameFormat, Message: "component[0].traits.ingress[0].name must match DNS-1123 subdomain (lowercase alphanumeric, may contain hyphens, must start and end with alphanumeric)"},
-		{Field: "component[0].traits.ingress[0].hosts[0]", Code: apisv1.ErrCodeInvalidTraitConfig, Message: "component[0].traits.ingress[0].hosts[0] must be a DNS name, not an IP address"},
 		{Field: "component[0].traits.service[0].name", Code: apisv1.ErrCodeInvalidNameFormat, Message: "component[0].traits.service[0].name must match DNS-1123 subdomain (lowercase alphanumeric, may contain hyphens, must start and end with alphanumeric)"},
 		{Field: "component[0].traits.service[0].labels.eruun.io/app-id", Code: apisv1.ErrCodeInvalidTraitConfig, Message: `traits.service.labels key "eruun.io/app-id" is reserved and cannot be overridden`},
 		{Field: "component[0].traits.service[0].labels.eruun.io/component-name", Code: apisv1.ErrCodeInvalidTraitConfig, Message: `traits.service.labels key "eruun.io/component-name" is reserved and cannot be overridden`},
@@ -72,9 +57,7 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 	// Presentation adapters must not remove fields from the resubmittable spec.
 	require.NotNil(t, resp.NormalizedSpec)
 	traits := resp.NormalizedSpec.Components[0].Traits
-	require.Equal(t, "BAD_INGRESS", traits.Ingress[0].Name)
 	require.Equal(t, "BAD_SERVICE", traits.Service[0].Name)
 	labels := map[string]string{spec.LabelAppID: "other-app", spec.LabelComponentName: "other-component"}
-	require.Equal(t, labels, traits.Ingress[0].Label)
 	require.Equal(t, labels, traits.Service[0].Labels)
 }

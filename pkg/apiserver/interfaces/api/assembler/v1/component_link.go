@@ -12,36 +12,27 @@ func buildComponentExternalLinks(component *apisv1.ApplicationComponent) []apisv
 	if component == nil {
 		return nil
 	}
-	ingressLinks := buildIngressLinks(component)
-	if len(ingressLinks) > 0 {
-		return ingressLinks
+	if links := buildGatewayLinks(component.Gateway); len(links) > 0 {
+		return links
 	}
 	return buildServiceLinks(component.Services)
 }
 
-func buildIngressLinks(component *apisv1.ApplicationComponent) []apisv1.ExternalLink {
-	if !componentDeploysIngress(component) || len(component.Traits.Ingress) == 0 {
+// buildGatewayLinks lists the reachable host and path of every route.
+func buildGatewayLinks(gateway *apisv1.ComponentGatewayInfo) []apisv1.ExternalLink {
+	if gateway == nil {
 		return nil
 	}
-	links := make([]apisv1.ExternalLink, 0)
+	links := make([]apisv1.ExternalLink, 0, len(gateway.Hosts)*len(gateway.Routes))
 	seen := make(map[string]struct{})
-	for _, ing := range component.Traits.Ingress {
-		for _, route := range ing.Routes {
-			path := strings.TrimSpace(route.Path)
-			if path == "" {
-				path = "/"
+	for _, host := range gateway.Hosts {
+		for _, route := range gateway.Routes {
+			value := host + route.Path
+			if _, ok := seen[value]; ok {
+				continue
 			}
-			for _, host := range resolveIngressRouteHosts(route.Host, ing.Hosts) {
-				if host == "" {
-					host = "*"
-				}
-				value := host + path
-				if _, ok := seen[value]; ok {
-					continue
-				}
-				seen[value] = struct{}{}
-				links = append(links, apisv1.ExternalLink{Type: "ingress", Value: value})
-			}
+			seen[value] = struct{}{}
+			links = append(links, apisv1.ExternalLink{Type: "gateway", Value: value})
 		}
 	}
 	return links

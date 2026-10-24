@@ -616,7 +616,11 @@ for managed in ERUUN_GATEWAY_PROVIDER ERUUN_GATEWAY_DOMAIN ERUUN_GATEWAY_PROXY_N
 done
 # Workspace runner Roles grant exactly these entry verbs; the ClusterRole must
 # hold the same set so granting them never relies on escalate.
-assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" networking.k8s.io ingresses)" "get list create update patch delete" "runtime ingress permissions must match workspace runner Roles"
+assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" networking.k8s.io ingresses)" "" "a disabled gateway grants no ingress permissions"
+gateway_ingress_rbac="${TEST_ROOT}/gateway-ingress-rbac.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/serviceaccount-rbac.yaml \
+  "${gateway_ingress_args[@]}" > "${gateway_ingress_rbac}"
+assertEqual "$(clusterRoleRuleVerbs "${gateway_ingress_rbac}" networking.k8s.io ingresses)" "get list create update patch delete" "runtime ingress permissions must match workspace runner Roles"
 
 long_runtime_manifest="${TEST_ROOT}/runtime-long-fullname.yaml"
 runHelm template eruun "${TEST_DIR}" \

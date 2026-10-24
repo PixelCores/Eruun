@@ -110,7 +110,7 @@ func TestRouteTaskUsesPayloadResourcePolicy(t *testing.T) {
 		return object
 	}
 
-	payload := route("web.own.apps.example.com")
+	payload := route("web-own.apps.example.com")
 	task := &model.JobTask{AppID: "app", Namespace: "own", JobType: string(config.JobDeployRoute), JobInfo: payload}
 	deploy, err := PrepareTask(task, "app", space, taskWorkspaceConfig(t))
 	require.NoError(t, err)
@@ -119,11 +119,13 @@ func TestRouteTaskUsesPayloadResourcePolicy(t *testing.T) {
 	require.True(t, ok, "the prepared payload keeps its unstructured type")
 	require.Same(t, payload, prepared)
 
-	task.JobInfo = route("victim.other.apps.example.com")
-	_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
-	require.ErrorIs(t, err, bcode.ErrForbidden)
+	for _, host := range []string{"victim-other.apps.example.com", "web.own.apps.example.com"} {
+		task.JobInfo = route(host)
+		_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
+		require.ErrorIs(t, err, bcode.ErrForbidden, host)
+	}
 
-	unsupported := route("web.own.apps.example.com")
+	unsupported := route("web-own.apps.example.com")
 	unsupported.SetAPIVersion("example.io/v1")
 	task.JobInfo = unsupported
 	_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
@@ -139,7 +141,7 @@ func TestRouteTaskPreservesIntegerPorts(t *testing.T) {
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "own"},
 		Spec: networkingv1.IngressSpec{IngressClassName: &className, Rules: []networkingv1.IngressRule{{
-			Host: "web.own.apps.example.com",
+			Host: "web-own.apps.example.com",
 			IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{{
 				Path: "/", PathType: &pathType,
 				Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: "web", Port: networkingv1.ServiceBackendPort{Number: 8080}}},

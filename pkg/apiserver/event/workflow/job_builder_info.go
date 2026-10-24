@@ -6,10 +6,10 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
@@ -82,17 +82,20 @@ func buildServiceDeployInfo(svc *corev1.Service, fallbackName, fallbackNamespace
 	return strings.Join(parts, "; ")
 }
 
-func buildIngressDeployInfo(ingress *networkingv1.Ingress, fallbackName, fallbackNamespace string) string {
-	if ingress == nil {
-		return buildResourceInfo(domainspec.ResourceIngress, fallbackNamespace, fallbackName)
+// buildRouteDeployInfo lists the effective host and path of every route.
+func buildRouteDeployInfo(name string, gateway domainspec.GatewayTraitSpec, component *model.ApplicationComponent, cfg domainspec.GatewayConfig) string {
+	hosts, err := domainspec.GatewayHosts(gateway, component.Name, component.Namespace, cfg)
+	if err != nil || len(gateway.Routes) == 0 {
+		return buildResourceInfo(domainspec.ResourceIngress, component.Namespace, name)
 	}
-	routes := ingressRoutes(ingress)
-	if len(routes) == 0 {
-		name := nameOrFallback(ingress.Name, fallbackName)
-		namespace := nameOrFallback(ingress.Namespace, fallbackNamespace)
-		return buildResourceInfo(domainspec.ResourceIngress, namespace, name)
+	routes := make([]string, 0, len(hosts)*len(gateway.Routes))
+	seen := make(map[string]struct{})
+	for _, host := range hosts {
+		for _, route := range gateway.Routes {
+			addUniqueRoute(host+route.EffectivePath(), seen, &routes)
+		}
 	}
-	return fmt.Sprintf("ingress: %s", strings.Join(routes, ", "))
+	return fmt.Sprintf("gateway: %s", strings.Join(routes, ", "))
 }
 
 func buildResourceInfo(kind domainspec.ResourceKind, namespace, name string) string {
@@ -139,32 +142,6 @@ func servicePortInfo(svc *corev1.Service) ([]string, []string) {
 		portDetails = append(portDetails, detail)
 	}
 	return portNums, portDetails
-}
-
-func ingressRoutes(ingress *networkingv1.Ingress) []string {
-	if ingress == nil {
-		return nil
-	}
-	routes := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, rule := range ingress.Spec.Rules {
-		host := strings.TrimSpace(rule.Host)
-		if host == "" {
-			host = "*"
-		}
-		if rule.HTTP == nil || len(rule.HTTP.Paths) == 0 {
-			addUniqueRoute(host+"/", seen, &routes)
-			continue
-		}
-		for _, path := range rule.HTTP.Paths {
-			segment := strings.TrimSpace(path.Path)
-			if segment == "" {
-				segment = "/"
-			}
-			addUniqueRoute(host+segment, seen, &routes)
-		}
-	}
-	return routes
 }
 
 func addUniqueRoute(value string, seen map[string]struct{}, routes *[]string) {

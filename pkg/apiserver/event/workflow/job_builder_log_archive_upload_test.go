@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/logarchive"
 )
 
@@ -53,7 +54,7 @@ func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.
 				Container: "worker",
 			},
 		},
-	}, componentMap, task, testJobTimeoutSeconds)
+	}, componentMap, task, testJobTimeoutSeconds, spec.GatewayConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

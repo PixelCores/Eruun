@@ -107,76 +107,33 @@ func pickServicePortName(componentName, explicitName string, port int32) string 
 	return name
 }
 
-func buildComponentIngresses(component *apisv1.ApplicationComponent) []apisv1.ComponentIngressInfo {
-	if !componentDeploysIngress(component) || len(component.Traits.Ingress) == 0 {
+// buildComponentGateway returns the effective route under the platform gateway,
+// or nil when the component declares none or the platform disables gateways.
+// A backend that no longer resolves is shown without Service and port.
+func buildComponentGateway(component *apisv1.ApplicationComponent, cfg spec.GatewayConfig) *apisv1.ComponentGatewayInfo {
+	if component == nil || component.Traits.Gateway == nil || cfg.Provider == spec.GatewayProviderNone {
 		return nil
 	}
-	ingresses := make([]apisv1.ComponentIngressInfo, 0, len(component.Traits.Ingress))
-	for i, trait := range component.Traits.Ingress {
-		annotations, routes := buildIngressTraitDetails(component, trait)
-		ingress := apisv1.ComponentIngressInfo{
-			Name:             buildIngressResourceName(component.Name, componentResourceAppName(component), trait.Name, i),
-			Namespace:        pickIngressNamespace(component.Namespace, trait.Namespace),
-			IngressClassName: strings.TrimSpace(trait.IngressClassName),
-			Annotations:      annotations,
-			TLS:              append([]spec.IngressTLSConfig(nil), trait.TLS...),
-			Routes:           routes,
+	if component.ComponentType != config.ServerJob && component.ComponentType != config.StoreJob {
+		return nil
+	}
+	gateway := component.Traits.Gateway
+	hosts := append([]string(nil), gateway.Hosts...)
+	if len(hosts) == 0 {
+		hosts = []string{spec.GatewayDefaultHost(component.Name, component.Namespace, cfg.Domain)}
+	}
+	routes := make([]apisv1.ComponentGatewayRouteInfo, 0, len(gateway.Routes))
+	for _, route := range gateway.Routes {
+		info := apisv1.ComponentGatewayRouteInfo{Path: route.EffectivePath(), Match: route.EffectiveMatch(), Rewrite: route.Rewrite, Timeout: route.Timeout}
+		if service, port, err := spec.ResolveGatewayBackend(route.Backend, component.Traits.Service, component.Properties.Ports); err == nil {
+			if service == "" {
+				service = naming.ServiceName(component.Name, componentResourceAppName(component))
+			}
+			info.Service, info.Port = service, port
 		}
-		ingresses = append(ingresses, ingress)
+		routes = append(routes, info)
 	}
-	return ingresses
-}
-
-func buildIngressTraitDetails(component *apisv1.ApplicationComponent, trait spec.IngressTraitsSpec) (map[string]string, []apisv1.ComponentIngressRouteInfo) {
-	annotations := copyStringMap(trait.Annotations)
-	if len(trait.Routes) == 0 {
-		return annotations, nil
-	}
-	defaultServiceName := naming.ServiceName(component.Name, componentResourceAppName(component))
-	result := make([]apisv1.ComponentIngressRouteInfo, 0, len(trait.Routes))
-	for _, route := range trait.Routes {
-		annotations = spec.ApplyIngressRewriteAnnotations(annotations, route.Rewrite)
-		backend := route.Backend
-		backend.ServiceName = strings.TrimSpace(backend.ServiceName)
-		backend = spec.ResolveIngressBackend(backend, defaultServiceName, component.Traits.Service, component.Properties.Ports)
-		if backend.ServicePort <= 0 {
-			backend.ServicePort = 80
-		}
-		path := strings.TrimSpace(route.Path)
-		if path == "" {
-			path = "/"
-		}
-		pathType := spec.IngressPathType(route.PathType, trait.DefaultPathType, annotations)
-		for _, host := range resolveIngressRouteHosts(route.Host, trait.Hosts) {
-			result = append(result, apisv1.ComponentIngressRouteInfo{
-				Host:        host,
-				Path:        path,
-				PathType:    pathType,
-				ServiceName: backend.ServiceName,
-				ServicePort: backend.ServicePort,
-				Weight:      route.Backend.Weight,
-				Headers:     copyStringMap(route.Backend.Headers),
-				Rewrite:     route.Rewrite,
-			})
-		}
-	}
-	return annotations, result
-}
-
-func resolveIngressRouteHosts(routeHost string, ingressHosts []string) []string {
-	if host := strings.TrimSpace(routeHost); host != "" {
-		return []string{host}
-	}
-	hosts := make([]string, 0, len(ingressHosts))
-	for _, host := range ingressHosts {
-		if host = strings.TrimSpace(host); host != "" {
-			hosts = append(hosts, host)
-		}
-	}
-	if len(hosts) > 0 {
-		return hosts
-	}
-	return []string{""}
+	return &apisv1.ComponentGatewayInfo{Hosts: hosts, Routes: routes}
 }
 
 func componentDeploysService(component *apisv1.ApplicationComponent) bool {
@@ -189,39 +146,4 @@ func componentDeploysService(component *apisv1.ApplicationComponent) bool {
 	default:
 		return true
 	}
-}
-
-func componentDeploysIngress(component *apisv1.ApplicationComponent) bool {
-	if component == nil {
-		return false
-	}
-	switch component.ComponentType {
-	case config.ServerJob, config.StoreJob, config.InstantJob, config.ScheduledJob:
-		return true
-	default:
-		return false
-	}
-}
-
-func pickIngressName(componentName, explicitName string, idx int) string {
-	if name := strings.TrimSpace(explicitName); name != "" {
-		return name
-	}
-	base := strings.ToLower(strings.TrimSpace(componentName))
-	if base == "" {
-		base = "component"
-	}
-	suffix := "ingress"
-	if idx > 0 {
-		suffix = fmt.Sprintf("ingress-%d", idx+1)
-	}
-	return fmt.Sprintf("%s-%s", base, suffix)
-}
-
-func buildIngressResourceName(componentName, resourceAppName, explicitName string, idx int) string {
-	return naming.IngressName(pickIngressName(componentName, explicitName, idx), resourceAppName)
-}
-
-func pickIngressNamespace(componentNamespace, _ string) string {
-	return componentNamespace
 }

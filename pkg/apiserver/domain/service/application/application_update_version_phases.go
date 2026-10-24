@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -391,6 +392,9 @@ func (c *applicationsServiceImpl) validateVersionUpdateWorkspaceComponents(ctx c
 				return bcode.ErrForbidden
 			}
 			if err := workspace.ValidateTraits(scope.Namespace, component.Name, &component.Traits, &component.Properties, c.Cfg.Accounts.Workspace); err != nil {
+				return err
+			}
+			if err := gatewayWriteError(traitvalidation.ValidateGateway(*component, scope.Namespace, c.Cfg.Gateway, fmt.Sprintf("component[%s].traits.gateway", component.Name))); err != nil {
 				return err
 			}
 			for j := range run.normalReq.Components {

@@ -9,9 +9,6 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -28,6 +25,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func NewJobTask(name, namespace, workflowID, projectID, appID, taskID string, timeoutSeconds int64, resourceAppName ...string) *model.JobTask {
@@ -91,47 +89,6 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			jobs = append(jobs, pvcJob)
 			klog.Infof("Created PVC job for component %s: %s", component.Name, pvc.Name)
 		}
-		if ingress, ok := obj.(*networkingv1.Ingress); ok {
-			baseName := nameOrFallback(ingress.Name, component.Name)
-			normalizedName := naming.IngressName(baseName, resourceAppName)
-			ingress.Name = normalizedName
-			if ingress.Namespace == "" {
-				ingress.Namespace = component.Namespace
-			}
-			properties, err := jobexec.ParseProperties(component.Properties)
-			if err != nil {
-				return nil, fmt.Errorf("parse component %s properties: %w", component.Name, err)
-			}
-			labels := jobexec.BuildLabels(component, &properties)
-			for k, v := range naming.NormalizeLabelValues(ingress.GetLabels()) {
-				labels[k] = v
-			}
-			ingress.SetLabels(jobexec.ApplyComponentManagedLabels(labels, component))
-			applyShareLabelsToObject(ingress, share)
-			ingressJob := NewJobTask(
-				ingress.Name,
-				ingress.Namespace,
-				task.WorkflowID,
-				task.ProjectID,
-				task.AppID,
-				task.TaskID,
-				defaultJobTimeoutSeconds,
-				resourceAppName,
-			)
-			route, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ingress)
-			if err != nil {
-				return nil, fmt.Errorf("convert component %s ingress: %w", component.Name, err)
-			}
-			routeObject := &unstructured.Unstructured{Object: route}
-			routeObject.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind(string(domainspec.KubeKindIngress)))
-			ingressJob.JobType = string(config.JobDeployRoute)
-			ingressJob.JobInfo = routeObject
-			ingressJob.Info = buildIngressDeployInfo(ingress, ingress.Name, ingress.Namespace)
-			setDeployTimeout(ingressJob)
-			markJobSkippedIfIgnored(share, ingressJob)
-			jobs = append(jobs, ingressJob)
-			klog.Infof("Created route job for component %s: %s", component.Name, ingress.Name)
-		}
 	}
 	return jobs, nil
 }
@@ -146,6 +103,7 @@ func appendComponentGroup(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway domainspec.GatewayConfig,
 	executionKeyForComponent func(componentIndex int) string,
 ) error {
 	logger := klog.FromContext(ctx)
@@ -175,7 +133,7 @@ func appendComponentGroup(
 			mergeJobBuckets(buckets, buildCleanupJobsForComponent(component, task, defaultJobTimeoutSeconds))
 			continue
 		}
-		componentBuckets, err := buildJobsForComponent(ctx, ds, component, task, defaultJobTimeoutSeconds, executionKey)
+		componentBuckets, err := buildJobsForComponent(ctx, ds, component, task, defaultJobTimeoutSeconds, gateway, executionKey)
 		if err != nil {
 			return fmt.Errorf("build component %s: %w", component.Name, err)
 		}
@@ -367,6 +325,7 @@ func buildJobsForComponent(
 	component *model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway domainspec.GatewayConfig,
 	componentExecutionKey string,
 ) (map[int][]*model.JobTask, error) {
 	buckets := newJobBuckets()
@@ -539,7 +498,37 @@ func buildJobsForComponent(
 		}
 	}
 
+	if componentTraits.Gateway != nil {
+		if component.ComponentType != config.ServerJob && component.ComponentType != config.StoreJob {
+			return nil, fmt.Errorf("gateway is only supported by webservice and store components")
+		}
+		routeJob, err := buildRouteJob(component, &properties, componentTraits, task, gateway, defaultJobTimeoutSeconds, share)
+		if err != nil {
+			return nil, err
+		}
+		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], routeJob)
+	}
+
 	return buckets, nil
+}
+
+// buildRouteJob renders the component route for the platform gateway. It runs in
+// JobPriorityNormal, after the component Services it references.
+func buildRouteJob(component *model.ApplicationComponent, properties *model.Properties, traits *domainspec.Traits, task *model.WorkflowQueue, gateway domainspec.GatewayConfig, defaultJobTimeoutSeconds int64, share shareConfig) (*model.JobTask, error) {
+	route, err := workflowtraits.BuildGatewayRoute(component, *traits.Gateway, traits.Service, properties.Ports, gateway)
+	if err != nil {
+		return nil, fmt.Errorf("render component %s gateway route: %w", component.Name, err)
+	}
+	route.SetLabels(jobexec.ApplyComponentManagedLabels(jobexec.BuildLabels(component, properties), component))
+	jobexec.ApplyComponentAnnotationsToObject(route, component)
+	applyShareLabelsToObject(route, share)
+	routeJob := NewJobTask(route.GetName(), route.GetNamespace(), task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
+	routeJob.JobType = string(config.JobDeployRoute)
+	routeJob.JobInfo = route
+	routeJob.Info = buildRouteDeployInfo(route.GetName(), *traits.Gateway, component, gateway)
+	setDeployTimeout(routeJob)
+	markJobSkippedIfIgnored(share, routeJob)
+	return routeJob, nil
 }
 
 func queueServiceJobs(

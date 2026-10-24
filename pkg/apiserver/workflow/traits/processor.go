@@ -27,9 +27,7 @@ type TraitContext struct {
 	Component *model.ApplicationComponent
 	Workload  runtime.Object
 
-	// Ingress defaults, including nested ingress, use the outer component services.
-	nodePool        *model.NodePool
-	componentTraits *spec.Traits
+	nodePool *model.NodePool
 }
 
 // TraitResult is the unit of changes emitted by a trait function. The framework
@@ -81,7 +79,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object,
 	}
 
 	// Start the recursive application of traits, with no exclusions at the top level.
-	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, componentTraits: &traits, nodePool: nodePool}, &traits, false)
+	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, nodePool: nodePool}, &traits, false)
 	if err != nil {
 		return nil, err
 	}
@@ -168,11 +166,8 @@ func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (
 			return nil, fmt.Errorf("failed to process trait 'sidecar': %w", err)
 		}
 	}
-	if len(traits.Ingress) > 0 {
-		if err := collect(processIngress(ctx, traits.Ingress)); err != nil {
-			return nil, fmt.Errorf("failed to process trait 'ingress': %w", err)
-		}
-	}
+	// The gateway trait is not a workload change; the workflow builder renders
+	// its route next to the component Services.
 	return aggregateTraitResults(results)
 }
 

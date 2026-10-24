@@ -1,11 +1,13 @@
 package application
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -247,6 +249,9 @@ func ValidateTemplateOverrides(components []apisv1.CreateComponentRequest) []api
 			errors = append(errors, apisv1.ValidationError{Field: field, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
 		}
 		errors = append(errors, traitvalidation.ValidateNestedJobFailurePolicies(component.Traits, field)...)
+		// Overrides merge only supported fields; reject nested gateways instead
+		// of dropping them.
+		errors = append(errors, traitvalidation.ValidateNestedGateway(component.Traits, field)...)
 	}
 	return errors
 }
@@ -260,10 +265,39 @@ func firstValidationError(base error, errors []apisv1.ValidationError) error {
 }
 
 // componentValidationError keeps the properties error code for rules on
-// component or init container properties.
+// component or init container properties. Gateway errors keep their field and
+// reason for the client, as on the other gateway write paths.
 func componentValidationError(errors []apisv1.ValidationError) error {
+	if len(errors) > 0 && errors[0].Code == apisv1.ErrCodeGatewayNotAllowed {
+		return gatewayWriteError(errors)
+	}
 	if len(errors) > 0 && strings.Contains(errors[0].Field, ".properties.") {
 		return firstValidationError(bcode.ErrInvalidProperties, errors)
 	}
 	return firstValidationError(bcode.ErrApplicationConfig, errors)
+}
+
+// validateGatewayForWrite applies the gateway rules to resolved components of a
+// workspace write. The first error is returned with a client-safe message.
+func validateGatewayForWrite(ctx context.Context, cfg *config.Config, components []apisv1.CreateComponentRequest) error {
+	scope, scoped := access.FromContext(ctx)
+	if !scoped {
+		return nil
+	}
+	if cfg == nil {
+		return bcode.ErrServiceUnavailable
+	}
+	for i := range components {
+		if err := gatewayWriteError(traitvalidation.ValidateGateway(components[i], scope.Namespace, cfg.Gateway, fmt.Sprintf("component[%d].traits.gateway", i))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func gatewayWriteError(errors []apisv1.ValidationError) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	return bcode.WithSafeClientMessage(bcode.ErrApplicationConfig, errors[0].Field+": "+errors[0].Message)
 }
