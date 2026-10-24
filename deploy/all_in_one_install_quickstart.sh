@@ -48,6 +48,8 @@ REDIS_WORKLOAD_KIND=$(printf '%s' "${REDIS_WORKLOAD_KIND:-statefulset}" | tr '[:
 
 AUTH_CONFIG_FILE="${AUTH_CONFIG_FILE:-}"
 # Helm-only gateway values; the static manifest carries its own ingress settings.
+# Record presence first: an explicitly empty value is still a setting.
+GATEWAY_INPUT_SET="${GATEWAY_PROVIDER+x}${GATEWAY_DOMAIN+x}${GATEWAY_PROXY_NAMESPACE+x}${GATEWAY_INGRESS_CLASS+x}"
 GATEWAY_PROVIDER="${GATEWAY_PROVIDER:-}"
 GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-}"
 GATEWAY_PROXY_NAMESPACE="${GATEWAY_PROXY_NAMESPACE:-}"
@@ -321,7 +323,7 @@ preflightCheck() {
     manifest|helm) ;;
     *) bail "unsupported INSTALL_MODE=${INSTALL_MODE}; expected manifest or helm" ;;
   esac
-  if [ "${INSTALL_MODE}" = "manifest" ] && [ -n "${GATEWAY_PROVIDER}${GATEWAY_DOMAIN}${GATEWAY_PROXY_NAMESPACE}${GATEWAY_INGRESS_CLASS}" ]; then
+  if [ "${INSTALL_MODE}" = "manifest" ] && [ -n "${GATEWAY_INPUT_SET}" ]; then
     bail "GATEWAY_* settings require INSTALL_MODE=helm; edit the ERUUN_GATEWAY_* entries in the static manifest instead"
   fi
   case "${REDIS_WORKLOAD_KIND}" in

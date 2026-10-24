@@ -197,26 +197,30 @@ runGatewayValuesContract() {
   assertContains "${command_log}" "--set-string gateway.ingress.className=nginx"
   assertTempFilesCleaned "${case_dir}"
 
-  case_dir=$(newCase manifest-gateway-values)
-  command_log="${case_dir}/commands.log"
-  output="${case_dir}/output.log"
-  : > "${command_log}"
-  if env \
-    ERUUN_QUICKSTART_FAKE_COMMAND=true \
-    FAKE_COMMAND_LOG="${command_log}" \
-    INSTALL_MODE=manifest \
-    KUBECTL_BIN="${TEST_SCRIPT}" \
-    HELM_BIN="${TEST_SCRIPT}" \
-    OPENSSL_BIN="${TEST_SCRIPT}" \
-    GATEWAY_DOMAIN=apps.example.com \
-    TMPDIR="${case_dir}/tmp" \
-    SKIP_CONFIRM=true \
-    WAIT_READY=false \
-    "${case_dir}/installer.sh" > "${output}" 2>&1; then
-    fail "manifest mode must reject Helm-only gateway settings"
-  fi
-  assertContains "${output}" "GATEWAY_* settings require INSTALL_MODE=helm"
-  assertNotContains "${command_log}" "apply"
+  # An explicitly empty provider is still a gateway setting.
+  local setting
+  for setting in GATEWAY_DOMAIN=apps.example.com GATEWAY_PROVIDER=; do
+    case_dir=$(newCase "manifest-gateway-${setting%%=*}")
+    command_log="${case_dir}/commands.log"
+    output="${case_dir}/output.log"
+    : > "${command_log}"
+    if env \
+      ERUUN_QUICKSTART_FAKE_COMMAND=true \
+      FAKE_COMMAND_LOG="${command_log}" \
+      INSTALL_MODE=manifest \
+      KUBECTL_BIN="${TEST_SCRIPT}" \
+      HELM_BIN="${TEST_SCRIPT}" \
+      OPENSSL_BIN="${TEST_SCRIPT}" \
+      "${setting}" \
+      TMPDIR="${case_dir}/tmp" \
+      SKIP_CONFIRM=true \
+      WAIT_READY=false \
+      "${case_dir}/installer.sh" > "${output}" 2>&1; then
+      fail "manifest mode must reject Helm-only gateway setting ${setting}"
+    fi
+    assertContains "${output}" "GATEWAY_* settings require INSTALL_MODE=helm"
+    assertNotContains "${command_log}" "apply"
+  done
 }
 
 runLegacyBindingCleanupScopeContract() {

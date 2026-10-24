@@ -309,3 +309,56 @@ func TestImpersonationAndTraitValidation(t *testing.T) {
 	traits := &spec.Traits{Init: []spec.InitTraitSpec{{Traits: spec.Traits{SecurityPolicy: &corev1.SecurityContext{Privileged: ptr.To(true)}}}}}
 	require.ErrorIs(t, ValidateTraits("own", "app", traits, nil, cfg), bcode.ErrForbidden)
 }
+
+// The gateway selection reaches every write boundary through WorkspaceConfig;
+// a disabled gateway rejects the same inputs that an ingress gateway accepts.
+func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
+	enabled := workspaceConfig(t)
+	disabled := enabled
+	disabled.Gateway = spec.GatewayConfig{}
+	ingress := `{"metadata":{"name":"web"},"spec":{"ingressClassName":"nginx","rules":[{"host":"web.own.apps.example.com"}]}}`
+
+	traits := &spec.Traits{Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}}}
+	require.NoError(t, ValidateTraits("own", "web", traits, nil, enabled))
+	require.Equal(t, []string{"web.own.apps.example.com"}, traits.Ingress[0].Hosts)
+	require.Equal(t, "nginx", traits.Ingress[0].IngressClassName)
+	require.ErrorIs(t, ValidateTraits("own", "web", &spec.Traits{Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}}}, nil, disabled), bcode.ErrForbidden)
+
+	decode := func() map[string]interface{} {
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(ingress), &obj))
+		return obj
+	}
+	require.NoError(t, PrepareResource("own", "ingresses", decode(), enabled))
+	require.ErrorIs(t, PrepareResource("own", "ingresses", decode(), disabled), bcode.ErrForbidden)
+
+	ctx := access.WithScope(context.Background(), access.Scope{WorkspaceID: "a", Namespace: "own", Role: "member"})
+	for _, tc := range []struct {
+		name    string
+		cfg     spec.WorkspaceConfig
+		allowed bool
+	}{{"ingress gateway", enabled, true}, {"disabled gateway", disabled, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: http.StatusCreated, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(ingress))}, nil
+			})
+			_, cfg, err := APIClient(&rest.Config{Host: "https://kubernetes.example", Transport: transport}, tc.cfg)
+			require.NoError(t, err)
+			tr, err := rest.TransportFor(cfg)
+			require.NoError(t, err)
+			req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://kubernetes.example/apis/networking.k8s.io/v1/namespaces/own/ingresses", strings.NewReader(ingress))
+			req.Header.Set("Content-Type", "application/json")
+			response, err := tr.RoundTrip(req)
+			if !tc.allowed {
+				require.ErrorIs(t, err, bcode.ErrForbidden)
+				require.Zero(t, calls)
+				return
+			}
+			require.NoError(t, err)
+			response.Body.Close()
+			require.Equal(t, 1, calls)
+		})
+	}
+}
