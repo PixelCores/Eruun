@@ -65,7 +65,8 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() { ackCount++ }})
+	ingressGateway := spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Gateway: ingressGateway, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -97,6 +98,29 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 	_, err = client.RbacV1().ClusterRoles().Get(ctx, "web-cluster-role", metav1.GetOptions{})
 	require.NoError(t, err)
 	_, err = client.RbacV1().ClusterRoleBindings().Get(ctx, "web-cluster-rb", metav1.GetOptions{})
+	require.NoError(t, err)
+}
+
+// Without the ingress gateway the platform grants no Ingress permissions, so
+// cleanup must not request Ingresses at all.
+func TestCleanupResourcesJobCtlSkipsIngressWithoutIngressGateway(t *testing.T) {
+	ctx := context.Background()
+	component := &model.ApplicationComponent{ID: 1, Name: "web", AppID: "app-reset", Namespace: "default", ComponentType: config.ServerJob}
+	ownedLabels := map[string]string{spec.LabelAppID: component.AppID, spec.LabelComponentName: component.Name}
+	client := fake.NewSimpleClientset(
+		&networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "web-ingress", Namespace: component.Namespace, Labels: ownedLabels}},
+	)
+	task := &model.JobTask{
+		Name: component.Name, Namespace: component.Namespace, AppID: component.AppID,
+		JobType: string(config.JobCleanupResources), JobInfo: component, Timeout: 1,
+	}
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: &jobtest.CleanupComponentStore{Component: component}, Ack: func() {}})
+	require.NoError(t, ctl.Run(ctx))
+	require.Equal(t, config.StatusCompleted, task.Status)
+	for _, action := range client.Actions() {
+		require.NotEqual(t, "ingresses", action.GetResource().Resource)
+	}
+	_, err := client.NetworkingV1().Ingresses(component.Namespace).Get(ctx, "web-ingress", metav1.GetOptions{})
 	require.NoError(t, err)
 }
 

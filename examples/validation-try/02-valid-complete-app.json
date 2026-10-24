@@ -175,26 +175,16 @@
             }
           }
         ],
-        "ingress": [
-          {
-            "name": "backend-ingress",
-            "namespace": "default",
-            "ingressClassName": "nginx",
-            "hosts": [
-              "api.example.com"
-            ],
-            "routes": [
-              {
-                "path": "/api",
-                "pathType": "Prefix",
-                "backend": {
-                  "serviceName": "backend",
-                  "servicePort": 8080
-                }
+        "gateway": {
+          "routes": [
+            {
+              "path": "/api",
+              "backend": {
+                "port": 8080
               }
-            ]
-          }
-        ]
+            }
+          ]
+        }
       }
     }
   ]

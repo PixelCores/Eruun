@@ -552,7 +552,7 @@ func TestListApplicationComponentsKeepsBase64LookingSecretTextIndependentOfAppMe
 	require.Equal(t, "c2VjcmV0LXB3ZA==", secretProps.Secret["password"])
 	require.Equal(t, "", secretProps.Secret["empty"])
 
-	dtos, err := assembler.ConvertComponentModelsToDTO(components)
+	dtos, err := assembler.ConvertComponentModelsToDTO(components, spec.GatewayConfig{})
 	require.NoError(t, err)
 
 	var apiComponent *apisv1.ApplicationComponent
@@ -603,7 +603,7 @@ func TestListApplicationComponentsTreatsBinaryLookingSecretTextAsResolvedCredent
 	components, err := svc.ListApplicationComponents(context.Background(), "app-1")
 	require.NoError(t, err)
 
-	dtos, err := assembler.ConvertComponentModelsToDTO(components)
+	dtos, err := assembler.ConvertComponentModelsToDTO(components, spec.GatewayConfig{})
 	require.NoError(t, err)
 
 	var apiComponent *apisv1.ApplicationComponent

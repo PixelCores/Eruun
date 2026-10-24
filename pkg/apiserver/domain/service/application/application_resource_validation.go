@@ -191,8 +191,8 @@ func trackResolvedApplicationResources(
 				return err
 			}
 		}
-		for ingressIndex, ingressName := range resolvedIngressResourceNames(component, componentResourceAppName) {
-			if err := track(spec.ResourceIngress, ingressName, fmt.Sprintf("traits.ingress[%d]", ingressIndex)); err != nil {
+		if component.Traits.Gateway != nil {
+			if err := track(spec.ResourceIngress, naming.GatewayRouteName(strings.TrimSpace(component.Name), componentResourceAppName), "traits.gateway"); err != nil {
 				return err
 			}
 		}
@@ -377,24 +377,4 @@ func collectStandalonePVCResourceNames(out *[]resolvedPVCResourceName, storages 
 			source: fmt.Sprintf("%s[%d]", sourcePrefix, storageIndex),
 		})
 	}
-}
-
-func resolvedIngressResourceNames(component apisv1.CreateComponentRequest, resourceAppName string) []string {
-	if len(component.Traits.Ingress) == 0 {
-		return nil
-	}
-	componentName := strings.TrimSpace(component.Name)
-	names := make([]string, 0, len(component.Traits.Ingress))
-	for i, ingressTrait := range component.Traits.Ingress {
-		ingressName := strings.TrimSpace(ingressTrait.Name)
-		if ingressName == "" {
-			suffix := "ingress"
-			if i > 0 {
-				suffix = fmt.Sprintf("ingress-%d", i+1)
-			}
-			ingressName = fmt.Sprintf("%s-%s", strings.ToLower(componentName), suffix)
-		}
-		names = append(names, naming.IngressName(ingressName, resourceAppName))
-	}
-	return names
 }

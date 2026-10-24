@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -17,13 +18,14 @@ func buildWorkflowStepExecutionGroups(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway spec.GatewayConfig,
 ) ([][]StepExecution, error) {
 	if workflowSteps == nil || len(workflowSteps.Steps) == 0 {
 		return nil, nil
 	}
 	stepGroups := make([][]StepExecution, len(workflowSteps.Steps))
 	for stepIndex, step := range workflowSteps.Steps {
-		executions, err := buildWorkflowStepExecutions(ctx, ds, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds)
+		executions, err := buildWorkflowStepExecutions(ctx, ds, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds, gateway)
 		if err != nil {
 			return nil, fmt.Errorf("build workflow step %s: %w", step.Name, err)
 		}
@@ -43,6 +45,7 @@ func buildWorkflowStepExecutions(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway spec.GatewayConfig,
 ) ([]StepExecution, error) {
 	mode := normalizedStepMode(step.Mode)
 	if config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
@@ -54,7 +57,7 @@ func buildWorkflowStepExecutions(
 		}}, nil
 	}
 	if len(step.SubSteps) > 0 {
-		return buildSubStepExecutions(ctx, ds, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
+		return buildSubStepExecutions(ctx, ds, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds, gateway)
 	}
 
 	componentNames := step.ComponentNames()
@@ -65,11 +68,11 @@ func buildWorkflowStepExecutions(
 		return buildDatabaseResetStepExecution(ctx, step.Name, componentNames, step.Properties, componentMap, task, defaultJobTimeoutSeconds, workflowStepExecutionKey(stepIndex, 0))
 	}
 	if mode.IsParallel() && len(componentNames) > 1 {
-		return buildParallelComponentExecution(ctx, ds, step.Name, "parallel-group", mode, componentNames, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+		return buildParallelComponentExecution(ctx, ds, step.Name, "parallel-group", mode, componentNames, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, gateway, func(componentIndex int) string {
 			return workflowStepExecutionKey(stepIndex, componentIndex)
 		})
 	}
-	return buildSequentialComponentExecutions(ctx, ds, componentNames, config.WorkflowModeStepByStep, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+	return buildSequentialComponentExecutions(ctx, ds, componentNames, config.WorkflowModeStepByStep, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, gateway, func(componentIndex int) string {
 		return workflowStepExecutionKey(stepIndex, componentIndex)
 	}, func(name string) string {
 		return name
@@ -85,15 +88,16 @@ func buildSubStepExecutions(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway spec.GatewayConfig,
 ) ([]StepExecution, error) {
 	if mode.IsParallel() {
-		return buildParallelSubStepExecution(ctx, ds, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
+		return buildParallelSubStepExecution(ctx, ds, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds, gateway)
 	}
 
 	var executions []StepExecution
 	for subStepIndex, sub := range step.SubSteps {
 		componentNames := sub.ComponentNames()
-		subExecutions, err := buildSequentialSubStepExecution(ctx, ds, componentNames, sub, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+		subExecutions, err := buildSequentialSubStepExecution(ctx, ds, componentNames, sub, componentMap, task, defaultJobTimeoutSeconds, gateway, func(componentIndex int) string {
 			return workflowSubStepExecutionKey(stepIndex, subStepIndex, componentIndex)
 		})
 		if err != nil {
@@ -113,6 +117,7 @@ func buildParallelSubStepExecution(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway spec.GatewayConfig,
 ) ([]StepExecution, error) {
 	buckets := newJobBuckets()
 	for subStepIndex, sub := range step.SubSteps {
@@ -127,6 +132,7 @@ func buildParallelSubStepExecution(
 			componentMap,
 			task,
 			defaultJobTimeoutSeconds,
+			gateway,
 			func(componentIndex int) string {
 				return workflowSubStepExecutionKey(stepIndex, subStepIndex, componentIndex)
 			},
@@ -148,9 +154,9 @@ func buildParallelSubStepExecution(
 	}}, nil
 }
 
-func buildSequentialSubStepExecution(ctx context.Context, ds datastore.DataStore, componentNames []string, sub *model.WorkflowSubStep, componentMap map[string]*model.ApplicationComponent, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, executionKeyForComponent func(componentIndex int) string) ([]StepExecution, error) {
+func buildSequentialSubStepExecution(ctx context.Context, ds datastore.DataStore, componentNames []string, sub *model.WorkflowSubStep, componentMap map[string]*model.ApplicationComponent, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, gateway spec.GatewayConfig, executionKeyForComponent func(componentIndex int) string) ([]StepExecution, error) {
 	buckets := newJobBuckets()
-	if err := appendComponentGroup(ctx, ds, buckets, componentNames, sub.WorkflowType, sub.Properties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
+	if err := appendComponentGroup(ctx, ds, buckets, componentNames, sub.WorkflowType, sub.Properties, componentMap, task, defaultJobTimeoutSeconds, gateway, executionKeyForComponent); err != nil {
 		return nil, err
 	}
 	if bucketsEmpty(buckets) {
@@ -196,10 +202,11 @@ func buildParallelComponentExecution(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway spec.GatewayConfig,
 	executionKeyForComponent func(componentIndex int) string,
 ) ([]StepExecution, error) {
 	buckets := newJobBuckets()
-	if err := appendComponentGroup(ctx, ds, buckets, componentNames, workflowType, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
+	if err := appendComponentGroup(ctx, ds, buckets, componentNames, workflowType, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, gateway, executionKeyForComponent); err != nil {
 		return nil, err
 	}
 	if bucketsEmpty(buckets) {
@@ -245,6 +252,7 @@ func buildSequentialComponentExecutions(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
+	gateway spec.GatewayConfig,
 	executionKeyForComponent func(componentIndex int) string,
 	displayName func(componentName string) string,
 ) ([]StepExecution, error) {
@@ -260,6 +268,7 @@ func buildSequentialComponentExecutions(
 			componentMap,
 			task,
 			defaultJobTimeoutSeconds,
+			gateway,
 			func(int) string {
 				return executionKeyForComponent(componentIndex)
 			},

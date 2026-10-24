@@ -44,7 +44,9 @@ type Runtime struct {
 	ResourceWaiter    informer.ComponentReadyObserver
 	KubeConfig        *rest.Config
 	// Dynamic writes component routes with the same tenant identity as Client.
-	Dynamic         dynamic.Interface
+	Dynamic dynamic.Interface
+	// Gateway selects which route resources exist and therefore are cleaned up.
+	Gateway         spec.GatewayConfig
 	ShareLocker     locker.Locker
 	ArchiveUploader ArchiveUploader
 }

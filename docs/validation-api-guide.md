@@ -407,21 +407,16 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
           }
         ],
 
-        "ingress": [
-          {
-            "name": "backend-ingress",
-            "ingressClassName": "nginx",
-            "routes": [
-              {
-                "path": "/api",
-                "backend": {
-                  "serviceName": "backend",
-                  "servicePort": 8080
-                }
+        "gateway": {
+          "routes": [
+            {
+              "path": "/api",
+              "backend": {
+                "port": 8080
               }
-            ]
-          }
-        ]
+            }
+          ]
+        }
       }
     }
   ],
@@ -759,7 +754,12 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 | `INVALID_PROBE_TYPE` | 无效的探针类型 |
 | `INVALID_PROBE_CONFIG` | 探针配置无效 |
 | `NESTED_TRAIT_FORBIDDEN` | 禁止嵌套 Trait |
-| `MISSING_INGRESS_ROUTES` | Ingress 缺少路由 |
+| `MISSING_GATEWAY_ROUTES` | `traits.gateway` 缺少路由 |
+| `INVALID_GATEWAY_ROUTE` | 路由的 path、match、rewrite、timeout 无效，路由重复或超过 16 条 |
+| `INVALID_GATEWAY_BACKEND` | 路由后端不是本组件可选的 Service 或 TCP 端口 |
+| `INVALID_GATEWAY_HOST` | host 不属于当前空间、格式无效、重复或超过 8 个 |
+| `GATEWAY_NOT_ALLOWED` | 平台未配置入口后端、组件类型不支持，或在 init/sidecar 中声明 |
+| `GATEWAY_UNSUPPORTED` | 当前入口后端不支持该字段（`ingress` 不支持 rewrite、timeout） |
 | `INVALID_ENVFROM_TYPE` | envFrom 类型无效 |
 | `INVALID_ENV_VALUE_SOURCE` | 环境变量值来源无效 |
 
@@ -807,10 +807,11 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ### Traits 嵌套规则
 
 - `init` 和 `sidecar` Trait 支持嵌套以下 Traits:
-  - `storage`, `envs`, `envFrom`, `probes`, `resources`, `securityPolicy`, `ingress`
+  - `storage`, `envs`, `envFrom`, `probes`, `resources`, `securityPolicy`
 - **禁止**在 `init` 或 `sidecar` 中再嵌套 `init` 或 `sidecar`
 - `service` Trait 为组件级能力，建议仅在组件顶层 `traits.service` 使用
 - `nodePool` 只支持组件顶层，init/sidecar 嵌套中返回 `INVALID_TRAIT_CONFIG`。
+- `gateway` 只支持组件顶层，init/sidecar 嵌套中返回 `GATEWAY_NOT_ALLOWED`。
 - 按名字查询 MySQL，引用不存在时返回 `INVALID_TRAIT_CONFIG`，字段为 `component[i].traits.nodePool`。
 - command Job 步骤支持 `nodePool`。
 
@@ -841,33 +842,41 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 - 模板覆盖整体替换节点池引用，克隆不重写配置名。
 
-### Ingress 规则
+### Gateway 规则
 
-- `routes` 数组必填且不能为空
-- 每个 route 的 `backend.serviceName` 在单一默认 Service 场景下可选，未填写时默认使用当前组件生成的 Service 名称（会做规范化与长度裁剪）
-- 当组件配置了 `traits.service` 时，Ingress 默认后端会优先从 `traits.service` 推导；若未配置，则回退到基于 `properties.ports` 的默认 Service 推导
-- 当同一组件配置多个非 `external` 的 `traits.service[]` 时，每个 Ingress route 必须显式填写 `backend.serviceName`，避免默认后端选择错误
-- `traits.ingress[].label` 不能覆盖 Eruun 托管 label，例如 `eruun.io/app-id`、`eruun.io/component-name`、`eruun.io/component-id`、`app.kubernetes.io/managed-by`
+`traits.gateway` 声明组件经平台入口对外提供的 HTTP 路由，首期只有入站方向。入口后端在部署时选定（Helm `gateway` values 或 `--gateway-*` flag，见 [Helm 部署契约](helm-deployment.md#入口网关)），当前只实现 `ingress` 后端。设计背景见 [Gateway Trait 设计](gateway-trait-design.md)。
 
-示例（省略 `serviceName` 时自动补全）：
+- 只允许在 `webservice`、`store` 组件顶层使用，其他组件类型和平台未配置入口后端时返回 `GATEWAY_NOT_ALLOWED`；command Job 步骤和 `type: "job"` 评测组件同样拒绝 `gateway`。
+- `hosts` 可选，最多 8 个且不能重复。每个 host 由一个 DNS label 和平台域名组成：`<前缀>-<空间 namespace>.<domain>`，前缀非空，label 为小写且不超过 63 个字符；不满足时返回 `INVALID_GATEWAY_HOST`。省略时使用默认 host `<小写组件名>-<空间 namespace>.<domain>`；组件名过长使默认 label 超过 63 个字符时，需要显式声明 `hosts`。
+- `routes` 必填，1–16 条，为空返回 `MISSING_GATEWAY_ROUTES`。每条路由：
+  - `path` 以 `/` 开头，不含 `?`、`#`、`..`、`//`，省略时为 `/`；
+  - `match` 为 `prefix`（默认）或 `exact`，区分大小写；`path` 与 `match` 的组合在组件内唯一；
+  - `rewrite` 只能配合 `prefix`，以 `/` 开头；
+  - `timeout` 使用 Gateway API Duration 格式（如 `600s`、`1h`），取值为 `0s` 或 1s–1h；
+  - 以上格式错误返回 `INVALID_GATEWAY_ROUTE`。`ingress` 后端不支持 `rewrite` 与 `timeout`，格式正确时返回 `GATEWAY_UNSUPPORTED`。
+- `backend` 可选，只能指向本组件的 Service，无法确定时返回 `INVALID_GATEWAY_BACKEND`：
+  - `service` 为空：组件只有一个非 `external` Service Trait 时使用它（未命名时为生成的 Service 名）；没有 Service Trait 时使用由 `properties.ports` 生成的默认 Service；有多个非 `external` Service Trait 时必须填写；
+  - `service` 非空：必须是本组件已命名、非 `external` 的 Service Trait 名，不接受生成的默认 Service 名；
+  - `port` 为空时取所选 Service 的第一个 TCP 端口，非空时必须是该 Service 的 TCP 端口。
+- TLS 在平台入口终止，组件不声明证书。`ingress` 后端为每个组件生成一个 Ingress：名称为 `GatewayRouteName(组件名, 应用资源名)`，`ingressClassName` 取平台配置，每个 host 一条规则且共享同一组 path，不带注解、TLS 和默认后端。
+- 这些检查只在带空间身份的请求中执行，需要空间 namespace 判断 host 归属。Try 返回字段级错误（`component[i].traits.gateway...`）；创建与版本更新使用同一套规则，返回第一条错误（版本更新的字段前缀为 `component[<组件名>].traits.gateway`）。
+
+示例（只有一个默认 Service，`backend` 可省略）：
 
 ```json
 {
-  "ingress": [
-    {
-      "name": "backend-ingress",
-      "routes": [
-        {
-          "path": "/api",
-          "backend": {
-            "servicePort": 8080
-          }
-        }
-      ]
-    }
-  ]
+  "gateway": {
+    "routes": [
+      {"path": "/v1"},
+      {"path": "/healthz", "match": "exact"}
+    ]
+  }
 }
 ```
+
+更多请求示例见 `examples/validation-try/13-valid-gateway-default-service.json`、`15-valid-gateway-service-trait.json`。
+
+YAML 转换（`POST /api/v1/applications/convert`）把与组件同名的 Ingress 转为该组件的 `traits.gateway`：每条规则须有 host 和 HTTP paths，所有 host 共享同一组 path；后端须为同一组件的 Service 并使用端口号；pathType 只接受 `Prefix` 与 `Exact`。带注解、TLS、默认后端、一个组件对应多个 Ingress，或同名组件不是 `webservice`/`store` 时转换失败，返回 400 并说明原因；没有同名组件的 Ingress 被跳过并返回警告。转换保留原 host，保存时仍按上述规则校验空间归属。
 
 ### Service Trait 规则
 
@@ -886,8 +895,8 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ### Label 规则
 
 - `properties.labels` 只能放业务自定义 label，不能覆盖 Eruun 托管 label
-- 保留键也包括共享判定标签 `eruun.io/share-name`、`eruun.io/share-strategy`；它们只能由 `traits.share` 语义下沉生成，不能通过 `properties.labels`、`traits.service[].labels` 或 `traits.ingress[].label` 手工注入
-- 真实生成 Pod/Service/Ingress/ConfigMap/Secret 等资源时，托管 label 会最终覆盖同名用户 label，保证 Service selector 和 Ingress 资源归属关系稳定
+- 保留键也包括共享判定标签 `eruun.io/share-name`、`eruun.io/share-strategy`；它们只能由 `traits.share` 语义下沉生成，不能通过 `properties.labels` 或 `traits.service[].labels` 手工注入
+- 真实生成 Pod/Service/入口路由/ConfigMap/Secret 等资源时，托管 label 会最终覆盖同名用户 label，保证 Service selector 和入口路由的归属关系稳定
 
 ## 使用建议
 

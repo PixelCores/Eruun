@@ -34,8 +34,8 @@ func StoreServerName(name, appName string) string {
 	return buildResourceName(maxControllerOwnedResourceNameLength, appName, name)
 }
 
-// IngressName builds an ingress resource name tied to the component/app pair.
-func IngressName(name, appName string) string {
+// GatewayRouteName builds the name of a component's single route object.
+func GatewayRouteName(name, appName string) string {
 	return buildResourceName(maxResourceNameLength, appName, name)
 }
 

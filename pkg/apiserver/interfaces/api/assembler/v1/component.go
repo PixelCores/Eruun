@@ -6,10 +6,13 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
-func ConvertComponentModelsToDTO(components []*model.ApplicationComponent) ([]*apisv1.ApplicationComponent, error) {
+// ConvertComponentModelsToDTO assembles component views; gateway is the platform
+// entry point that determines effective hosts.
+func ConvertComponentModelsToDTO(components []*model.ApplicationComponent, gateway spec.GatewayConfig) ([]*apisv1.ApplicationComponent, error) {
 	secrets, err := buildComponentSecretIndex(components)
 	if err != nil {
 		return nil, err
@@ -28,7 +31,7 @@ func ConvertComponentModelsToDTO(components []*model.ApplicationComponent) ([]*a
 		}
 	}
 	for _, component := range result {
-		enrichComponentResourceDetails(component, secrets)
+		enrichComponentResourceDetails(component, secrets, gateway)
 	}
 	return result, nil
 }
@@ -70,12 +73,12 @@ func convertComponentModelToDTOBase(component *model.ApplicationComponent) (*api
 
 type componentSecretIndex map[string]map[string]string
 
-func enrichComponentResourceDetails(component *apisv1.ApplicationComponent, secrets componentSecretIndex) {
+func enrichComponentResourceDetails(component *apisv1.ApplicationComponent, secrets componentSecretIndex, gateway spec.GatewayConfig) {
 	if component == nil {
 		return
 	}
 	component.Services = buildComponentServices(component)
-	component.Ingresses = buildComponentIngresses(component)
+	component.Gateway = buildComponentGateway(component, gateway)
 	component.ExternalLinks = buildComponentExternalLinks(component)
 	component.ResourceConfigs = buildComponentResourceConfigs(component)
 	component.Credentials = buildComponentCredentials(component, secrets)

@@ -98,13 +98,14 @@ generation/token ownership 始终启用，不提供关闭开关。
 
 | Value | 默认值 | 语义 |
 | --- | --- | --- |
-| `gateway.provider` | `""` | `""` 关闭组件入口（Ingress Trait 被拒绝）；`ingress` 生成 Kubernetes Ingress |
-| `gateway.domain` | `""` | 组件 host 的 DNS 后缀；`ingress` 时必填。默认 host 为 `<组件名>.<空间 namespace>.<domain>`，DNS 与证书由部署方提供 |
+| `gateway.provider` | `""` | `""` 关闭组件入口（`traits.gateway` 被拒绝）；`ingress` 为每个声明 `traits.gateway` 的组件生成 Kubernetes Ingress |
+| `gateway.domain` | `""` | 组件 host 的 DNS 后缀；`ingress` 时必填。组件 host 为单层 `<前缀>-<空间 namespace>.<domain>`，默认前缀为小写组件名；DNS（建议泛域名 `*.<domain>`）与证书由部署方提供 |
 | `gateway.proxyNamespace` | `""` | 入口数据面 Pod 所在 namespace，空间基线 NetworkPolicy 放行其入站流量；`ingress` 时必填，须为 DNS-1123 label |
 | `gateway.ingress.className` | `""` | `ingress` 时使用的 IngressClass，必填 |
 
 - `provider` 为空时其余字段必须为空；`ingress` 缺少任一必填字段时渲染失败。
 - `env` 不能设置任何 `ERUUN_GATEWAY_*`，否则渲染失败，避免与上表的值不一致。
+- 运行身份的 ClusterRole 只在 `ingress` 时包含 `networking.k8s.io/ingresses` 规则，空间 Role 同步只在 `ingress` 时授予这些动词；关闭入口时服务端也不再读写或清理 Ingress。从 `ingress` 切换为关闭前，应先删除各空间已部署的组件入口。
 - 不经 Helm 运行时，对应 flag 为 `--gateway-provider`、`--gateway-domain`、`--gateway-proxy-namespace`、`--gateway-ingress-class`，启动时按同样规则校验。
 - 静态清单 `deploy/eruun-stack.yaml` 固定使用 `ingress` 后端，直接在 `eruun-flags` ConfigMap 中写出这些变量。Quickstart 的 Helm 模式可通过 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN`、`GATEWAY_PROXY_NAMESPACE`、`GATEWAY_INGRESS_CLASS` 传值，未设置时保持关闭；manifest 模式拒绝这些变量。
 

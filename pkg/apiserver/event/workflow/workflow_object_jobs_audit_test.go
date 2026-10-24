@@ -9,7 +9,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,7 +21,7 @@ import (
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
-func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
+func TestCreateObjectJobsFromResultPVCNaming(t *testing.T) {
 	component := &model.ApplicationComponent{
 		Name:      "Gateway",
 		AppID:     "App-1",
@@ -33,23 +32,6 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		ProjectID:  "proj-1",
 		AppID:      "App-1",
 	}
-
-	t.Run("auto name when ingress missing name", func(t *testing.T) {
-		ing := &networkingv1.Ingress{}
-		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, testJobTimeoutSeconds, shareConfigForComponent(component, decodeComponentTraits(component)))
-		require.NoError(t, err)
-		require.Len(t, jobs, 1)
-
-		expected := wfNaming.IngressName(component.Name, component.ResourceAppNameOrID())
-		require.Equal(t, expected, jobs[0].Name)
-
-		require.Equal(t, string(config.JobDeployRoute), jobs[0].JobType)
-		route, resource, err := jobinfo.RouteFromJobInfo(jobs[0])
-		require.NoError(t, err)
-		require.Equal(t, spec.ResourceIngress, resource.Kind)
-		require.Equal(t, expected, route.GetName())
-		require.Equal(t, component.Namespace, route.GetNamespace())
-	})
 
 	t.Run("normalize pvc name and namespace", func(t *testing.T) {
 		canonical := "shop-datavol"
@@ -88,46 +70,6 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		require.Equal(t, component.Namespace, pvcObj.Namespace)
 		require.Equal(t, canonical, j[0].Name)
 	})
-
-	t.Run("normalize existing ingress name", func(t *testing.T) {
-		ing := &networkingv1.Ingress{}
-		baseName := "CustomRoute"
-		ing.Name = baseName
-
-		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, testJobTimeoutSeconds, shareConfigForComponent(component, decodeComponentTraits(component)))
-		require.NoError(t, err)
-		require.Len(t, jobs, 1)
-
-		expected := wfNaming.IngressName(baseName, component.ResourceAppNameOrID())
-		require.Equal(t, expected, jobs[0].Name)
-
-		require.Equal(t, string(config.JobDeployRoute), jobs[0].JobType)
-		route, resource, err := jobinfo.RouteFromJobInfo(jobs[0])
-		require.NoError(t, err)
-		require.Equal(t, spec.ResourceIngress, resource.Kind)
-		require.Equal(t, expected, route.GetName())
-		require.Equal(t, component.Namespace, route.GetNamespace())
-	})
-
-	t.Run("append system labels to ingress", func(t *testing.T) {
-		ing := &networkingv1.Ingress{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					spec.LabelAppID:         "evil-app",
-					spec.LabelComponentName: "wrong-component",
-					"layer":                 "db",
-				},
-			},
-		}
-		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, testJobTimeoutSeconds, shareConfigForComponent(component, decodeComponentTraits(component)))
-		require.NoError(t, err)
-		require.Len(t, jobs, 1)
-		route, _, err := jobinfo.RouteFromJobInfo(jobs[0])
-		require.NoError(t, err)
-		require.Equal(t, wfNaming.NormalizeLabelValue("App-1"), route.GetLabels()[spec.LabelAppID])
-		require.Equal(t, wfNaming.BoundedLabelValue("Gateway"), route.GetLabels()[spec.LabelComponentName])
-		require.Equal(t, "db", route.GetLabels()["layer"])
-	})
 }
 
 func TestCreateObjectJobsFromResultIgnoresConfigAndSecret(t *testing.T) {
@@ -159,7 +101,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	buckets, err := buildJobsForComponent(ctx, nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(ctx, nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +139,7 @@ func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 		TaskID:     "task-share",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +181,7 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 	}
 	task := &model.WorkflowQueue{WorkflowID: "wf-1", AppID: "app-1", TaskID: "task-1"}
 
-	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +234,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -318,7 +260,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -341,7 +283,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -362,7 +304,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+		buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -398,13 +340,10 @@ func TestCreateObjectJobsFromResult_ShareIgnoreSkipsAdditionalJobs(t *testing.T)
 	}
 
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data"}}
-	ingress := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "cache-route"}}
-	jobs, err := createObjectJobsFromResult([]client.Object{pvc, ingress}, component, task, nil, testJobTimeoutSeconds, shareConfigForComponent(component, decodeComponentTraits(component)))
+	jobs, err := createObjectJobsFromResult([]client.Object{pvc}, component, task, nil, testJobTimeoutSeconds, shareConfigForComponent(component, decodeComponentTraits(component)))
 	require.NoError(t, err)
-	require.Len(t, jobs, 2)
-	for _, job := range jobs {
-		require.Equal(t, config.StatusSkipped, job.Status)
-	}
+	require.Len(t, jobs, 1)
+	require.Equal(t, config.StatusSkipped, jobs[0].Status)
 }
 
 func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *testing.T) {
@@ -466,7 +405,7 @@ func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *t
 		TaskID:     "task-service",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +497,7 @@ func TestBuildJobsForComponent_StoreServiceTraitPrecedesStatefulSet(t *testing.T
 		TaskID:     "task-store",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +536,7 @@ func TestBuildJobsForComponent_DefaultServiceFromPortsUsesHighPriority(t *testin
 		TaskID:     "task-ports",
 	}
 
-	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,20 +554,23 @@ func TestBuildJobsForComponent_DefaultServiceFromPortsUsesHighPriority(t *testin
 	require.True(t, ok)
 }
 
+var testIngressGateway = spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+
 // Routes must run after the Services they reference: Services sit in
 // JobPriorityHigh and priorities execute in order within an execution group.
 func TestBuildJobsForComponent_RouteRunsAfterService(t *testing.T) {
 	propsJSON, err := model.NewJSONStructByStruct(model.Properties{
-		Ports: []model.Ports{{Port: 8080}},
+		Ports:  []model.Ports{{Port: 8080}},
+		Labels: map[string]string{"layer": "web"},
 	})
 	require.NoError(t, err)
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
-		Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{Path: "/"}}}},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}, {Path: "/v1"}}},
 	})
 	require.NoError(t, err)
 	component := &model.ApplicationComponent{
-		Name:          "api",
-		AppID:         "app-route",
+		Name:          "Api",
+		AppID:         "App-Route",
 		Namespace:     "nvg",
 		ComponentType: config.ServerJob,
 		Image:         "api:latest",
@@ -637,13 +579,62 @@ func TestBuildJobsForComponent_RouteRunsAfterService(t *testing.T) {
 	}
 	task := &model.WorkflowQueue{WorkflowID: "wf-route", ProjectID: "proj-route", AppID: component.AppID, TaskID: "task-route"}
 
-	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, "")
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, testIngressGateway, "")
 	require.NoError(t, err)
 	for _, job := range buckets[config.JobPriorityHigh] {
 		require.NotEqual(t, string(config.JobDeployRoute), job.JobType)
 	}
 	require.Contains(t, jobTypes(buckets[config.JobPriorityHigh]), string(config.JobDeployService))
 	require.ElementsMatch(t, []string{string(config.JobDeploy), string(config.JobDeployRoute)}, jobTypes(buckets[config.JobPriorityNormal]))
+
+	var routeJob *model.JobTask
+	for _, job := range buckets[config.JobPriorityNormal] {
+		if job.JobType == string(config.JobDeployRoute) {
+			routeJob = job
+		}
+	}
+	expected := wfNaming.GatewayRouteName(component.Name, component.ResourceNameKey())
+	require.Equal(t, expected, routeJob.Name)
+	require.Equal(t, "gateway: api-nvg.apps.example.com/, api-nvg.apps.example.com/v1", routeJob.Info)
+	route, resource, err := jobinfo.RouteFromJobInfo(routeJob)
+	require.NoError(t, err)
+	require.Equal(t, spec.ResourceIngress, resource.Kind)
+	require.Equal(t, expected, route.GetName())
+	require.Equal(t, "nvg", route.GetNamespace())
+	require.Equal(t, wfNaming.NormalizeLabelValue("App-Route"), route.GetLabels()[spec.LabelAppID])
+	require.Equal(t, wfNaming.BoundedLabelValue("Api"), route.GetLabels()[spec.LabelComponentName])
+	require.Equal(t, "web", route.GetLabels()["layer"])
+}
+
+func TestBuildJobsForComponent_GatewayRequiresRenderableRoute(t *testing.T) {
+	propsJSON, err := model.NewJSONStructByStruct(model.Properties{Ports: []model.Ports{{Port: 8080}}})
+	require.NoError(t, err)
+	gateway := &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}
+	task := &model.WorkflowQueue{WorkflowID: "wf", ProjectID: "proj", AppID: "app", TaskID: "task"}
+	component := func(componentType config.JobType, traits spec.Traits) *model.ApplicationComponent {
+		traitsJSON, err := model.NewJSONStructByStruct(traits)
+		require.NoError(t, err)
+		return &model.ApplicationComponent{Name: "api", AppID: "app", Namespace: "nvg", ComponentType: componentType, Image: "api:1", Properties: propsJSON, Traits: traitsJSON}
+	}
+
+	_, err = buildJobsForComponent(context.Background(), nil, component(config.ServerJob, spec.Traits{Gateway: gateway}), task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
+	require.ErrorContains(t, err, "cannot render routes")
+	_, err = buildJobsForComponent(context.Background(), nil, component(config.InstantJob, spec.Traits{Gateway: gateway}), task, testJobTimeoutSeconds, testIngressGateway, "")
+	require.ErrorContains(t, err, "only supported by webservice and store")
+
+	buckets, err := buildJobsForComponent(context.Background(), nil, component(config.StoreJob, spec.Traits{
+		Gateway: gateway,
+		Share:   &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyIgnore)},
+	}), task, testJobTimeoutSeconds, testIngressGateway, "")
+	require.NoError(t, err)
+	found := false
+	for _, job := range buckets[config.JobPriorityNormal] {
+		if job.JobType == string(config.JobDeployRoute) {
+			found = true
+			require.Equal(t, config.StatusSkipped, job.Status)
+		}
+	}
+	require.True(t, found)
 }
 
 func jobTypes(jobs []*model.JobTask) []string {

@@ -58,6 +58,10 @@ func (c *conversionServiceImpl) ConvertKubeResources(ctx context.Context, req v1
 	components, warnings, err := convertKubeYAMLToComponents(yamlText)
 	if err != nil {
 		klog.Errorf("convert kube yaml failed: %v", err)
+		// Unsupported Ingress shapes carry an explicit reason for the client.
+		if bcode.SafeClientMessage(err) != "" {
+			return nil, err
+		}
 		return nil, bcode.ErrApplicationConfig
 	}
 	if len(components) == 0 {

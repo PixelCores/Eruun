@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +25,7 @@ func TestSchedulingClassesPreserveDependenciesAndSubstepOverride(t *testing.T) {
 				{Name: "second", WorkflowType: config.JobDeploy},
 				{Name: "third", WorkflowType: config.JobDeploy, SchedulingClass: "normal"},
 			}}}}
-			groups, err := buildWorkflowStepExecutionGroups(context.Background(), nil, steps, components, &model.WorkflowQueue{AppID: "app", TaskID: "task"}, 60)
+			groups, err := buildWorkflowStepExecutionGroups(context.Background(), nil, steps, components, &model.WorkflowQueue{AppID: "app", TaskID: "task"}, 60, spec.GatewayConfig{})
 			if err != nil {
 				t.Fatal(err)
 			}

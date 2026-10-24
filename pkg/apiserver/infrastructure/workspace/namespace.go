@@ -88,10 +88,12 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 		{APIGroups: []string{""}, Resources: []string{"pods", "pods/log", "pods/exec", "services", "configmaps", "secrets", "persistentvolumeclaims", "events"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "replicasets"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"batch"}, Resources: []string{"jobs", "cronjobs"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-		// Ingress readiness and cleanup use GET/LIST only; the platform ClusterRole
-		// holds exactly these verbs, so granting them does not need escalate.
-		{APIGroups: []string{"networking.k8s.io"}, Resources: []string{"ingresses"}, Verbs: []string{"get", "list", "create", "update", "patch", "delete"}},
 	}}
+	if m.Config.Gateway.Provider == spec.GatewayProviderIngress {
+		// Route readiness and cleanup use GET/LIST only; the platform ClusterRole
+		// holds exactly these verbs, so granting them does not need escalate.
+		role.Rules = append(role.Rules, rbacv1.PolicyRule{APIGroups: []string{"networking.k8s.io"}, Resources: []string{"ingresses"}, Verbs: []string{"get", "list", "create", "update", "patch", "delete"}})
+	}
 	if err := upsert(ctx, m.Client.RbacV1().Roles(w.Namespace), role); err != nil {
 		return fmt.Errorf("ensure workspace role: %w", err)
 	}

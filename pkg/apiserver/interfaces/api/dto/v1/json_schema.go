@@ -243,6 +243,8 @@ func (b *schemaBuilder) requiredField(definition, field, validation string, opti
 		return field == "retentionDays" || field == "targets"
 	case "JobResultTarget":
 		return field == "type" || field == "mode"
+	case "GatewayTraitSpec":
+		return field == "routes"
 	}
 	return strings.Contains(validation, "required") && !options["omitempty"]
 }
@@ -335,6 +337,20 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		}
 	case definition == "Workflow" && field == "workflow":
 		schema["minItems"] = 1
+	case definition == "GatewayTraitSpec" && field == "hosts":
+		schema["maxItems"], schema["uniqueItems"] = 8, true
+	case definition == "GatewayTraitSpec" && field == "routes":
+		schema["minItems"], schema["maxItems"] = 1, 16
+	case definition == "GatewayRouteSpec" && (field == "path" || field == "rewrite"):
+		schema["pattern"] = `^/`
+	case definition == "GatewayRouteSpec" && field == "match":
+		schema["enum"] = []string{spec.GatewayMatchPrefix, spec.GatewayMatchExact}
+		schema["default"] = spec.GatewayMatchPrefix
+	case definition == "GatewayRouteSpec" && field == "timeout":
+		schema["pattern"] = `^([0-9]{1,5}(h|m|s|ms)){1,4}$`
+		schema["description"] = "Request timeout covering the request and response; 0s disables it where the gateway supports that."
+	case definition == "GatewayBackendSpec" && field == "port":
+		schema["minimum"], schema["maximum"] = 1, 65535
 	}
 }
 
@@ -359,6 +375,13 @@ func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[s
 			"then": map[string]any{"properties": map[string]any{
 				"type": map[string]any{"const": "job"}, "image": map[string]any{"maxLength": 0},
 			}},
+		}, map[string]any{
+			"if": map[string]any{"required": []string{"traits"}, "properties": map[string]any{
+				"traits": map[string]any{"required": []string{"gateway"}},
+			}},
+			"then": map[string]any{"properties": map[string]any{
+				"type": map[string]any{"enum": []string{"webservice", "store"}},
+			}},
 		}}
 	case "EvaluationTraitSpec":
 		definition["description"] = "LLM evaluation shared by standalone Jobs and Application job components."
@@ -382,8 +405,16 @@ func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[s
 		definition["description"] = "Opt-in filesystem and native Agent session recovery. replaySafe=true acknowledges that unconfirmed tool commands may execute again. Omit recovery to disable it; zero checkpointIntervalSeconds uses 300 seconds."
 	case "InitTraitSpec", "SidecarTraitsSpec":
 		definition["allOf"] = []any{map[string]any{"properties": map[string]any{
-			"traits": map[string]any{"not": map[string]any{"required": []string{"eval"}}},
+			"traits": map[string]any{"not": map[string]any{"anyOf": []any{
+				map[string]any{"required": []string{"eval"}},
+				map[string]any{"required": []string{"gateway"}},
+			}}},
 		}}}
+	case "GatewayRouteSpec":
+		definition["allOf"] = []any{map[string]any{
+			"if":   map[string]any{"required": []string{"rewrite"}},
+			"then": map[string]any{"properties": map[string]any{"match": map[string]any{"const": spec.GatewayMatchPrefix}}},
+		}}
 	}
 }
 

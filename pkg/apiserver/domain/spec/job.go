@@ -417,8 +417,8 @@ func validateJobTraits(t Traits, hasVolume bool) error {
 	if t.Evaluation != nil {
 		return fmt.Errorf("traits.eval requires type job")
 	}
-	if len(t.Ingress) > 0 {
-		return fmt.Errorf("traits.ingress is not supported by command steps")
+	if t.Gateway != nil {
+		return fmt.Errorf("traits.gateway is not supported by command steps")
 	}
 	if len(t.Service) > 0 {
 		return fmt.Errorf("traits.service is not supported by command steps")

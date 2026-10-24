@@ -1,5 +1,5 @@
 {
-  "name": "ingress-default-service",
+  "name": "gateway-default-service",
   "namespace": "default",
   "version": "1.0.0",
   "workflow": [
@@ -25,18 +25,13 @@
         ]
       },
       "traits": {
-        "ingress": [
-          {
-            "name": "backend-ingress",
-            "ingressClassName": "nginx",
-            "routes": [
-              {
-                "path": "/api",
-                "backend": {}
-              }
-            ]
-          }
-        ]
+        "gateway": {
+          "routes": [
+            {
+              "path": "/api"
+            }
+          ]
+        }
       }
     }
   ]

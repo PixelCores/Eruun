@@ -11,7 +11,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -409,8 +408,10 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 	}
 }
 
+// deleteIngressForComponent removes the component route when the platform
+// renders routes as Ingress; other providers leave no Ingress to delete.
 func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) {
-	if component == nil || reporter == nil {
+	if component == nil || reporter == nil || c.Cfg == nil || c.Cfg.Gateway.Provider != domainspec.GatewayProviderIngress {
 		return
 	}
 	ns := component.Namespace
@@ -468,9 +469,6 @@ func (c *applicationsServiceImpl) deleteAdditionalObjects(ctx context.Context, f
 		case *corev1.PersistentVolumeClaim:
 			ns := pickNamespace(resource.Namespace, fallbackNamespace)
 			klog.V(4).Infof("cleanup: preserving pvc %s/%s", ns, resource.Name)
-		case *networkingv1.Ingress:
-			ns := pickNamespace(resource.Namespace, fallbackNamespace)
-			reporter.record("Ingress", ns, resource.Name, false, c.deleteIngress(ctx, ns, resource.Name))
 		default:
 			klog.V(4).Infof("cleanup: unsupported additional object type %T", obj)
 		}

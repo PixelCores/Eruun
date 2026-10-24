@@ -246,8 +246,8 @@ func buildJobsForComponent(ctx context.Context, component *model.ApplicationComp
         // Secret 分配到最高优先级
         buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
     case config.ServerJob:
-        // Deployment 相关的附加资源（PVC、Ingress）分配到高优先级
-        // Deployment 本身分配到普通优先级
+        // Deployment 相关的 PVC 与 Service 分配到高优先级
+        // Deployment 本身与 gateway 路由分配到普通优先级，路由在 Service 之后执行
         buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
     }
     
@@ -674,8 +674,8 @@ func buildJobsForComponent(ctx context.Context, component *model.ApplicationComp
     switch component.ComponentType {
     case config.ServerJob:  // webservice
         serviceJobs := job.GenerateWebService(component, &properties)
-        // 附加资源（PVC、Ingress）放入高优先级
-        // Deployment 本身放入普通优先级
+        // PVC 与 Service 放入高优先级
+        // Deployment 本身与 gateway 路由放入普通优先级
         queueServiceJobs(logger, buckets, component, task, namespace, config.JobDeploy, serviceJobs, ...)
         
     case config.StoreJob:  // store
@@ -986,7 +986,7 @@ Workflow Steps 定义:
 每个 StepExecution 内部按 Priority 执行:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ Priority 0 (MaxHigh)  →  Priority 1 (High)  →  Priority 10 (Normal)        │
-│ [ConfigMap, Secret]      [PVC, Ingress]         [Deployment, Service]       │
+│ [ConfigMap, Secret]      [PVC, Service]         [Deployment, 入口路由]      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 

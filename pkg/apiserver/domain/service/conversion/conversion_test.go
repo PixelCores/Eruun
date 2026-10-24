@@ -1057,8 +1057,8 @@ func TestConvertKubeResources_InlineYAMLSizeLimit(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 }
 
-func TestConvertKubeResources_IngressByName(t *testing.T) {
-	yamlText := `
+func TestConvertKubeResources_IngressBecomesGatewayTrait(t *testing.T) {
+	const workload = `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1077,13 +1077,23 @@ spec:
         - name: api
           image: api:v1
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-svc
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 80
+      targetPort: 8080
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api
-spec:
-  rules:
-    - host: example.com
+`
+	const paths = `
       http:
         paths:
           - path: /healthz
@@ -1093,18 +1103,70 @@ spec:
                 name: api-svc
                 port:
                   number: 80
-`
+          - path: /v1/models
+            pathType: Exact
+            backend:
+              service:
+                name: api-svc
+                port:
+                  number: 80`
 	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
-	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
+	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: workload + `spec:
+  rules:
+    - host: api-ws-a.apps.example.com` + paths + `
+    - host: chat-ws-a.apps.example.com` + paths + "\n"})
 	require.NoError(t, err)
 	api := findComponent(resp.Components, "api")
 	require.NotNil(t, api)
-	require.Len(t, api.Traits.Ingress, 1)
-	require.Equal(t, "api", api.Traits.Ingress[0].Name)
-	require.Len(t, api.Traits.Ingress[0].Routes, 1)
-	require.Equal(t, "/healthz", api.Traits.Ingress[0].Routes[0].Path)
-	require.Equal(t, "example.com", api.Traits.Ingress[0].Routes[0].Host)
-	require.Equal(t, "api-svc", api.Traits.Ingress[0].Routes[0].Backend.ServiceName)
+	backend := &spec.GatewayBackendSpec{Service: "api-svc", Port: 80}
+	require.Equal(t, &spec.GatewayTraitSpec{
+		Hosts: []string{"api-ws-a.apps.example.com", "chat-ws-a.apps.example.com"},
+		Routes: []spec.GatewayRouteSpec{
+			{Path: "/healthz", Match: spec.GatewayMatchPrefix, Backend: backend},
+			{Path: "/v1/models", Match: spec.GatewayMatchExact, Backend: backend},
+		},
+	}, api.Traits.Gateway)
+
+	for _, tt := range []struct{ name, ingress, reason string }{
+		{"annotations", "  annotations:\n    nginx.ingress.kubernetes.io/rewrite-target: /\nspec:\n  rules:\n    - host: a.example.com" + paths, "annotations"},
+		{"tls", "spec:\n  tls:\n    - hosts: [a.example.com]\n      secretName: a-tls\n  rules:\n    - host: a.example.com" + paths, "TLS"},
+		{"default backend", "spec:\n  defaultBackend:\n    service:\n      name: api-svc\n      port:\n        number: 80\n  rules:\n    - host: a.example.com" + paths, "default backend"},
+		{"rule without host", "spec:\n  rules:\n    -" + paths, "host"},
+		{"hosts with different paths", "spec:\n  rules:\n    - host: a.example.com" + paths + "\n    - host: b.example.com\n      http:\n        paths:\n          - path: /\n            pathType: Prefix\n            backend:\n              service:\n                name: api-svc\n                port:\n                  number: 80", "same paths"},
+		{"foreign service", "spec:\n  rules:\n    - host: a.example.com\n      http:\n        paths:\n          - path: /\n            pathType: Prefix\n            backend:\n              service:\n                name: other\n                port:\n                  number: 80", "not a Service of the same component"},
+		{"named port", "spec:\n  rules:\n    - host: a.example.com\n      http:\n        paths:\n          - path: /\n            pathType: Prefix\n            backend:\n              service:\n                name: api-svc\n                port:\n                  name: http", "named Service ports"},
+		{"implementation specific", "spec:\n  rules:\n    - host: a.example.com\n      http:\n        paths:\n          - path: /\n            pathType: ImplementationSpecific\n            backend:\n              service:\n                name: api-svc\n                port:\n                  number: 80", "ImplementationSpecific"},
+		{"missing path type", "spec:\n  rules:\n    - host: a.example.com\n      http:\n        paths:\n          - path: /\n            backend:\n              service:\n                name: api-svc\n                port:\n                  number: 80", "pathType"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: workload + tt.ingress + "\n"})
+			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+			require.Contains(t, bcode.SafeClientMessage(err), tt.reason)
+		})
+	}
+
+	_, err = svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: `
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: api
+          image: api:v1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+spec:
+  rules:
+    - host: a.example.com` + paths + "\n"})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Contains(t, bcode.SafeClientMessage(err), "only webservice and store components accept a gateway")
 }
 
 func TestConvertKubeResources_RBACSharedServiceAccount(t *testing.T) {

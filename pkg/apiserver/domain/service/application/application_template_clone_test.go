@@ -538,12 +538,9 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 			Type:       spec.StorageTypePersistent,
 			MountPath:  "/var/lib/mysql",
 		}},
-		Ingress: []spec.IngressTraitsSpec{{
-			Name: "mysql",
-			Routes: []spec.IngressRoutes{{
-				Backend: spec.IngressRoute{ServiceName: "mysql-master"},
-			}},
-		}},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{
+			Backend: &spec.GatewayBackendSpec{Service: "mysql-master"},
+		}}},
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "mysql-master",
@@ -698,10 +695,9 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 	require.Equal(t, "new-mysql", clonedTraits.Storage[0].ClaimName)
 	require.Equal(t, "cloned-app-config", clonedTraits.Storage[0].SourceName)
 
-	require.Len(t, clonedTraits.Ingress, 1)
-	require.Equal(t, "new-mysql", clonedTraits.Ingress[0].Name)
-	require.Len(t, clonedTraits.Ingress[0].Routes, 1)
-	require.Equal(t, "cloned-app-mysql-master", clonedTraits.Ingress[0].Routes[0].Backend.ServiceName)
+	require.NotNil(t, clonedTraits.Gateway)
+	require.Len(t, clonedTraits.Gateway.Routes, 1)
+	require.Equal(t, "cloned-app-mysql-master", clonedTraits.Gateway.Routes[0].Backend.Service)
 
 	require.Len(t, clonedTraits.Service, 2)
 	require.Equal(t, "cloned-app-mysql-master", clonedTraits.Service[0].Name)

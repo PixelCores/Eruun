@@ -63,7 +63,7 @@ func TestConvertComponentModelToDTOUsesFirstExternalServiceForSvcLink(t *testing
 		}}),
 	}
 
-	dtos, err := ConvertComponentModelsToDTO([]*model.ApplicationComponent{component})
+	dtos, err := ConvertComponentModelsToDTO([]*model.ApplicationComponent{component}, testGateway)
 	require.NoError(t, err)
 	require.Len(t, dtos, 1)
 	require.Equal(t, []apisv1.ExternalLink{

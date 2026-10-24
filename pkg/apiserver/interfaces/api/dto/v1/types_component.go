@@ -20,7 +20,7 @@ type ApplicationComponent struct {
 	Traits          Traits                    `json:"traits"`
 	Sidecars        []spec.SidecarTraitsSpec  `json:"sidecars,omitempty"`
 	Services        []ComponentServiceInfo    `json:"services,omitempty"`
-	Ingresses       []ComponentIngressInfo    `json:"ingresses,omitempty"`
+	Gateway         *ComponentGatewayInfo     `json:"gateway,omitempty"`
 	ResourceConfigs []ComponentResourceConfig `json:"resourceConfigs,omitempty"`
 	Credentials     []ComponentCredentialInfo `json:"credentials,omitempty"`
 	Status          string                    `json:"status,omitempty"`
@@ -46,24 +46,22 @@ type ComponentServicePortInfo struct {
 	Protocol   string `json:"protocol,omitempty"`
 }
 
-type ComponentIngressInfo struct {
-	Name             string                      `json:"name"`
-	Namespace        string                      `json:"namespace,omitempty"`
-	IngressClassName string                      `json:"ingressClassName,omitempty"`
-	Annotations      map[string]string           `json:"annotations,omitempty"`
-	TLS              []spec.IngressTLSConfig     `json:"tls,omitempty"`
-	Routes           []ComponentIngressRouteInfo `json:"routes,omitempty"`
+// ComponentGatewayInfo is the effective gateway route of a component under the
+// current platform gateway configuration.
+type ComponentGatewayInfo struct {
+	Hosts  []string                    `json:"hosts"`
+	Routes []ComponentGatewayRouteInfo `json:"routes"`
 }
 
-type ComponentIngressRouteInfo struct {
-	Host        string              `json:"host,omitempty"`
-	Path        string              `json:"path,omitempty"`
-	PathType    string              `json:"pathType,omitempty"`
-	ServiceName string              `json:"serviceName,omitempty"`
-	ServicePort int32               `json:"servicePort,omitempty"`
-	Weight      int32               `json:"weight,omitempty"`
-	Headers     map[string]string   `json:"headers,omitempty"`
-	Rewrite     *spec.RewritePolicy `json:"rewrite,omitempty"`
+// ComponentGatewayRouteInfo is one route with its resolved Service and port;
+// both are empty when the backend cannot be resolved.
+type ComponentGatewayRouteInfo struct {
+	Path    string `json:"path"`
+	Match   string `json:"match"`
+	Rewrite string `json:"rewrite,omitempty"`
+	Timeout string `json:"timeout,omitempty"`
+	Service string `json:"service,omitempty"`
+	Port    int32  `json:"port,omitempty"`
 }
 
 type ComponentResourceConfig struct {

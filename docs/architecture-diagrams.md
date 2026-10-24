@@ -127,7 +127,7 @@ flowchart TB
 | env / envFrom | 主容器、init container 或 sidecar |
 | resources / probes / securityContext | 容器字段 |
 | nodePool / rollout | Pod 调度字段或 workload 发布策略 |
-| ingress 等 AdditionalObjects | 独立 Kubernetes 资源 Job |
+| PVC 等 AdditionalObjects；gateway 路由 | 独立 Kubernetes 资源 Job（路由在 Service 之后执行） |
 | service / share | Service 生成及资源调和/清理路径 |
 
 ## 5. 当前与未来的文档分界

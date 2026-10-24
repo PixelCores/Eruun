@@ -117,7 +117,7 @@
   - 模板的 `version` 只参与模板目录身份，不参与运行时 Kubernetes 资源命名。
   - 运行时资源命名：非 shared 组件使用规范化后的 `appName + componentName`；带 `traits.share` 的组件使用 `componentName` 作为命名空间级公共资源 key。
   - 选择器与运行时查询：Pod label、默认 Service selector、日志/容器查询、等待、清理、状态同步统一使用 `AppID + bounded componentName`；原始组件名保存在 annotation 中用于展示和任务聚合。
-  - 创建与 `/applications/try` 阶段会提前计算 Deployment/StatefulSet/Service/Ingress/Job/CronJob/ConfigMap/Secret 等独占资源名：普通应用会与同命名空间内其他普通应用做冲突校验；模板应用只校验自身组件是否互相冲突。standalone PVC 只校验名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不视为 standalone PVC。
+  - 创建与 `/applications/try` 阶段会提前计算 Deployment/StatefulSet/Service/入口路由/Job/CronJob/ConfigMap/Secret 等独占资源名：普通应用会与同命名空间内其他普通应用做冲突校验；模板应用只校验自身组件是否互相冲突。standalone PVC 只校验名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不视为 standalone PVC。
   - 当前仍处于规则定义阶段，本规则不提供旧资源名迁移路径；已部署资源应按新规则重新创建或清理。
 - 迁移要求：
   - 默认值为 false，老数据不自动成为模板。
@@ -131,14 +131,14 @@
 - 模板默认 StorageClass：`components[].tmp.defaultStorageClass` 会补齐模板内空的 persistent `storageClass`，覆盖顶层 storage 以及 init/sidecar nested storage；已有显式 `storageClass` 和非 persistent storage 保持不变。
 - 重复提交：相同 `name` 依赖现有应用创建唯一性约束处理；当前模板实例化请求不提供独立的幂等 token。
 - 冲突：端口/名称冲突时返回 409，不产生脏资源；资源名冲突会在创建和 `/applications/try` 阶段提前报错。
-- 重复 target：同一次请求多次引用同一个 `tmp.id + target` 时，会为后续克隆组件追加 `-1`、`-2` 等后缀，并按每个 clone 独立重写 Service selector、label、env、Ingress backend 等引用，避免串到第一个 clone。
+- 重复 target：同一次请求多次引用同一个 `tmp.id + target` 时，会为后续克隆组件追加 `-1`、`-2` 等后缀，并按每个 clone 独立重写 Service selector、label、env、gateway 路由 backend 等引用，避免串到第一个 clone。`traits.gateway.hosts` 不随组件名改写：省略 hosts 的克隆组件使用自己的默认 host，声明的 hosts 原样复制，并在保存时按目标空间重新校验归属。
 - 选择器稳定性：即使组件名被规范化或截断，Pod label、默认 Service selector、日志/容器查询、清理和状态同步仍应使用同一个 bounded component label。
 - 敏感信息：模板中含 Secret 占位符时，实例化要求用户提供或从配置加载；拒绝直接复制明文。
 - 失败语义：中途失败时按现有应用创建链路返回错误；不要在文档中假设额外的模板专属回滚协议。
 - 标签追踪：新实例包含来源模板标签/注解。
 
 ## 测试示例与验证步骤
-- 创建模板应用：调用 `/api/v1/applications` 创建基础模板，设置 `templateEnabled=true`，组件 traits 含存储/Ingress 等资源命名及 `nodePool` 引用，确保模板组件具备镜像与必需字段。
+- 创建模板应用：调用 `/api/v1/applications` 创建基础模板，设置 `templateEnabled=true`，组件 traits 含存储、gateway 路由 backend 等资源引用及 `nodePool` 引用，确保模板组件具备镜像与必需字段。
   ```json
   {
     "name": "tmpl-mysql",
@@ -194,7 +194,7 @@
   }
   ```
   如果模板已显式声明 `"storageClass": "fast-ssd"`，展开后仍保留 `fast-ssd`，不会被 `defaultStorageClass` 覆盖。
-- 克隆创建新应用（成功）：请求体中仅提供组件名和 `tmp.id`。期望组件名及存储/Ingress/EnvFrom/init/sidecar 中的资源名按原有规则重写，节点池引用保持原名。
+- 克隆创建新应用（成功）：请求体中仅提供组件名和 `tmp.id`。期望组件名及存储/gateway backend/EnvFrom/init/sidecar 中的资源名按原有规则重写，节点池引用保持原名。
   ```json
   {
     "name": "tenant-a-mysql-app",
@@ -206,14 +206,14 @@
     ]
   }
   ```
-  验证：调用 `/api/v1/applications/{appID}/components`，检查组件名、traits.storage 的 `name`（以及已声明的 `claimName`/`sourceName`）被重写，Ingress backend 的 `serviceName`、`nodePool` 引用保持原名。
+  验证：调用 `/api/v1/applications/{appID}/components`，检查组件名、traits.storage 的 `name`（以及已声明的 `claimName`/`sourceName`）被重写；gateway 路由的 `backend.service` 引用模板内 Service 时改写为克隆后的 Service 名，引用模板未声明的 Service 时保持原名；`nodePool` 引用保持原名。
 - 覆盖规则：如果同一个 `tmp.id` 在请求中出现多次，系统会按 `tmp.target` 或组件类型为每个请求条目生成对应 clone；同一模板组件被重复克隆时，后续目标名会自动追加 `-1`、`-2` 等后缀，支持：
   - 组件重命名：同模板多个条目可为不同组件指定新名称。
   - 环境变量覆盖：`properties.env` 覆盖模板 env。
   - Secret 覆盖：仅 `type=secret` 组件的 `properties.secret` 会覆盖模板 Secret 数据。
   - Job 失败策略覆盖：仅 `type=job` 组件支持 `properties.failurePolicy`；省略保留模板值，空值清除 override，`cleanup_failed` 覆盖模板值，其他值和 init container 使用均拒绝。
   - 精确匹配：推荐在 `tmp` 中提供 `target`（模板组件名），确保覆盖应用到指定组件；缺失 target 时按类型匹配并存在不确定性。
-  每个 clone 都会独立生成引用重写映射，确保 Service selector、label、env、Ingress backend 等引用指向自己的 clone。
+  每个 clone 都会独立生成引用重写映射，确保 Service selector、label、env、gateway 路由 backend 等引用指向自己的 clone。
 - 模板未启用错误：当模板 `templateEnabled=false` 时，同样的克隆请求应返回 400，消息 `template application is not enabled`。
 - 模板缺失或 ID 为空：`tmp.id` 为空应返回 400（`template id is required`）；不存在的 ID 返回 404（`application not found`）。
 - 多组件模板命名：模板包含多个组件（如 `api`、`worker`）时，请求组件名为 `foo-app`，预期实例化后组件名为 `foo-app-api` 与 `foo-app-worker`，并同步重写相关资源名。

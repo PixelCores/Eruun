@@ -35,7 +35,7 @@ func TestConvertComponentModelsToDTOScopesAndOrdersCredentials(t *testing.T) {
 		})
 	}
 
-	dtos, err := ConvertComponentModelsToDTO(components)
+	dtos, err := ConvertComponentModelsToDTO(components, testGateway)
 	require.NoError(t, err)
 	require.Equal(t, []apisv1.ComponentCredentialInfo{
 		{Source: "component.envFrom", SecretName: "db-secret", Key: "a", Value: "first", Resolved: true},

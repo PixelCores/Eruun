@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
@@ -743,7 +744,7 @@ func TestCreateApplicationsStoresConvertedSecretAsPlainText(t *testing.T) {
 
 	components, err := svc.ListApplicationComponents(context.Background(), createResp.ID)
 	require.NoError(t, err)
-	dtos, err := assembler.ConvertComponentModelsToDTO(components)
+	dtos, err := assembler.ConvertComponentModelsToDTO(components, spec.GatewayConfig{})
 	require.NoError(t, err)
 
 	var apiComponent *apisv1.ApplicationComponent
@@ -795,7 +796,7 @@ func TestCreateApplicationsRoundTripsSecretTextFromComponentResponse(t *testing.
 	}
 	require.NotNil(t, secretComponent)
 
-	secretDTOs, err := assembler.ConvertComponentModelsToDTO([]*model.ApplicationComponent{secretComponent})
+	secretDTOs, err := assembler.ConvertComponentModelsToDTO([]*model.ApplicationComponent{secretComponent}, spec.GatewayConfig{})
 	require.NoError(t, err)
 	require.Len(t, secretDTOs, 1)
 	secretDTO := secretDTOs[0]
@@ -957,127 +958,81 @@ func TestCreateApplicationsRejectsInvalidExplicitServiceTraitName(t *testing.T) 
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 }
 
-func TestCreateApplicationsRejectsInvalidIngressNameAndHost(t *testing.T) {
-	testCases := []struct {
-		name        string
-		ingressName string
-		hosts       []string
-		errContains string
+// Saving applies the gateway rules to workspace components with the platform
+// gateway configuration and keeps the declared spec.
+func TestCreateApplicationsValidatesGatewayInWorkspace(t *testing.T) {
+	ingress := spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	ctx := access.WithScope(context.Background(), access.Scope{WorkspaceID: "workspace-a", Namespace: "ws-a", Role: "member"})
+	request := func(traits apisv1.Traits) apisv1.CreateApplicationsRequest {
+		return apisv1.CreateApplicationsRequest{
+			Name: "chat",
+			Components: []apisv1.CreateComponentRequest{{
+				Name: "api", ComponentType: config.ServerJob, Image: "nginx:1.27",
+				Properties: apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}},
+				Traits:     traits,
+			}},
+		}
+	}
+	for _, tc := range []struct {
+		name    string
+		cfg     spec.GatewayConfig
+		gateway spec.GatewayTraitSpec
+		message string
 	}{
 		{
-			name:        "invalid ingress name",
-			ingressName: "Backend_Ingress",
-			hosts:       []string{"api.example.com"},
-			errContains: "component[0].traits.ingress[0].name",
+			name: "disabled platform gateway", gateway: spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}},
+			message: "component[0].traits.gateway: the platform has no gateway provider; component routes are disabled",
 		},
 		{
-			name:        "invalid ingress host",
-			ingressName: "backend-ingress",
-			hosts:       []string{"api.example.com."},
-			errContains: "component[0].traits.ingress[0].hosts[0]",
+			name: "host of another workspace", cfg: ingress,
+			gateway: spec.GatewayTraitSpec{Hosts: []string{"api-ws-b.apps.example.com"}, Routes: []spec.GatewayRouteSpec{{}}},
+			message: "component[0].traits.gateway.hosts: ",
 		},
 		{
-			name:        "whitespace-padded ingress host",
-			ingressName: "backend-ingress",
-			hosts:       []string{" api.example.com "},
-			errContains: "component[0].traits.ingress[0].hosts[0]",
+			name: "unknown backend service", cfg: ingress,
+			gateway: spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Backend: &spec.GatewayBackendSpec{Service: "other"}}}},
+			message: "component[0].traits.gateway.routes[0].backend: ",
 		},
-	}
-
-	for _, tc := range testCases {
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newInMemoryAppStore()
 			svc := newMockServiceWithStore(store)
-
-			req := apisv1.CreateApplicationsRequest{
-				Namespace: config.DefaultNamespace,
-				Name:      "new-app",
-				Components: []apisv1.CreateComponentRequest{{
-					Name:          "backend",
-					ComponentType: config.ServerJob,
-					Image:         "nginx:latest",
-					Traits: apisv1.Traits{
-						Ingress: []spec.IngressTraitsSpec{
-							{
-								Name:  tc.ingressName,
-								Hosts: tc.hosts,
-								Routes: []spec.IngressRoutes{
-									{
-										Path: "/",
-										Backend: spec.IngressRoute{
-											ServiceName: "backend",
-											ServicePort: 80,
-										},
-									},
-								},
-							},
-						},
-					},
-				}},
-			}
-
-			_, err := svc.CreateApplications(context.Background(), req)
-			require.Error(t, err)
+			svc.Cfg = &config.Config{Accounts: &spec.AccountConfig{}, Gateway: tc.cfg}
+			gateway := tc.gateway
+			_, err := svc.CreateApplications(ctx, request(apisv1.Traits{Gateway: &gateway}))
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-			require.Contains(t, err.Error(), tc.errContains)
+			require.True(t, strings.HasPrefix(bcode.SafeClientMessage(err), tc.message), bcode.SafeClientMessage(err))
 			require.Empty(t, store.apps)
 			require.Empty(t, store.components)
-			require.Empty(t, store.workflows)
 		})
 	}
+
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+	svc.Cfg = &config.Config{Accounts: &spec.AccountConfig{}, Gateway: ingress}
+	declared := spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Path: "/v1"}}}
+	_, err := svc.CreateApplications(ctx, request(apisv1.Traits{Gateway: &declared}))
+	require.NoError(t, err)
+	require.Len(t, store.components, 1)
+	var traits spec.Traits
+	raw, err := json.Marshal(store.components["api"].Traits)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &traits))
+	require.Equal(t, declared, *traits.Gateway)
 }
 
-func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
-	ingressWithLabels := func(labels map[string]string) []spec.IngressTraitsSpec {
-		return []spec.IngressTraitsSpec{{
-			Name:  "side-ingress",
-			Hosts: []string{"side.example.com"},
-			Label: labels,
-			Routes: []spec.IngressRoutes{{
-				Path:    "/",
-				Backend: spec.IngressRoute{ServiceName: "backend", ServicePort: 80},
-			}},
-		}}
-	}
-	shareLabels := map[string]string{
-		spec.LabelShareName:     "demo",
-		spec.LabelShareStrategy: "ignore",
-	}
-	testCases := []struct {
-		name        string
-		traits      func(labels map[string]string) apisv1.Traits
-		labels      map[string]string
-		errContains string
+func TestCreateApplicationsRejectsNestedGateway(t *testing.T) {
+	gateway := &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}
+	for _, tc := range []struct {
+		name   string
+		traits apisv1.Traits
 	}{
-		{
-			name: "init ingress",
-			traits: func(labels map[string]string) apisv1.Traits {
-				return apisv1.Traits{Init: []spec.InitTraitSpec{{
-					Name: "prepare", Image: "busybox:1.36",
-					Traits: apisv1.Traits{Ingress: ingressWithLabels(labels)},
-				}}}
-			},
-			labels:      shareLabels,
-			errContains: "is reserved and cannot be overridden",
-		},
-		{
-			name: "sidecar ingress",
-			traits: func(labels map[string]string) apisv1.Traits {
-				return apisv1.Traits{Sidecar: []spec.SidecarTraitsSpec{{
-					Name: "proxy", Image: "nginx:latest",
-					Traits: apisv1.Traits{Ingress: ingressWithLabels(labels)},
-				}}}
-			},
-			labels:      shareLabels,
-			errContains: "is reserved and cannot be overridden",
-		},
-	}
-
-	for _, tc := range testCases {
+		{"init gateway", apisv1.Traits{Init: []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.36", Traits: apisv1.Traits{Gateway: gateway}}}}},
+		{"sidecar gateway", apisv1.Traits{Sidecar: []spec.SidecarTraitsSpec{{Name: "proxy", Image: "nginx:latest", Traits: apisv1.Traits{Gateway: gateway}}}}},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newInMemoryAppStore()
 			svc := newMockServiceWithStore(store)
-
 			_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 				Namespace: config.DefaultNamespace,
 				Name:      "new-app",
@@ -1085,27 +1040,13 @@ func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
 					Name:          "backend",
 					ComponentType: config.ServerJob,
 					Image:         "nginx:latest",
-					Traits:        tc.traits(tc.labels),
+					Traits:        tc.traits,
 				}},
 			})
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-			require.Contains(t, err.Error(), tc.errContains)
+			require.Contains(t, err.Error(), "gateway is only supported in component-level traits")
 			require.Empty(t, store.apps)
 			require.Empty(t, store.components)
-			require.Empty(t, store.workflows)
-
-			// The same nested ingress with ordinary labels stays accepted.
-			_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-				Namespace: config.DefaultNamespace,
-				Name:      "new-app",
-				Components: []apisv1.CreateComponentRequest{{
-					Name:          "backend",
-					ComponentType: config.ServerJob,
-					Image:         "nginx:latest",
-					Traits:        tc.traits(map[string]string{"team": "platform"}),
-				}},
-			})
-			require.NoError(t, err)
 		})
 	}
 }

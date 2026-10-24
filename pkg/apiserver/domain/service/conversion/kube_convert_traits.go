@@ -2,18 +2,24 @@ package conversion
 
 import (
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 
 	networkingv1 "k8s.io/api/networking/v1"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.CreateComponentRequest) []string {
+// applyIngressTraits converts each Ingress into the gateway trait of the
+// component with the same name. Inputs the gateway contract cannot express are
+// rejected instead of being dropped.
+func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.CreateComponentRequest) ([]string, error) {
 	if len(ingresses) == 0 || len(components) == 0 {
-		return nil
+		return nil, nil
 	}
 	indexes := make(map[string][]int)
 	for i := range components {
@@ -32,75 +38,92 @@ func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.Cre
 		if name == "" {
 			continue
 		}
-		trait, traitWarnings := buildIngressTrait(ingress)
-		warnings = append(warnings, traitWarnings...)
-		if trait == nil {
-			continue
-		}
 		targets := indexes[name]
 		if len(targets) == 0 {
 			warnings = append(warnings, fmt.Sprintf("ingress %s has no matching component; skipped", name))
 			continue
 		}
 		for _, idx := range targets {
-			components[idx].Traits.Ingress = append(components[idx].Traits.Ingress, *trait)
+			component := &components[idx]
+			if component.ComponentType != config.ServerJob && component.ComponentType != config.StoreJob {
+				return warnings, unsupportedIngress(ingress, "only webservice and store components accept a gateway")
+			}
+			if component.Traits.Gateway != nil {
+				return warnings, unsupportedIngress(ingress, "a component accepts one Ingress")
+			}
+			trait, err := buildGatewayTrait(ingress, component.Traits.Service)
+			if err != nil {
+				return warnings, err
+			}
+			component.Traits.Gateway = trait
 		}
 	}
-	return warnings
+	return warnings, nil
 }
 
-func buildIngressTrait(ingress *networkingv1.Ingress) (*spec.IngressTraitsSpec, []string) {
-	if ingress == nil {
-		return nil, nil
+func buildGatewayTrait(ingress *networkingv1.Ingress, services []spec.ServiceTraitSpec) (*spec.GatewayTraitSpec, error) {
+	if len(ingress.Annotations) > 0 {
+		return nil, unsupportedIngress(ingress, "annotations are not supported")
 	}
-	var warnings []string
-	trait := &spec.IngressTraitsSpec{
-		Name:        ingress.Name,
-		Namespace:   ingress.Namespace,
-		Label:       filterReservedConvertedLabels(ingress.Labels),
-		Annotations: utils.CopyStringMap(ingress.Annotations),
+	if len(ingress.Spec.TLS) > 0 {
+		return nil, unsupportedIngress(ingress, "TLS terminates at the platform gateway")
 	}
-	if ingress.Spec.IngressClassName != nil {
-		trait.IngressClassName = *ingress.Spec.IngressClassName
+	if ingress.Spec.DefaultBackend != nil {
+		return nil, unsupportedIngress(ingress, "a default backend is not supported")
 	}
-	for _, tls := range ingress.Spec.TLS {
-		trait.TLS = append(trait.TLS, spec.IngressTLSConfig{
-			SecretName: tls.SecretName,
-			Hosts:      append([]string(nil), tls.Hosts...),
-		})
-	}
-	for _, rule := range ingress.Spec.Rules {
-		if rule.HTTP == nil || len(rule.HTTP.Paths) == 0 {
-			continue
+	trait := &spec.GatewayTraitSpec{}
+	var first []spec.GatewayRouteSpec
+	for i, rule := range ingress.Spec.Rules {
+		if rule.Host == "" || rule.HTTP == nil {
+			return nil, unsupportedIngress(ingress, "every rule needs a host and HTTP paths")
 		}
-		for _, path := range rule.HTTP.Paths {
-			if path.Backend.Service == nil {
-				warnings = append(warnings, fmt.Sprintf("ingress %s has non-service backend; skipped", ingress.Name))
-				continue
-			}
-			servicePort := int32(0)
-			if path.Backend.Service.Port.Number != 0 {
-				servicePort = path.Backend.Service.Port.Number
-			} else if path.Backend.Service.Port.Name != "" {
-				warnings = append(warnings, fmt.Sprintf("ingress %s uses named service port %s; default port will be used", ingress.Name, path.Backend.Service.Port.Name))
-			}
-			route := spec.IngressRoutes{
-				Path:     path.Path,
-				PathType: "",
-				Host:     rule.Host,
-				Backend: spec.IngressRoute{
-					ServiceName: path.Backend.Service.Name,
-					ServicePort: servicePort,
-				},
-			}
-			if path.PathType != nil {
-				route.PathType = string(*path.PathType)
-			}
-			trait.Routes = append(trait.Routes, route)
+		routes, err := gatewayRoutesFromPaths(ingress, rule.HTTP.Paths, services)
+		if err != nil {
+			return nil, err
 		}
+		if i == 0 {
+			first = routes
+		} else if !reflect.DeepEqual(first, routes) {
+			return nil, unsupportedIngress(ingress, "all hosts must share the same paths")
+		}
+		trait.Hosts = append(trait.Hosts, rule.Host)
 	}
-	if len(trait.Routes) == 0 {
-		return nil, append(warnings, fmt.Sprintf("ingress %s has no valid routes; skipped", ingress.Name))
+	if len(first) == 0 {
+		return nil, unsupportedIngress(ingress, "it has no routes")
 	}
-	return trait, warnings
+	trait.Routes = first
+	return trait, nil
+}
+
+func gatewayRoutesFromPaths(ingress *networkingv1.Ingress, paths []networkingv1.HTTPIngressPath, services []spec.ServiceTraitSpec) ([]spec.GatewayRouteSpec, error) {
+	routes := make([]spec.GatewayRouteSpec, 0, len(paths))
+	for _, path := range paths {
+		backend := path.Backend.Service
+		if backend == nil {
+			return nil, unsupportedIngress(ingress, "only Service backends are supported")
+		}
+		if backend.Port.Number == 0 {
+			return nil, unsupportedIngress(ingress, "named Service ports are not supported")
+		}
+		if !slices.ContainsFunc(services, func(s spec.ServiceTraitSpec) bool { return s.Name == backend.Name }) {
+			return nil, unsupportedIngress(ingress, fmt.Sprintf("backend Service %q is not a Service of the same component", backend.Name))
+		}
+		route := spec.GatewayRouteSpec{Path: path.Path, Backend: &spec.GatewayBackendSpec{Service: backend.Name, Port: backend.Port.Number}}
+		switch {
+		case path.PathType == nil:
+			return nil, unsupportedIngress(ingress, "every path needs a pathType")
+		case *path.PathType == networkingv1.PathTypePrefix:
+			route.Match = spec.GatewayMatchPrefix
+		case *path.PathType == networkingv1.PathTypeExact:
+			route.Match = spec.GatewayMatchExact
+		default:
+			return nil, unsupportedIngress(ingress, fmt.Sprintf("path type %s is not supported", *path.PathType))
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
+}
+
+func unsupportedIngress(ingress *networkingv1.Ingress, reason string) error {
+	return bcode.WithSafeClientMessage(bcode.ErrApplicationConfig, fmt.Sprintf("ingress %s cannot be converted to a gateway trait: %s", ingress.Name, reason))
 }

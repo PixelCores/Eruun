@@ -109,8 +109,6 @@ const (
 	ErrCodeInvalidProbeType      = "INVALID_PROBE_TYPE"
 	ErrCodeInvalidProbeConfig    = "INVALID_PROBE_CONFIG"
 	ErrCodeNestedTraitForbidden  = "NESTED_TRAIT_FORBIDDEN"
-	ErrCodeMissingIngressRoutes  = "MISSING_INGRESS_ROUTES"
-	ErrCodeMissingServiceName    = "MISSING_SERVICE_NAME"
 	ErrCodeInvalidEnvFromType    = "INVALID_ENVFROM_TYPE"
 	ErrCodeInvalidEnvValueSource = "INVALID_ENV_VALUE_SOURCE"
 	ErrCodeInvalidJobSchedule    = "INVALID_JOB_SCHEDULE"
@@ -128,3 +126,13 @@ const (
 )
 
 const ErrCodeInvalidJobFailurePolicy = "INVALID_JOB_FAILURE_POLICY"
+
+// Gateway trait errors.
+const (
+	ErrCodeMissingGatewayRoutes  = "MISSING_GATEWAY_ROUTES"
+	ErrCodeInvalidGatewayRoute   = "INVALID_GATEWAY_ROUTE"
+	ErrCodeInvalidGatewayBackend = "INVALID_GATEWAY_BACKEND"
+	ErrCodeInvalidGatewayHost    = "INVALID_GATEWAY_HOST"
+	ErrCodeGatewayNotAllowed     = "GATEWAY_NOT_ALLOWED"
+	ErrCodeGatewayUnsupported    = "GATEWAY_UNSUPPORTED"
+)

@@ -1,5 +1,5 @@
 {
-  "_comment": "Response example for GET /api/v1/applications/:appID/components with sidecars, services, ingresses, resourceConfigs, and credentials fields",
+  "_comment": "Response example for GET /api/v1/applications/:appID/components with sidecars, services, gateway, resourceConfigs, and credentials fields",
   "code": 0,
   "message": "",
   "data": {
@@ -54,17 +54,13 @@
               ]
             }
           ],
-          "ingress": [
-            {
-              "routes": [
-                {
-                  "host": "api.example.com",
-                  "path": "/",
-                  "backend": {}
-                }
-              ]
-            }
-          ],
+          "gateway": {
+            "routes": [
+              {
+                "path": "/"
+              }
+            ]
+          },
           "envs": [
             {
               "name": "DB_PASSWORD",
@@ -112,20 +108,19 @@
             ]
           }
         ],
-        "ingresses": [
-          {
-            "name": "api-ingress",
-            "namespace": "default",
-            "routes": [
-              {
-                "host": "api.example.com",
-                "path": "/",
-                "serviceName": "api-svc",
-                "servicePort": 80
-              }
-            ]
-          }
-        ],
+        "gateway": {
+          "hosts": [
+            "api-default.apps.example.com"
+          ],
+          "routes": [
+            {
+              "path": "/",
+              "match": "prefix",
+              "service": "api-svc",
+              "port": 80
+            }
+          ]
+        },
         "resourceConfigs": [
           {
             "scope": "main",
@@ -147,8 +142,8 @@
         "status": "Running",
         "externalLinks": [
           {
-            "type": "ingress",
-            "value": "api.example.com/"
+            "type": "gateway",
+            "value": "api-default.apps.example.com/"
           }
         ],
         "createTime": "2026-02-17T00:00:00Z",

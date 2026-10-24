@@ -224,62 +224,87 @@ func TestCleanupApplicationResourcesDeletesTraitServicesByLabels(t *testing.T) {
 	require.Error(t, err)
 }
 
+// Ingress cleanup follows the platform gateway: only the ingress provider
+// renders routes as Ingress, and only it grants the Ingress permissions.
 func TestCleanupApplicationResourcesDeletesIngressByLabels(t *testing.T) {
-	app := &model.Applications{
-		ID:        "app-trait-ing",
-		Name:      "demo-trait-ing",
-		Namespace: "default",
-	}
-	component := &model.ApplicationComponent{
-		Name:          "Redis_API",
-		AppID:         app.ID,
-		Namespace:     "default",
-		ComponentType: config.StoreJob,
-		Replicas:      1,
-		Image:         "redis:7",
-		Properties: mustJSONStruct(&model.Properties{
-			Env: map[string]string{
-				"TZ": "Asia/Shanghai",
-			},
-		}),
-	}
-	store := &cleanupStore{
-		app:        app,
-		components: []*model.ApplicationComponent{component},
-		applications: map[string]*model.Applications{
-			app.ID: app,
-		},
-	}
-
-	ingressName := "legacy-redis-ingress"
-	clientset := fake.NewSimpleClientset(
-		&networkingv1.Ingress{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ingressName,
+	for _, tc := range []struct {
+		name    string
+		gateway spec.GatewayConfig
+		deleted bool
+	}{
+		{"ingress gateway", spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}, true},
+		{"disabled gateway", spec.GatewayConfig{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &model.Applications{
+				ID:        "app-trait-ing",
+				Name:      "demo-trait-ing",
 				Namespace: "default",
-				Labels: map[string]string{
-					spec.LabelAppID:         app.ID,
-					spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
+			}
+			component := &model.ApplicationComponent{
+				Name:          "Redis_API",
+				AppID:         app.ID,
+				Namespace:     "default",
+				ComponentType: config.StoreJob,
+				Replicas:      1,
+				Image:         "redis:7",
+				Properties: mustJSONStruct(&model.Properties{
+					Env: map[string]string{
+						"TZ": "Asia/Shanghai",
+					},
+				}),
+			}
+			store := &cleanupStore{
+				app:        app,
+				components: []*model.ApplicationComponent{component},
+				applications: map[string]*model.Applications{
+					app.ID: app,
 				},
-			},
-		},
-	)
+			}
 
-	svc := &applicationsServiceImpl{
-		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:     clientset,
-		Store:          store,
-		AppRepo:        &mockCleanupAppRepo{store: store},
-		ComponentRepo:  &mockCleanupComponentRepo{store: store},
+			ingressName := "legacy-redis-ingress"
+			clientset := fake.NewSimpleClientset(
+				&networkingv1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      ingressName,
+						Namespace: "default",
+						Labels: map[string]string{
+							spec.LabelAppID:         app.ID,
+							spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
+						},
+					},
+				},
+			)
+
+			svc := &applicationsServiceImpl{
+				Cfg:            &config.Config{Gateway: tc.gateway},
+				ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+				KubeClient:     clientset,
+				Store:          store,
+				AppRepo:        &mockCleanupAppRepo{store: store},
+				ComponentRepo:  &mockCleanupComponentRepo{store: store},
+			}
+
+			resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			ingressRequests := 0
+			for _, action := range clientset.Actions() {
+				if action.GetResource().Resource == "ingresses" {
+					ingressRequests++
+				}
+			}
+			_, err = clientset.NetworkingV1().Ingresses("default").Get(context.Background(), ingressName, metav1.GetOptions{})
+			if tc.deleted {
+				require.Contains(t, resp.DeletedResources, "Ingress:default/"+ingressName)
+				require.Error(t, err)
+				return
+			}
+			require.NotContains(t, resp.DeletedResources, "Ingress:default/"+ingressName)
+			require.NoError(t, err)
+			require.Zero(t, ingressRequests, "no Ingress request without the ingress gateway")
+		})
 	}
-
-	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.Contains(t, resp.DeletedResources, "Ingress:default/"+ingressName)
-
-	_, err = clientset.NetworkingV1().Ingresses("default").Get(context.Background(), ingressName, metav1.GetOptions{})
-	require.Error(t, err)
 }
 
 func TestCleanupApplicationResourcesSkipsSharedComponent(t *testing.T) {

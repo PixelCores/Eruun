@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
@@ -32,6 +33,7 @@ type ApplicationsServer struct {
 	Workflow     workflowservice.WorkflowService        `inject:""`
 	Validation   validation.ValidationService           `inject:""`
 	Conversion   conversion.ConversionService           `inject:""`
+	Cfg          *config.Config                         `inject:""`
 }
 
 func typedResult[P proto.Message](value any, err error, target P) (P, error) {
@@ -171,7 +173,7 @@ func (s *ApplicationsServer) ListApplicationComponents(ctx context.Context, req 
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	converted, err := assembler.ConvertComponentModelsToDTO(items)
+	converted, err := assembler.ConvertComponentModelsToDTO(items, s.Cfg.Gateway)
 	return typedResult(apis.ListApplicationComponentsResponse{Components: converted}, err, &eruunv1.AppDTOListApplicationComponentsResponse{})
 }
 

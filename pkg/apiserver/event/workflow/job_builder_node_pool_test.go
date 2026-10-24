@@ -39,7 +39,7 @@ func TestComponentDeploymentResolvesNodePool(t *testing.T) {
 	require.NoError(t, err)
 	component := &model.ApplicationComponent{Name: "api", AppID: "app", Namespace: "demo", ComponentType: config.ServerJob, Image: "nginx:1.27", Traits: traits}
 	store := &componentProfileStore{}
-	buckets, err := buildJobsForComponent(context.Background(), store, component, &model.WorkflowQueue{AppID: "app", TaskID: "task"}, 60, "execution")
+	buckets, err := buildJobsForComponent(context.Background(), store, component, &model.WorkflowQueue{AppID: "app", TaskID: "task"}, 60, spec.GatewayConfig{}, "execution")
 	require.NoError(t, err)
 	count := 0
 	for _, jobs := range buckets {
@@ -62,6 +62,6 @@ func TestComponentDeploymentResolvesNodePool(t *testing.T) {
 	}
 	require.Equal(t, 1, count)
 	store.deleted = true
-	_, err = buildJobsForComponent(context.Background(), store, component, &model.WorkflowQueue{}, 60, "")
+	_, err = buildJobsForComponent(context.Background(), store, component, &model.WorkflowQueue{}, 60, spec.GatewayConfig{}, "")
 	require.ErrorContains(t, err, `nodePool "gpu"`)
 }

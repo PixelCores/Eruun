@@ -181,7 +181,8 @@ message AppDTOApplicationComponent {
   AppSpecTraits traits = 9 [json_name = "traits"];
   repeated AppSpecSidecarTraitsSpec sidecars = 10 [json_name = "sidecars"];
   repeated AppDTOComponentServiceInfo services = 11 [json_name = "services"];
-  repeated AppDTOComponentIngressInfo ingresses = 12 [json_name = "ingresses"];
+  reserved 12;
+  reserved "ingresses";
   repeated AppDTOComponentResourceConfig resource_configs = 13 [json_name = "resourceConfigs"];
   repeated AppDTOComponentCredentialInfo credentials = 14 [json_name = "credentials"];
   string status = 15 [json_name = "status"];
@@ -189,6 +190,7 @@ message AppDTOApplicationComponent {
   repeated AppDTOExternalLink external_links = 17 [json_name = "externalLinks"];
   google.protobuf.Timestamp create_time = 18 [json_name = "createTime"];
   google.protobuf.Timestamp update_time = 19 [json_name = "updateTime"];
+  AppDTOComponentGatewayInfo gateway = 20 [json_name = "gateway"];
 }
 
 message AppDTOApplicationComponentStatus {
@@ -358,24 +360,18 @@ message AppDTOComponentCredentialInfo {
   bool resolved = 6 [json_name = "resolved"];
 }
 
-message AppDTOComponentIngressInfo {
-  string name = 1 [json_name = "name"];
-  string namespace = 2 [json_name = "namespace"];
-  string ingress_class_name = 3 [json_name = "ingressClassName"];
-  map<string, string> annotations = 4 [json_name = "annotations"];
-  repeated AppSpecIngressTLSConfig tls = 5 [json_name = "tls"];
-  repeated AppDTOComponentIngressRouteInfo routes = 6 [json_name = "routes"];
+message AppDTOComponentGatewayInfo {
+  repeated string hosts = 1 [json_name = "hosts"];
+  repeated AppDTOComponentGatewayRouteInfo routes = 2 [json_name = "routes"];
 }
 
-message AppDTOComponentIngressRouteInfo {
-  string host = 1 [json_name = "host"];
-  string path = 2 [json_name = "path"];
-  string path_type = 3 [json_name = "pathType"];
-  string service_name = 4 [json_name = "serviceName"];
-  int32 service_port = 5 [json_name = "servicePort"];
-  int32 weight = 6 [json_name = "weight"];
-  map<string, string> headers = 7 [json_name = "headers"];
-  AppSpecRewritePolicy rewrite = 8 [json_name = "rewrite"];
+message AppDTOComponentGatewayRouteInfo {
+  string path = 1 [json_name = "path"];
+  string match = 2 [json_name = "match"];
+  string rewrite = 3 [json_name = "rewrite"];
+  string timeout = 4 [json_name = "timeout"];
+  string service = 5 [json_name = "service"];
+  int32 port = 6 [json_name = "port"];
 }
 
 message AppDTOComponentPodContainers {
@@ -981,36 +977,22 @@ message AppSpecHTTPGetProbe {
   string scheme = 4 [json_name = "scheme"];
 }
 
-message AppSpecIngressRoute {
-  string service_name = 1 [json_name = "serviceName"];
-  int32 service_port = 2 [json_name = "servicePort"];
-  int32 weight = 3 [json_name = "weight"];
-  map<string, string> headers = 4 [json_name = "headers"];
+message AppSpecGatewayBackendSpec {
+  string service = 1 [json_name = "service"];
+  int32 port = 2 [json_name = "port"];
 }
 
-message AppSpecIngressRoutes {
+message AppSpecGatewayRouteSpec {
   string path = 1 [json_name = "path"];
-  string path_type = 2 [json_name = "pathType"];
-  string host = 3 [json_name = "host"];
-  AppSpecIngressRoute backend = 4 [json_name = "backend"];
-  AppSpecRewritePolicy rewrite = 5 [json_name = "rewrite"];
+  string match = 2 [json_name = "match"];
+  string rewrite = 3 [json_name = "rewrite"];
+  string timeout = 4 [json_name = "timeout"];
+  AppSpecGatewayBackendSpec backend = 5 [json_name = "backend"];
 }
 
-message AppSpecIngressTLSConfig {
-  string secret_name = 1 [json_name = "secretName"];
-  repeated string hosts = 2 [json_name = "hosts"];
-}
-
-message AppSpecIngressTraitsSpec {
-  string name = 1 [json_name = "name"];
-  string namespace = 2 [json_name = "namespace"];
-  repeated string hosts = 3 [json_name = "hosts"];
-  map<string, string> label = 4 [json_name = "label"];
-  map<string, string> annotations = 5 [json_name = "annotations"];
-  string ingress_class_name = 6 [json_name = "ingressClassName"];
-  string default_path_type = 7 [json_name = "defaultPathType"];
-  repeated AppSpecIngressTLSConfig tls = 8 [json_name = "tls"];
-  repeated AppSpecIngressRoutes routes = 9 [json_name = "routes"];
+message AppSpecGatewayTraitSpec {
+  repeated string hosts = 1 [json_name = "hosts"];
+  repeated AppSpecGatewayRouteSpec routes = 2 [json_name = "routes"];
 }
 
 message AppSpecInitTraitSpec {
@@ -1062,12 +1044,6 @@ message AppSpecResourceTraitsSpec {
   string gpu = 3 [json_name = "gpu"];
   string cpu_limit = 4 [json_name = "cpuLimit"];
   string memory_limit = 5 [json_name = "memoryLimit"];
-}
-
-message AppSpecRewritePolicy {
-  string type = 1 [json_name = "type"];
-  string match = 2 [json_name = "match"];
-  string replacement = 3 [json_name = "replacement"];
 }
 
 message AppSpecRolloutRollingUpdateSpec {
@@ -1144,10 +1120,9 @@ message AppSpecTraits {
   repeated AppSpecInitTraitSpec init = 1 [json_name = "init"];
   repeated AppSpecStorageTraitSpec storage = 2 [json_name = "storage"];
   repeated AppSpecSidecarTraitsSpec sidecar = 3 [json_name = "sidecar"];
-  repeated AppSpecIngressTraitsSpec ingress = 4 [json_name = "ingress"];
   repeated AppSpecServiceTraitSpec service = 5 [json_name = "service"];
-  reserved 6, 10;
-  reserved "rbac", "target_work_env";
+  reserved 4, 6, 10;
+  reserved "ingress", "rbac", "target_work_env";
   repeated AppSpecEnvFromSourceSpec env_from = 7 [json_name = "envFrom"];
   repeated AppSpecSimplifiedEnvSpec envs = 8 [json_name = "envs"];
   repeated AppSpecProbeTraitsSpec probes = 9 [json_name = "probes"];
@@ -1158,6 +1133,7 @@ message AppSpecTraits {
   AppSpecRolloutTraitSpec rollout = 14 [json_name = "rollout"];
   EvaluationTrait eval = 15 [json_name = "eval"];
   string node_pool = 16 [json_name = "nodePool"];
+  AppSpecGatewayTraitSpec gateway = 17 [json_name = "gateway"];
 }
 
 // Shared by standalone Job and Application component declarations.

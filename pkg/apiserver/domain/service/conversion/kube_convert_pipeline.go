@@ -183,8 +183,9 @@ func (s *kubeConvertState) applyIngressTraits(objects []*unstructured.Unstructur
 	if err != nil {
 		return warnings, err
 	}
-	if len(ingresses) > 0 {
-		warnings = append(warnings, applyIngressTraits(ingresses, s.components)...)
+	if len(ingresses) == 0 {
+		return warnings, nil
 	}
-	return warnings, nil
+	traitWarnings, err := applyIngressTraits(ingresses, s.components)
+	return append(warnings, traitWarnings...), err
 }

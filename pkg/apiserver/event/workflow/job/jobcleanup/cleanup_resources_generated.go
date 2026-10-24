@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -169,11 +168,6 @@ func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fa
 		case *corev1.PersistentVolumeClaim:
 			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
 			klog.V(4).Infof("cleanup resources: preserving pvc %s/%s", ns, resource.Name)
-		case *networkingv1.Ingress:
-			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
-			c.deleteTrackedResource(ctx, deleted, spec.ResourceIngress, ns, resource.Name, false, func(deleteCtx context.Context) error {
-				return c.deleteIngress(deleteCtx, ns, resource.Name)
-			})
 		default:
 			klog.V(4).Infof("cleanup resources: unsupported additional object type %T", obj)
 		}

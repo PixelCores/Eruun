@@ -142,155 +142,87 @@ func TestConvertComponentModelToDTOOmitsLegacySecretMeta(t *testing.T) {
 	require.Equal(t, map[string]string{"password": "secret-pwd"}, dto.Properties.Secret)
 }
 
-func TestConvertComponentModelToDTOIngressLinks(t *testing.T) {
-	traits := model.Traits{
-		Ingress: []model.IngressTraitsSpec{
-			{
-				Routes: []model.IngressRoutes{
-					{Host: "example.com", Path: "/"},
-					{Host: "example.com", Path: "/api"},
-				},
-			},
-		},
-	}
-	properties := model.Properties{
-		Ports: []model.Ports{{Port: 80}},
-	}
-	traitsJSON, err := model.NewJSONStructByStruct(&traits)
-	require.NoError(t, err)
-	propsJSON, err := model.NewJSONStructByStruct(&properties)
-	require.NoError(t, err)
-
+func TestConvertComponentModelToDTOGatewayLinks(t *testing.T) {
 	component := &model.ApplicationComponent{
 		ID:            2,
 		AppID:         "app-1",
 		Name:          "backend",
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
-		Properties:    propsJSON,
-		Traits:        traitsJSON,
-		Status:        "Running",
+		Properties:    mustJSONStruct(t, model.Properties{Ports: []model.Ports{{Port: 80}}}),
+		Traits: mustJSONStruct(t, model.Traits{Gateway: &spec.GatewayTraitSpec{
+			Routes: []spec.GatewayRouteSpec{{}, {Path: "/api"}},
+		}}),
+		Status: "Running",
 	}
 
 	dto, err := ConvertComponentModelToDTO(component)
 	require.NoError(t, err)
 	require.Equal(t, "Running", dto.Status)
 	require.Equal(t, []apisv1.ExternalLink{
-		{Type: "ingress", Value: "example.com/"},
-		{Type: "ingress", Value: "example.com/api"},
+		{Type: "gateway", Value: "backend-default.apps.example.com/"},
+		{Type: "gateway", Value: "backend-default.apps.example.com/api"},
 	}, dto.ExternalLinks)
 }
 
-func TestConvertComponentModelToDTOExpandsIngressLevelHosts(t *testing.T) {
-	traits := model.Traits{
-		Ingress: []model.IngressTraitsSpec{
-			{
-				Hosts: []string{" api.example.com ", "admin.example.com", " "},
-				Routes: []model.IngressRoutes{
-					{
-						Path: "/v1",
-						Backend: model.IngressRoute{
-							ServiceName: "api-svc",
-							ServicePort: 8080,
-						},
-					},
-					{
-						Host: "route.example.com",
-						Path: "/route",
-						Backend: model.IngressRoute{
-							ServiceName: "route-svc",
-							ServicePort: 9090,
-						},
-					},
-				},
-			},
-		},
-	}
-	traitsJSON, err := model.NewJSONStructByStruct(&traits)
-	require.NoError(t, err)
-
+func TestConvertComponentModelToDTOExpandsGatewayHosts(t *testing.T) {
 	component := &model.ApplicationComponent{
 		ID:            3,
 		AppID:         "app-1",
 		Name:          "backend",
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
-		Traits:        traitsJSON,
+		Traits: mustJSONStruct(t, model.Traits{
+			Service: []spec.ServiceTraitSpec{
+				{Name: "api-svc", Ports: []spec.ServicePortTraitSpec{{Port: 8080}}},
+				{Name: "route-svc", Ports: []spec.ServicePortTraitSpec{{Port: 9090}}},
+			},
+			Gateway: &spec.GatewayTraitSpec{
+				Hosts: []string{"api-default.apps.example.com", "admin-default.apps.example.com"},
+				Routes: []spec.GatewayRouteSpec{
+					{Path: "/v1", Backend: &spec.GatewayBackendSpec{Service: "api-svc"}},
+					{Path: "/route", Match: spec.GatewayMatchExact, Timeout: "30s", Backend: &spec.GatewayBackendSpec{Service: "route-svc", Port: 9090}},
+				},
+			},
+		}),
 	}
 
 	dto, err := ConvertComponentModelToDTO(component)
 	require.NoError(t, err)
-	require.Len(t, dto.Ingresses, 1)
-	require.Equal(t, []apisv1.ComponentIngressRouteInfo{
-		{Host: "api.example.com", Path: "/v1", PathType: "Prefix", ServiceName: "api-svc", ServicePort: 8080},
-		{Host: "admin.example.com", Path: "/v1", PathType: "Prefix", ServiceName: "api-svc", ServicePort: 8080},
-		{Host: "route.example.com", Path: "/route", PathType: "Prefix", ServiceName: "route-svc", ServicePort: 9090},
-	}, dto.Ingresses[0].Routes)
+	require.Equal(t, &apisv1.ComponentGatewayInfo{
+		Hosts: []string{"api-default.apps.example.com", "admin-default.apps.example.com"},
+		Routes: []apisv1.ComponentGatewayRouteInfo{
+			{Path: "/v1", Match: spec.GatewayMatchPrefix, Service: "api-svc", Port: 8080},
+			{Path: "/route", Match: spec.GatewayMatchExact, Timeout: "30s", Service: "route-svc", Port: 9090},
+		},
+	}, dto.Gateway)
 	require.Equal(t, []apisv1.ExternalLink{
-		{Type: "ingress", Value: "api.example.com/v1"},
-		{Type: "ingress", Value: "admin.example.com/v1"},
-		{Type: "ingress", Value: "route.example.com/route"},
+		{Type: "gateway", Value: "api-default.apps.example.com/v1"},
+		{Type: "gateway", Value: "api-default.apps.example.com/route"},
+		{Type: "gateway", Value: "admin-default.apps.example.com/v1"},
+		{Type: "gateway", Value: "admin-default.apps.example.com/route"},
 	}, dto.ExternalLinks)
-	require.Equal(t, naming.IngressName("backend-ingress", "app-1"), dto.Ingresses[0].Name)
-	require.Equal(t, "default", dto.Ingresses[0].Namespace)
 }
 
-func TestConvertComponentModelToDTOUsesDeployedIngressIdentity(t *testing.T) {
-	traits := model.Traits{
-		Ingress: []model.IngressTraitsSpec{
-			{
-				Name:      "Custom Route",
-				Namespace: "custom-ns",
-				Routes: []model.IngressRoutes{
-					{Host: "example.com", Path: "/"},
-				},
-			},
-		},
+func TestConvertComponentModelToDTOSkipsGatewayWithoutRoutes(t *testing.T) {
+	traits := mustJSONStruct(t, &model.Traits{Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}})
+	for _, tt := range []struct {
+		name          string
+		componentType config.JobType
+		gateway       spec.GatewayConfig
+	}{
+		{"unsupported component type", config.ConfJob, testGateway},
+		{"disabled platform gateway", config.ServerJob, spec.GatewayConfig{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dtos, err := ConvertComponentModelsToDTO([]*model.ApplicationComponent{{
+				ID: 6, AppID: "app-1", Name: "app-config", Namespace: "default", ComponentType: tt.componentType, Traits: traits,
+			}}, tt.gateway)
+			require.NoError(t, err)
+			require.Nil(t, dtos[0].Gateway)
+			require.Empty(t, dtos[0].ExternalLinks)
+		})
 	}
-	traitsJSON, err := model.NewJSONStructByStruct(&traits)
-	require.NoError(t, err)
-
-	component := &model.ApplicationComponent{
-		ID:            4,
-		AppID:         "App-1",
-		Name:          "Gateway",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Traits:        traitsJSON,
-	}
-
-	dto, err := ConvertComponentModelToDTO(component)
-	require.NoError(t, err)
-	require.Len(t, dto.Ingresses, 1)
-	require.Equal(t, naming.IngressName("Custom Route", "App-1"), dto.Ingresses[0].Name)
-	require.Equal(t, "default", dto.Ingresses[0].Namespace)
-}
-
-func TestConvertComponentModelToDTOSkipsIngressForUnsupportedComponentTypes(t *testing.T) {
-	traitsJSON, err := model.NewJSONStructByStruct(&model.Traits{
-		Ingress: []model.IngressTraitsSpec{
-			{
-				Routes: []model.IngressRoutes{
-					{Host: "config.example.com", Path: "/"},
-				},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	component := &model.ApplicationComponent{
-		ID:            6,
-		AppID:         "app-1",
-		Name:          "app-config",
-		Namespace:     "default",
-		ComponentType: config.ConfJob,
-		Traits:        traitsJSON,
-	}
-
-	dto, err := ConvertComponentModelToDTO(component)
-	require.NoError(t, err)
-	require.Empty(t, dto.Ingresses)
-	require.Empty(t, dto.ExternalLinks)
 }
 
 func TestConvertComponentModelToDTOSvcLinks(t *testing.T) {
@@ -352,14 +284,8 @@ func TestConvertComponentModelToDTOUsesSharedResourceKeyForGeneratedNames(t *tes
 		Ports: []model.Ports{{Port: 8080}},
 	})
 	traits := mustJSONStruct(t, model.Traits{
-		Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{Host: "web.example.com", Path: "/"},
-				},
-			},
-		},
+		Share:   &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}},
 	})
 
 	component := &model.ApplicationComponent{
@@ -378,11 +304,9 @@ func TestConvertComponentModelToDTOUsesSharedResourceKeyForGeneratedNames(t *tes
 
 	require.Len(t, dto.Services, 1)
 	require.Equal(t, "web", dto.Services[0].Name)
-	require.Len(t, dto.Ingresses, 1)
-	require.Equal(t, "web-ingress", dto.Ingresses[0].Name)
-	require.Equal(t, "web", dto.Ingresses[0].Routes[0].ServiceName)
+	require.Equal(t, "web", dto.Gateway.Routes[0].Service)
 	require.Equal(t, []apisv1.ExternalLink{
-		{Type: "ingress", Value: "web.example.com/"},
+		{Type: "gateway", Value: "web-default.apps.example.com/"},
 	}, dto.ExternalLinks)
 }
 
@@ -509,94 +433,23 @@ func TestConvertComponentModelToDTOSkipsServiceSummariesForNonServiceDeployCompo
 	}
 }
 
-func TestConvertComponentModelToDTOAppliesIngressRouteDefaults(t *testing.T) {
-	traits := mustJSONStruct(t, model.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				DefaultPathType: "Exact",
-				Routes: []spec.IngressRoutes{
-					{Host: "api.example.com"},
-				},
-			},
-		},
-	})
+func TestConvertComponentModelToDTOAppliesGatewayRouteDefaults(t *testing.T) {
 	component := &model.ApplicationComponent{
 		ID:            7,
 		AppID:         "app-9",
 		Name:          "api",
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
-		Traits:        traits,
+		Properties:    mustJSONStruct(t, model.Properties{Ports: []model.Ports{{Port: 8080}}}),
+		Traits:        mustJSONStruct(t, model.Traits{Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}}),
 	}
 
 	dto, err := ConvertComponentModelToDTO(component)
 	require.NoError(t, err)
-	require.Len(t, dto.Ingresses, 1)
-	require.Equal(t, []apisv1.ComponentIngressRouteInfo{
-		{
-			Host:        "api.example.com",
-			Path:        "/",
-			PathType:    "Exact",
-			ServiceName: naming.ServiceName("api", "app-9"),
-			ServicePort: 80,
-		},
-	}, dto.Ingresses[0].Routes)
-}
-
-func TestConvertComponentModelToDTOAppliesIngressRewriteDefaultsToSummary(t *testing.T) {
-	properties := mustJSONStruct(t, model.Properties{
-		Ports: []model.Ports{{Port: 8080}},
-	})
-	traits := mustJSONStruct(t, model.Traits{
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Annotations: map[string]string{
-					"example.com/custom": "keep",
-				},
-				Routes: []spec.IngressRoutes{
-					{
-						Host: "api.example.com",
-						Path: "/api(/.*)",
-						Rewrite: &spec.RewritePolicy{
-							Type:        "regexReplace",
-							Replacement: "/$1",
-						},
-					},
-				},
-			},
-		},
-	})
-	component := &model.ApplicationComponent{
-		ID:            8,
-		AppID:         "app-9",
-		Name:          "api",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Properties:    properties,
-		Traits:        traits,
-	}
-
-	dto, err := ConvertComponentModelToDTO(component)
-	require.NoError(t, err)
-	require.Len(t, dto.Ingresses, 1)
-	require.Equal(t, map[string]string{
-		"example.com/custom":                         "keep",
-		"nginx.ingress.kubernetes.io/rewrite-target": "/$1",
-		"nginx.ingress.kubernetes.io/use-regex":      "true",
-	}, dto.Ingresses[0].Annotations)
-	require.Equal(t, []apisv1.ComponentIngressRouteInfo{
-		{
-			Host:        "api.example.com",
-			Path:        "/api(/.*)",
-			PathType:    "ImplementationSpecific",
-			ServiceName: naming.ServiceName("api", "app-9"),
-			ServicePort: 8080,
-			Rewrite: &spec.RewritePolicy{
-				Type:        "regexReplace",
-				Replacement: "/$1",
-			},
-		},
-	}, dto.Ingresses[0].Routes)
+	require.Equal(t, &apisv1.ComponentGatewayInfo{
+		Hosts:  []string{"api-default.apps.example.com"},
+		Routes: []apisv1.ComponentGatewayRouteInfo{{Path: "/", Match: spec.GatewayMatchPrefix, Service: naming.ServiceName("api", "app-9"), Port: 8080}},
+	}, dto.Gateway)
 }
 
 func TestConvertComponentModelToDTOLastAbnormal(t *testing.T) {
@@ -670,13 +523,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 				},
 			},
 		},
-		Ingress: []spec.IngressTraitsSpec{
-			{
-				Routes: []spec.IngressRoutes{
-					{Host: "api.example.com", Path: "/api"},
-				},
-			},
-		},
+		Gateway:   &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Path: "/api"}}},
 		Resources: &spec.ResourceTraitsSpec{CPU: "500m", Memory: "256Mi", CPULimit: "750m", MemoryLimit: "512Mi"},
 		Envs: []spec.SimplifiedEnvSpec{
 			{
@@ -728,7 +575,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 			Properties:    apiProps,
 			Traits:        apiTraits,
 		},
-	})
+	}, testGateway)
 	require.NoError(t, err)
 
 	api := requireComponentByName(t, dtos, "api")
@@ -742,12 +589,10 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 			},
 		},
 	}, api.Services)
-	require.Len(t, api.Ingresses, 1)
-	require.Equal(t, naming.IngressName("api-ingress", "app-1"), api.Ingresses[0].Name)
-	require.Equal(t, "default", api.Ingresses[0].Namespace)
-	require.Equal(t, []apisv1.ComponentIngressRouteInfo{
-		{Host: "api.example.com", Path: "/api", PathType: "Prefix", ServiceName: "api-svc", ServicePort: 80},
-	}, api.Ingresses[0].Routes)
+	require.Equal(t, &apisv1.ComponentGatewayInfo{
+		Hosts:  []string{"api-default.apps.example.com"},
+		Routes: []apisv1.ComponentGatewayRouteInfo{{Path: "/api", Match: spec.GatewayMatchPrefix, Service: "api-svc", Port: 80}},
+	}, api.Gateway)
 	require.ElementsMatch(t, []apisv1.ComponentResourceConfig{
 		{Scope: "main", Name: "api", CPU: "500m", Memory: "256Mi", CPULimit: "750m", MemoryLimit: "512Mi"},
 		{Scope: "sidecar", Name: "metrics", CPU: "100m"},
@@ -799,7 +644,7 @@ func TestConvertComponentModelsToDTOReportsUnresolvedCredentials(t *testing.T) {
 			ComponentType: config.ServerJob,
 			Traits:        apiTraits,
 		},
-	})
+	}, testGateway)
 	require.NoError(t, err)
 
 	api := requireComponentByName(t, dtos, "api")
@@ -850,7 +695,7 @@ func TestConvertComponentModelsToDTOTreatsEmptyCredentialValuesAsUnresolved(t *t
 			ComponentType: config.ServerJob,
 			Traits:        apiTraits,
 		},
-	})
+	}, testGateway)
 	require.NoError(t, err)
 
 	api := requireComponentByName(t, dtos, "api")
@@ -891,7 +736,7 @@ func TestConvertComponentModelsToDTOSkipsWholeSecretCredentialsWhenSecretHasNoKe
 			ComponentType: config.ServerJob,
 			Traits:        apiTraits,
 		},
-	})
+	}, testGateway)
 	require.NoError(t, err)
 
 	api := requireComponentByName(t, dtos, "api")
@@ -930,7 +775,7 @@ func TestConvertComponentModelsToDTOSkipsEncodedCredentialValues(t *testing.T) {
 			ComponentType: config.ServerJob,
 			Traits:        apiTraits,
 		},
-	})
+	}, testGateway)
 	require.NoError(t, err)
 
 	api := requireComponentByName(t, dtos, "api")
@@ -971,7 +816,7 @@ func TestConvertComponentModelsToDTOKeepsManualBase64LikeValuesResolved(t *testi
 			ComponentType: config.ServerJob,
 			Traits:        apiTraits,
 		},
-	})
+	}, testGateway)
 	require.NoError(t, err)
 
 	api := requireComponentByName(t, dtos, "api")
@@ -1003,6 +848,6 @@ func ConvertComponentModelToDTO(component *model.ApplicationComponent) (*apisv1.
 	if err != nil || dto == nil {
 		return dto, err
 	}
-	enrichComponentResourceDetails(dto, nil)
+	enrichComponentResourceDetails(dto, nil, testGateway)
 	return dto, nil
 }

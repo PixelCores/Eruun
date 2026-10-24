@@ -1,11 +1,13 @@
 package application
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -266,4 +268,29 @@ func componentValidationError(errors []apisv1.ValidationError) error {
 		return firstValidationError(bcode.ErrInvalidProperties, errors)
 	}
 	return firstValidationError(bcode.ErrApplicationConfig, errors)
+}
+
+// validateGatewayForWrite applies the gateway rules to resolved components of a
+// workspace write. The first error is returned with a client-safe message.
+func validateGatewayForWrite(ctx context.Context, cfg *config.Config, components []apisv1.CreateComponentRequest) error {
+	scope, scoped := access.FromContext(ctx)
+	if !scoped {
+		return nil
+	}
+	if cfg == nil {
+		return bcode.ErrServiceUnavailable
+	}
+	for i := range components {
+		if err := gatewayWriteError(traitvalidation.ValidateGateway(components[i], scope.Namespace, cfg.Gateway, fmt.Sprintf("component[%d].traits.gateway", i))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func gatewayWriteError(errors []apisv1.ValidationError) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	return bcode.WithSafeClientMessage(bcode.ErrApplicationConfig, errors[0].Field+": "+errors[0].Message)
 }

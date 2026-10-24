@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
@@ -50,7 +51,7 @@ func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
 			Policies:   []string{"mysql", "redis"},
 			InitSQLURL: "https://files.example/game-1.0.8.sql",
 		}},
-	}, componentMap, task, testJobTimeoutSeconds)
+	}, componentMap, task, testJobTimeoutSeconds, spec.GatewayConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ func TestBuildDatabaseResetStepsAssignDistinctExecutionKeys(t *testing.T) {
 			WorkflowType: config.JobDatabaseReset,
 			Properties:   []model.Policies{{Policies: []string{"redis"}}},
 		},
-	}}, componentMap, task, testJobTimeoutSeconds)
+	}}, componentMap, task, testJobTimeoutSeconds, spec.GatewayConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestBuildDatabaseResetSubStepsAssignDistinctExecutionKeys(t *testing.T) {
 						Properties:   []model.Policies{{Policies: []string{"redis"}}},
 					},
 				},
-			}, componentMap, task, testJobTimeoutSeconds)
+			}, componentMap, task, testJobTimeoutSeconds, spec.GatewayConfig{})
 			if err != nil {
 				t.Fatal(err)
 			}
