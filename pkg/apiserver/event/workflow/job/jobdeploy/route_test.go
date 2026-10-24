@@ -180,3 +180,28 @@ func newRouteForTest(t *testing.T, name string, spec networkingv1.IngressSpec, l
 	route.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind("Ingress"))
 	return route
 }
+
+// An existing route is only observed by this job: failure cleanup must keep it,
+// and server-populated metadata and status must not cause another Update.
+func TestDeployRouteJobKeepsExistingRouteAndSkipsUnchangedUpdate(t *testing.T) {
+	desired := newRouteForTest(t, "web-ingress", ingressSpecForTest("web.team-a.apps.example.com", "/", networkingv1.PathTypePrefix), map[string]string{"app": "web"}, nil)
+	existing := desired.DeepCopy()
+	existing.SetResourceVersion("7")
+	existing.SetUID("uid-1")
+	existing.SetLabels(map[string]string{"app": "web", domainspec.LabelManagedBy: config.ManagedByEruun})
+	require.NoError(t, unstructured.SetNestedSlice(existing.Object, []interface{}{map[string]interface{}{"ip": "203.0.113.10"}}, "status", "loadBalancer", "ingress"))
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{ingressGVR: "IngressList"}, existing)
+
+	jobTask := &model.JobTask{Name: "web-ingress", Namespace: "team-a", JobType: string(config.JobDeployRoute), JobInfo: desired}
+	ctl := NewDeployRouteJobCtl(jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Dynamic: dynamicClient}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
+	ctx := jobexec.WithCleanupTracker(context.Background())
+	require.NoError(t, ctl.run(ctx))
+	for _, action := range dynamicClient.Actions() {
+		require.NotEqual(t, "update", action.GetVerb(), "an unchanged route must not be updated")
+	}
+
+	ctl.Clean(ctx)
+	_, err := dynamicClient.Resource(ingressGVR).Namespace("team-a").Get(context.Background(), "web-ingress", metav1.GetOptions{})
+	require.NoError(t, err, "failure cleanup must keep a route this job did not create")
+}

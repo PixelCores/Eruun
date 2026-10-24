@@ -10,6 +10,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -127,4 +128,40 @@ func TestRouteTaskUsesPayloadResourcePolicy(t *testing.T) {
 	task.JobInfo = unsupported
 	_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
 	require.ErrorIs(t, err, bcode.ErrForbidden)
+}
+
+// The workspace policy round-trips route payloads through JSON; numbers must
+// keep their integer form so the next deployment does not see a changed spec.
+func TestRouteTaskPreservesIntegerPorts(t *testing.T) {
+	space := &model.Workspace{ID: "space", Namespace: "own"}
+	pathType := networkingv1.PathTypePrefix
+	className := "nginx"
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "own"},
+		Spec: networkingv1.IngressSpec{IngressClassName: &className, Rules: []networkingv1.IngressRule{{
+			Host: "web.own.apps.example.com",
+			IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{{
+				Path: "/", PathType: &pathType,
+				Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: "web", Port: networkingv1.ServiceBackendPort{Number: 8080}}},
+			}}}},
+		}}},
+	}
+	object, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ingress)
+	require.NoError(t, err)
+	payload := &unstructured.Unstructured{Object: object}
+	payload.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind("Ingress"))
+	before := payload.DeepCopy()
+
+	task := &model.JobTask{AppID: "app", Namespace: "own", JobType: string(config.JobDeployRoute), JobInfo: payload}
+	_, err = PrepareTask(task, "app", space, taskWorkspaceConfig(t))
+	require.NoError(t, err)
+	rules, _, err := unstructured.NestedSlice(payload.Object, "spec", "rules")
+	require.NoError(t, err)
+	paths, _, err := unstructured.NestedSlice(rules[0].(map[string]interface{}), "http", "paths")
+	require.NoError(t, err)
+	port, found, err := unstructured.NestedInt64(paths[0].(map[string]interface{}), "backend", "service", "port", "number")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, int64(8080), port)
+	require.Equal(t, before.Object["spec"], payload.Object["spec"])
 }
