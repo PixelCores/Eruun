@@ -7,6 +7,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -33,6 +34,7 @@ type ValidationService interface {
 }
 
 type conversionServiceImpl struct {
+	Cfg                       *config.Config      `inject:""`
 	ValidationService         ValidationService   `inject:""`
 	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
 }
@@ -55,7 +57,7 @@ func (c *conversionServiceImpl) ConvertKubeResources(ctx context.Context, req v1
 		return nil, err
 	}
 
-	components, warnings, err := convertKubeYAMLToComponents(yamlText)
+	components, warnings, err := convertKubeYAMLToComponents(yamlText, c.Cfg)
 	if err != nil {
 		klog.Errorf("convert kube yaml failed: %v", err)
 		// Unsupported Ingress shapes carry an explicit reason for the client.

@@ -71,7 +71,7 @@ Eruun 采用 OAM 启发的「组件 + Traits + 工作流」模型，提供应用
 | `nodePool` | 引用节点池，渲染 Pod `nodeSelector` + `tolerations` |
 | `rollout` | Deployment/StatefulSet 更新策略 |
 | `init` / `sidecar` | Init 容器和 Sidecar，可使用受限制的嵌套 Traits |
-| `service` / `ingress` | Service 暴露与 Ingress 路由，受空间端口和域名规则约束 |
+| `service` / `gateway` | Service 暴露与经平台入口的 HTTP 路由（当前为 Ingress 后端），受空间端口和 host 规则约束 |
 | `share` | namespace 内共享资源的复用与生命周期策略 |
 
 `service` 和 `share` 由资源生成、调和与清理路径处理；`eval` 由共享评测构建路径处理。其他 Trait 的处理顺序、嵌套规则和权限边界见 [架构与 Trait 文档](docs/架构文档.md)。独立 Job 只接受自己的 Trait 子集，不能直接套用完整组件配置。

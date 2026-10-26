@@ -27,7 +27,7 @@ func (s conversionValidationStub) TryApplication(context.Context, apis.CreateApp
 }
 
 func TestConvertKubeResourcesPreservesLegacyValidationErrors(t *testing.T) {
-	svc := &conversionServiceImpl{ValidationService: conversionValidationStub{response: &apis.TryApplicationResponse{
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: conversionValidationStub{response: &apis.TryApplicationResponse{
 		Valid: false,
 		Errors: []apis.TryValidationError{{
 			Field:   "component[0].name",
@@ -135,6 +135,7 @@ spec:
       targetPort: 3306
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -231,6 +232,7 @@ spec:
       targetPort: 80
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 
@@ -279,6 +281,7 @@ spec:
             claimName: developer-pvc
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -351,7 +354,7 @@ spec:
         - name: mysql
           image: mysql:8
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 	require.True(t, resp.Valid)
@@ -447,7 +450,7 @@ spec:
         - name: web
           image: nginx:1.25
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 	require.True(t, resp.Valid)
@@ -470,7 +473,7 @@ data:
   CERT: //4=
 `
 
-	_, _, err := convertKubeYAMLToComponents(yamlText)
+	_, _, err := convertKubeYAMLToComponents(yamlText, testConversionConfig)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "non-UTF-8 binary data")
 }
@@ -529,6 +532,7 @@ spec:
       targetPort: 3306
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -593,6 +597,7 @@ spec:
       targetPort: 8080
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -648,6 +653,7 @@ spec:
             runAsGroup: 0
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -742,7 +748,7 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 	require.True(t, resp.Valid)
@@ -832,6 +838,7 @@ spec:
     - port: 80
 `
 	svc := &conversionServiceImpl{
+		Cfg:               testConversionConfig,
 		ValidationService: NewValidationService(),
 	}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
@@ -940,7 +947,7 @@ subjects:
   - kind: ServiceAccount
     name: api
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 	require.True(t, resp.Valid)
@@ -957,7 +964,7 @@ subjects:
 	require.Contains(t, resp.Warnings, "volume host for container api in component api uses unsupported source; skipped")
 	require.Contains(t, resp.Warnings, "service no-selector has no selector; skipped")
 	require.Contains(t, resp.Warnings, "service orphan has no matching workload; skipped")
-	require.Contains(t, resp.Warnings, "ingress orphan-ingress has no matching component; skipped")
+	require.Contains(t, resp.Warnings, "ingress default/orphan-ingress has no matching component; skipped")
 	require.Contains(t, resp.Warnings, "RoleBinding/bad-binding: RBAC 对象未转换，空间工作负载不使用 Kubernetes API 凭据")
 }
 
@@ -977,6 +984,7 @@ data:
 	defer server.Close()
 
 	svc := &conversionServiceImpl{
+		Cfg:                       testConversionConfig,
 		ValidationService:         NewValidationService(),
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
@@ -1005,6 +1013,7 @@ data:
 	defer server.Close()
 
 	svc := &conversionServiceImpl{
+		Cfg:                       testConversionConfig,
 		ValidationService:         NewValidationService(),
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.DefaultURLSecurityPolicy()),
 	}
@@ -1015,7 +1024,7 @@ data:
 }
 
 func TestConvertKubeResources_FileURLFailsWhenURLSecurityPolicyUnavailable(t *testing.T) {
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 
 	_, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{
 		FileURL: "https://example.com/app.yaml",
@@ -1025,7 +1034,7 @@ func TestConvertKubeResources_FileURLFailsWhenURLSecurityPolicyUnavailable(t *te
 }
 
 func TestConvertKubeResources_InvalidFileURLScheme(t *testing.T) {
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	_, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{
 		FileURL: "ftp://example.com/file.yaml",
 	})
@@ -1040,6 +1049,7 @@ func TestConvertKubeResources_FileURLSizeLimit(t *testing.T) {
 	defer server.Close()
 
 	svc := &conversionServiceImpl{
+		Cfg:                       testConversionConfig,
 		ValidationService:         NewValidationService(),
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
@@ -1050,7 +1060,7 @@ func TestConvertKubeResources_FileURLSizeLimit(t *testing.T) {
 }
 
 func TestConvertKubeResources_InlineYAMLSizeLimit(t *testing.T) {
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	_, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{
 		YAML: strings.Repeat("a", convertYAMLMaxSize+1),
 	})
@@ -1110,7 +1120,7 @@ metadata:
                 name: api-svc
                 port:
                   number: 80`
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: workload + `spec:
   rules:
     - host: api-ws-a.apps.example.com` + paths + `
@@ -1192,7 +1202,37 @@ spec:
     - host: a.example.com` + paths + "\n"})
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 	require.Contains(t, bcode.SafeClientMessage(err), "only webservice and store components accept a gateway")
+
+	// An Ingress joins the component of its own namespace.
+	rules := "spec:\n  rules:\n    - host: a.example.com" + paths + "\n"
+	inOther := strings.Replace(workload, "kind: Ingress\nmetadata:\n  name: api\n", "kind: Ingress\nmetadata:\n  name: api\n  namespace: other\n", 1)
+	resp, err = svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: inOther + rules})
+	require.NoError(t, err)
+	require.Nil(t, findComponent(resp.Components, "api").Traits.Gateway)
+	require.Contains(t, resp.Warnings, "ingress other/api has no matching component; skipped")
+	inTeam := strings.ReplaceAll(workload, "  name: api\n", "  name: api\n  namespace: team\n")
+	inTeam = strings.Replace(inTeam, "  name: api-svc\n", "  name: api-svc\n  namespace: team\n", 1)
+	resp, err = svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: inTeam + rules})
+	require.NoError(t, err)
+	require.NotNil(t, findComponent(resp.Components, "api").Traits.Gateway)
+
+	// The platform gateway selects the controller; only its IngressClass is kept.
+	withClass := func(class string) string {
+		return workload + "spec:\n  ingressClassName: " + class + "\n  rules:\n    - host: a.example.com" + paths + "\n"
+	}
+	resp, err = svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: withClass("nginx")})
+	require.NoError(t, err)
+	require.NotNil(t, findComponent(resp.Components, "api").Traits.Gateway)
+	_, err = svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: withClass("internal-nginx")})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Contains(t, bcode.SafeClientMessage(err), `ingressClassName "internal-nginx" differs from the platform IngressClass "nginx"`)
+	disabled := &conversionServiceImpl{Cfg: &config.Config{}, ValidationService: NewValidationService()}
+	_, err = disabled.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: withClass("nginx")})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Contains(t, bcode.SafeClientMessage(err), "the platform has no ingress gateway")
 }
+
+var testConversionConfig = &config.Config{Gateway: spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}}
 
 func TestConvertKubeResources_RBACSharedServiceAccount(t *testing.T) {
 	yamlText := `
@@ -1260,7 +1300,7 @@ spec:
         - name: worker
           image: worker:v1
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 
@@ -1318,7 +1358,7 @@ spec:
           persistentVolumeClaim:
             claimName: data
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 
@@ -1380,7 +1420,7 @@ spec:
               command: ["sh","-c","echo hi"]
           restartPolicy: Never
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 	require.True(t, resp.Valid)
@@ -1430,7 +1470,7 @@ spec:
           ports:
             - containerPort: 8080
 `
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{Cfg: testConversionConfig, ValidationService: NewValidationService()}
 	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 	require.NoError(t, err)
 	require.True(t, resp.Valid)
@@ -1544,7 +1584,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata: {name: cluster-reader}
 `
-	components, warnings, err := convertKubeYAMLToComponents(yamlText)
+	components, warnings, err := convertKubeYAMLToComponents(yamlText, testConversionConfig)
 	require.NoError(t, err)
 	require.Len(t, components, 1)
 	require.Empty(t, components[0].Traits.NodePool)

@@ -60,7 +60,7 @@ spec: {}
 	require.NoError(t, err)
 	duplicate := objects[2].DeepCopy()
 	input := append([]*unstructured.Unstructured{nil, duplicate}, objects...)
-	components, warnings, err := convertKubeObjects(input)
+	components, warnings, err := convertKubeObjects(input, testConversionConfig)
 	require.NoError(t, err)
 	// ConfigMaps and Secrets come first, then workloads, Jobs and CronJobs; same-
 	// named and duplicate inputs each keep their own component.
@@ -86,7 +86,7 @@ metadata: {name: invalid}
 data: {key: /w==}
 `)
 	require.NoError(t, err)
-	components, _, err := convertKubeObjects(objects)
+	components, _, err := convertKubeObjects(objects, testConversionConfig)
 	require.ErrorContains(t, err, "non-UTF-8 binary data")
 	require.Nil(t, components)
 }

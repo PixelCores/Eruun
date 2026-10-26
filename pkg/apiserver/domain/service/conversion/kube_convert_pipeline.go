@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
@@ -27,7 +28,7 @@ type kubeConvertState struct {
 	pvcLookup  map[string]claimTemplateInfo
 }
 
-func convertKubeObjects(objects []*unstructured.Unstructured) ([]apis.CreateComponentRequest, []string, error) {
+func convertKubeObjects(objects []*unstructured.Unstructured, cfg *config.Config) ([]apis.CreateComponentRequest, []string, error) {
 	buckets, warnings := classifyKubeObjects(objects)
 	state := &kubeConvertState{}
 
@@ -74,7 +75,7 @@ func convertKubeObjects(objects []*unstructured.Unstructured) ([]apis.CreateComp
 		return nil, warnings, err
 	}
 
-	stageWarnings, err = state.applyIngressTraits(buckets.ingresses)
+	stageWarnings, err = state.applyIngressTraits(buckets.ingresses, cfg)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
 		return nil, warnings, err
@@ -178,7 +179,7 @@ func (s *kubeConvertState) applyServiceTraits(objects []*unstructured.Unstructur
 	return warnings, nil
 }
 
-func (s *kubeConvertState) applyIngressTraits(objects []*unstructured.Unstructured) ([]string, error) {
+func (s *kubeConvertState) applyIngressTraits(objects []*unstructured.Unstructured, cfg *config.Config) ([]string, error) {
 	ingresses, warnings, err := convertIngresses(objects)
 	if err != nil {
 		return warnings, err
@@ -186,6 +187,6 @@ func (s *kubeConvertState) applyIngressTraits(objects []*unstructured.Unstructur
 	if len(ingresses) == 0 {
 		return warnings, nil
 	}
-	traitWarnings, err := applyIngressTraits(ingresses, s.components)
+	traitWarnings, err := applyIngressTraits(ingresses, s.components, cfg.Gateway)
 	return append(warnings, traitWarnings...), err
 }

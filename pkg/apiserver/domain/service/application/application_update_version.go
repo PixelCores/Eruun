@@ -24,6 +24,7 @@ func (c *applicationsServiceImpl) UpdateVersion(ctx context.Context, appID strin
 	var response *apisv1.UpdateVersionResponse
 	for i := range req.Components {
 		req.Components[i].Name = domainspec.NormalizeName(req.Components[i].Name)
+		domainspec.NormalizeServiceTraitNames(req.Components[i].Traits)
 	}
 	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-version", func(lockCtx context.Context, app *model.Applications) error {
 		app, err := c.applicationForRequestedID(lockCtx, appID, app)

@@ -14,9 +14,9 @@ import (
 )
 
 // applyIngressTraits converts each Ingress into the gateway trait of the
-// component with the same name. Inputs the gateway contract cannot express are
-// rejected instead of being dropped.
-func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.CreateComponentRequest) ([]string, error) {
+// component with the same namespace and name. Inputs the gateway contract
+// cannot express are rejected instead of being dropped.
+func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.CreateComponentRequest, gateway spec.GatewayConfig) ([]string, error) {
 	if len(ingresses) == 0 || len(components) == 0 {
 		return nil, nil
 	}
@@ -26,7 +26,8 @@ func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.Cre
 		if name == "" {
 			continue
 		}
-		indexes[name] = append(indexes[name], i)
+		key := normalizeResourceNamespace(components[i].Namespace) + "/" + name
+		indexes[key] = append(indexes[key], i)
 	}
 	var warnings []string
 	for _, ingress := range ingresses {
@@ -37,9 +38,10 @@ func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.Cre
 		if name == "" {
 			continue
 		}
-		targets := indexes[name]
+		key := normalizeResourceNamespace(ingress.Namespace) + "/" + name
+		targets := indexes[key]
 		if len(targets) == 0 {
-			warnings = append(warnings, fmt.Sprintf("ingress %s has no matching component; skipped", name))
+			warnings = append(warnings, fmt.Sprintf("ingress %s has no matching component; skipped", key))
 			continue
 		}
 		for _, idx := range targets {
@@ -50,7 +52,7 @@ func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.Cre
 			if component.Traits.Gateway != nil {
 				return warnings, unsupportedIngress(ingress, "a component accepts one Ingress")
 			}
-			trait, err := buildGatewayTrait(ingress, component.Traits.Service)
+			trait, err := buildGatewayTrait(ingress, component.Traits.Service, gateway)
 			if err != nil {
 				return warnings, err
 			}
@@ -60,9 +62,19 @@ func applyIngressTraits(ingresses []*networkingv1.Ingress, components []apis.Cre
 	return warnings, nil
 }
 
-func buildGatewayTrait(ingress *networkingv1.Ingress, services []spec.ServiceTraitSpec) (*spec.GatewayTraitSpec, error) {
+func buildGatewayTrait(ingress *networkingv1.Ingress, services []spec.ServiceTraitSpec, gateway spec.GatewayConfig) (*spec.GatewayTraitSpec, error) {
 	if len(ingress.Annotations) > 0 {
 		return nil, unsupportedIngress(ingress, "annotations are not supported")
+	}
+	// The platform gateway selects the controller; an Ingress that chose another
+	// one cannot keep that choice.
+	if class := ingress.Spec.IngressClassName; class != nil {
+		if gateway.Provider != spec.GatewayProviderIngress {
+			return nil, unsupportedIngress(ingress, fmt.Sprintf("ingressClassName %q cannot be kept because the platform has no ingress gateway", *class))
+		}
+		if *class != gateway.IngressClass {
+			return nil, unsupportedIngress(ingress, fmt.Sprintf("ingressClassName %q differs from the platform IngressClass %q", *class, gateway.IngressClass))
+		}
 	}
 	if len(ingress.Spec.TLS) > 0 {
 		return nil, unsupportedIngress(ingress, "TLS terminates at the platform gateway")

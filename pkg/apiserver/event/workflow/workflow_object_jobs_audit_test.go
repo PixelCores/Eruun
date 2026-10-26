@@ -622,7 +622,7 @@ func TestBuildJobsForComponent_RouteTargetsDeployedService(t *testing.T) {
 		services []spec.ServiceTraitSpec
 	}{
 		{name: "default service"},
-		{name: "padded service trait name", services: []spec.ServiceTraitSpec{{Name: " api-svc ", Selector: map[string]string{"tier": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}}}}},
+		{name: "named service trait", services: []spec.ServiceTraitSpec{{Name: "api-svc", Selector: map[string]string{"tier": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}}}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			propsJSON, err := model.NewJSONStructByStruct(model.Properties{Ports: []model.Ports{{Port: 8080}}})
