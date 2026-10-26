@@ -22,3 +22,15 @@ func ValidAPIName(name string, maxLength int) bool {
 func NormalizeName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
+
+// NormalizeServiceTraitNames gives component Service trait names their stored
+// form at the same write boundary. Service names are Kubernetes resource names,
+// so only surrounding spaces are dropped; validation rejects any other form.
+func NormalizeServiceTraitNames(traits *Traits) {
+	if traits == nil {
+		return
+	}
+	for i := range traits.Service {
+		traits.Service[i].Name = strings.TrimSpace(traits.Service[i].Name)
+	}
+}

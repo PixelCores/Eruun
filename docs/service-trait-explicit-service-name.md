@@ -6,7 +6,7 @@
 
 `traits.service[].name` 现在采用以下规则：
 
-1. 当 `name` 非空时，直接作为最终 Service 的 `metadata.name`。
+1. 当 `name` 非空时，直接作为最终 Service 的 `metadata.name`。创建、Try 与 `/version` 在写入边界去除首尾空白后保存（与组件名在同一处规范化），之后的渲染、模板克隆与 gateway 路由都使用保存值。
 2. 当 `name` 为空时，使用默认资源命名体系：非 shared 组件按规范化后的 `appName + componentName` 生成；带 `traits.share` 的组件按 `componentName` 生成。
 3. 当组件来自模板克隆时，非空 `name` 会先实例化为当前应用可读的 Service 名：
    - 当 `type` 字面值为 `internal` 时，使用 `<appName>-<oldServiceName>`，例如应用 `game-db` 中的 `mysql-master` -> `game-db-mysql-master`。空 `type` 虽然按 internal 部署，但不触发这条短命名规则。

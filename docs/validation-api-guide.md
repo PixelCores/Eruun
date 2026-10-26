@@ -856,7 +856,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   - 以上格式错误返回 `INVALID_GATEWAY_ROUTE`。`ingress` 后端不支持 `rewrite` 与 `timeout`，格式正确时返回 `GATEWAY_UNSUPPORTED`。
 - `backend` 可选，只能指向本组件的 Service，无法确定时返回 `INVALID_GATEWAY_BACKEND`：
   - `service` 为空：组件只有一个非 `external` Service Trait 时使用它（未命名时为生成的 Service 名）；没有 Service Trait 时使用由 `properties.ports` 生成的默认 Service；有多个非 `external` Service Trait 时必须填写；
-  - `service` 非空：必须是本组件已命名、非 `external` 的 Service Trait 名（与部署时一样去除首尾空白后比较），不接受生成的默认 Service 名；
+  - `service` 非空：必须是本组件已命名、非 `external` 的 Service Trait 名，不接受生成的默认 Service 名；Service Trait 名在写入时去除首尾空白后保存，按保存值比较；
   - `port` 为空时取所选 Service 的第一个 TCP 端口，非空时必须是该 Service 的 TCP 端口。
 - TLS 在平台入口终止，组件不声明证书。`ingress` 后端为每个组件生成一个 Ingress：名称为 `GatewayRouteName(组件名, 应用资源名)`，`ingressClassName` 取平台配置，每个 host 一条规则且共享同一组 path，不带 TLS 和默认后端；注解只有 Eruun 用于任务聚合的 `eruun.io/component-name`。
 - 这些检查只在带空间身份的请求中执行，需要空间 namespace 判断 host 归属。Try 返回字段级错误（`component[i].traits.gateway...`）；创建与版本更新使用同一套规则，以客户端可见的消息返回第一条错误（含嵌套位置的 `GATEWAY_NOT_ALLOWED`）（版本更新的字段前缀为 `component[<组件名>].traits.gateway`）。
@@ -876,7 +876,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 更多请求示例见 `examples/validation-try/13-valid-gateway-default-service.json`、`15-valid-gateway-service-trait.json`。
 
-YAML 转换（`POST /api/v1/applications/convert`）把与组件同名的 Ingress 转为该组件的 `traits.gateway`：每条规则须有 host 和 HTTP paths，所有 host 的 path 集合相同（顺序可以不同，输出沿用第一条规则的顺序）；后端须为同一组件的 Service 并使用端口号；pathType 只接受 `Prefix` 与 `Exact`。带注解、TLS、默认后端、一个组件对应多个 Ingress，或同名组件不是 `webservice`/`store` 时转换失败，返回 400 并说明原因；没有同名组件的 Ingress 被跳过并返回警告。转换保留原 host，保存时仍按上述规则校验空间归属。
+YAML 转换（`POST /api/v1/applications/convert`）把与组件 namespace 相同、名称相同的 Ingress 转为该组件的 `traits.gateway`（未写 namespace 视为 `default`）：每条规则须有 host 和 HTTP paths，所有 host 的 path 集合相同（顺序可以不同，输出沿用第一条规则的顺序）；后端须为同一组件的 Service 并使用端口号；pathType 只接受 `Prefix` 与 `Exact`。入口 Controller 由平台选定：`ingressClassName` 与平台 IngressClass 不同，或平台未启用 `ingress` 后端时转换失败，省略时由平台 class 处理。带注解、TLS、默认后端、一个组件对应多个 Ingress，或同名组件不是 `webservice`/`store` 时同样转换失败，返回 400 并说明原因；同一 namespace 中没有同名组件的 Ingress 被跳过并返回警告（如 `ingress other/api has no matching component; skipped`）。转换保留原 host，保存时仍按上述规则校验空间归属。
 
 ### Service Trait 规则
 

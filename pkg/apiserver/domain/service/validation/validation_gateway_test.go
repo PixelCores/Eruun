@@ -37,6 +37,15 @@ func TestTryApplicationValidatesGatewayInWorkspace(t *testing.T) {
 	require.True(t, resp.Valid, "%+v", resp.Errors)
 	require.Equal(t, declared, *resp.NormalizedSpec.Components[0].Traits.Gateway)
 
+	// Service trait names take their stored form before the gateway resolves them.
+	padded := apisv1.Traits{
+		Service: []spec.ServiceTraitSpec{{Name: " api-svc ", Selector: map[string]string{"app": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}}}},
+		Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Backend: &spec.GatewayBackendSpec{Service: "api-svc"}}}},
+	}
+	resp = try(ingress, padded)
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.Equal(t, "api-svc", resp.NormalizedSpec.Components[0].Traits.Service[0].Name)
+
 	resp = try(spec.GatewayConfig{}, apisv1.Traits{Gateway: &declared})
 	requireValidationError(t, resp.Errors, "component[0].traits.gateway", apisv1.ErrCodeGatewayNotAllowed)
 

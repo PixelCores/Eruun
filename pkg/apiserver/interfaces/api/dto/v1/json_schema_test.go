@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -171,4 +172,78 @@ func TestCanonicalApplicationMarshalProducesOnlyCanonicalFields(t *testing.T) {
 	properties := components[0].(map[string]any)["properties"].(map[string]any)
 	require.Contains(t, properties, "ports")
 	require.Nil(t, properties["ports"], "zero-value Properties currently marshal nil containers as null")
+}
+
+// The canonical schema mirrors the gateway contract; requests decode with the
+// same field set, so the removed ingress and the unreserved egress fail early.
+func TestCanonicalSchemaConstrainsGatewayTrait(t *testing.T) {
+	raw, err := CanonicalJSONSchema()
+	require.NoError(t, err)
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(raw, &schema))
+	definitions := schema["$defs"].(map[string]any)
+	definition := func(name string) map[string]any { return definitions[name].(map[string]any) }
+	properties := func(name string) map[string]any { return definition(name)["properties"].(map[string]any) }
+	field := func(name, field string) map[string]any { return properties(name)[field].(map[string]any) }
+
+	require.Equal(t, "#/$defs/GatewayTraitSpec", field("Trait", "gateway")["$ref"])
+	require.NotContains(t, properties("Trait"), "ingress")
+	for _, name := range []string{"GatewayTraitSpec", "GatewayRouteSpec", "GatewayBackendSpec"} {
+		require.Equal(t, false, definition(name)["additionalProperties"], name)
+	}
+	require.NotContains(t, properties("GatewayTraitSpec"), "egress", "phase 1 reserves no outbound field")
+	require.ElementsMatch(t, []any{"routes"}, definition("GatewayTraitSpec")["required"])
+	require.EqualValues(t, 8, field("GatewayTraitSpec", "hosts")["maxItems"])
+	require.Equal(t, true, field("GatewayTraitSpec", "hosts")["uniqueItems"])
+	require.EqualValues(t, 1, field("GatewayTraitSpec", "routes")["minItems"])
+	require.EqualValues(t, 16, field("GatewayTraitSpec", "routes")["maxItems"])
+	require.ElementsMatch(t, []any{spec.GatewayMatchPrefix, spec.GatewayMatchExact}, field("GatewayRouteSpec", "match")["enum"])
+	require.Equal(t, spec.GatewayMatchPrefix, field("GatewayRouteSpec", "match")["default"])
+	require.EqualValues(t, 1, field("GatewayBackendSpec", "port")["minimum"])
+	require.EqualValues(t, 65535, field("GatewayBackendSpec", "port")["maximum"])
+	require.Equal(t, []any{map[string]any{
+		"if":   map[string]any{"required": []any{"rewrite"}},
+		"then": map[string]any{"properties": map[string]any{"match": map[string]any{"const": spec.GatewayMatchPrefix}}},
+	}}, definition("GatewayRouteSpec")["allOf"], "rewrite only replaces a matched prefix")
+
+	path := regexp.MustCompile(field("GatewayRouteSpec", "path")["pattern"].(string))
+	require.Equal(t, path.String(), field("GatewayRouteSpec", "rewrite")["pattern"])
+	require.True(t, path.MatchString("/v1/models"))
+	require.False(t, path.MatchString("v1"))
+	timeout := regexp.MustCompile(field("GatewayRouteSpec", "timeout")["pattern"].(string))
+	for _, value := range []string{"0s", "600s", "1h30m", "500ms"} {
+		require.True(t, timeout.MatchString(value), value)
+	}
+	for _, value := range []string{"600", "1.5s", "10 s", "1d"} {
+		require.False(t, timeout.MatchString(value), value)
+	}
+
+	// Placement: webservice/store components only, never init, sidecar or Job steps.
+	require.Contains(t, definition("Component")["allOf"], map[string]any{
+		"if":   map[string]any{"required": []any{"traits"}, "properties": map[string]any{"traits": map[string]any{"required": []any{"gateway"}}}},
+		"then": map[string]any{"properties": map[string]any{"type": map[string]any{"enum": []any{"webservice", "store"}}}},
+	})
+	for _, name := range []string{"InitTraitSpec", "SidecarTraitsSpec"} {
+		forbidden := definition(name)["allOf"].([]any)[0].(map[string]any)["properties"].(map[string]any)["traits"].(map[string]any)["not"].(map[string]any)["anyOf"]
+		require.Contains(t, forbidden, map[string]any{"required": []any{"gateway"}}, name)
+	}
+	require.Equal(t, []any{map[string]any{"properties": map[string]any{
+		"traits": map[string]any{"not": map[string]any{"required": []any{"gateway"}}},
+	}}}, definition("JobStep")["allOf"])
+
+	const component = `{"name":"chat","components":[{"name":"api","type":"webservice","image":"nginx:1.27","traits":%s}]}`
+	var request CreateApplicationsRequest
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(component, `{"gateway":{"hosts":["api-ws-a.apps.example.com"],"routes":[{"path":"/v1","match":"exact","timeout":"600s","backend":{"service":"api","port":8080}}]}}`)), &request))
+	require.Equal(t, &spec.GatewayTraitSpec{
+		Hosts:  []string{"api-ws-a.apps.example.com"},
+		Routes: []spec.GatewayRouteSpec{{Path: "/v1", Match: spec.GatewayMatchExact, Timeout: "600s", Backend: &spec.GatewayBackendSpec{Service: "api", Port: 8080}}},
+	}, request.Components[0].Traits.Gateway)
+	for _, traits := range []string{
+		`{"ingress":[{"routes":[{"path":"/"}]}]}`,
+		`{"gateway":{"routes":[{}],"egress":[{}]}}`,
+		`{"gateway":{"routes":[{"path":"/","serviceName":"api"}]}}`,
+		`{"gateway":{"routes":[{"backend":{"service":"api","weight":10}}]}}`,
+	} {
+		require.ErrorContains(t, json.Unmarshal([]byte(fmt.Sprintf(component, traits)), &request), "unknown field", traits)
+	}
 }

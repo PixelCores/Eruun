@@ -367,6 +367,10 @@ func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[s
 				"traits": map[string]any{"required": []string{"eval"}},
 			}},
 		}
+		// Neither step type exposes a component entry point.
+		definition["allOf"] = []any{map[string]any{"properties": map[string]any{
+			"traits": map[string]any{"not": map[string]any{"required": []string{"gateway"}}},
+		}}}
 	case "Component":
 		definition["allOf"] = []any{map[string]any{
 			"if": map[string]any{"required": []string{"traits"}, "properties": map[string]any{

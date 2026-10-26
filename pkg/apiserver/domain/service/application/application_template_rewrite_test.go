@@ -1173,3 +1173,48 @@ func TestRewriteServiceSelectorValuesRewritesServiceRefsAndPreservesMismatchedLa
 	require.Equal(t, "cloned-app-mysql-master", selector["mysql-pod-role"])
 	require.Equal(t, "new-mysql", selector[spec.LabelComponentName])
 }
+
+// Service trait names are stored without surrounding spaces, so cloning one
+// template target twice rewrites a Service and the gateway backend naming it
+// to the same per-clone name.
+func TestCreateApplicationsFromTemplateKeepsGatewayBackendOnClonedService(t *testing.T) {
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+	enabled := true
+	template, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Namespace:       config.DefaultNamespace,
+		Name:            "gateway-template",
+		TemplateEnabled: &enabled,
+		Components: []apisv1.CreateComponentRequest{{
+			Name: "api", ComponentType: config.ServerJob, Image: "nginx:1.27",
+			Properties: apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}, Labels: map[string]string{"app": "api"}},
+			Traits: apisv1.Traits{
+				Service: []spec.ServiceTraitSpec{{Name: " svc ", Type: string(spec.ServiceAccessInternal), Selector: map[string]string{"app": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}}}},
+				Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Backend: &spec.GatewayBackendSpec{Service: "svc"}}}},
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	dest, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Namespace: config.DefaultNamespace,
+		Name:      "dest",
+		Components: []apisv1.CreateComponentRequest{
+			{Name: "api-one", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: template.ID, Target: "api"}},
+			{Name: "api-two", ComponentType: config.ServerJob, Template: &spec.TemplateRef{ID: template.ID, Target: "api"}},
+		},
+	})
+	require.NoError(t, err)
+	cloned := 0
+	for _, component := range store.components {
+		if component.AppID != dest.ID {
+			continue
+		}
+		cloned++
+		var traits apisv1.Traits
+		require.NoError(t, json.Unmarshal([]byte(mustJSON(t, component.Traits)), &traits))
+		require.Len(t, traits.Service, 1)
+		require.Equal(t, traits.Service[0].Name, traits.Gateway.Routes[0].Backend.Service, component.Name)
+	}
+	require.Equal(t, 2, cloned)
+}

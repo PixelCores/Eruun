@@ -71,7 +71,7 @@ The component model includes the following trait fields. **A field’s presence 
 | `nodePool` | Pod `nodeSelector` + `tolerations` from a named node pool |
 | `rollout` | Deployment/StatefulSet update strategies |
 | `init` / `sidecar` | Init and sidecar containers, with a restricted subset of nested traits |
-| `service` / `ingress` | Service exposure and Ingress routing, subject to workspace port and domain rules |
+| `service` / `gateway` | Service exposure and HTTP entry routes through the platform gateway (currently the Ingress backend), subject to workspace port and host rules |
 | `share` | Reuse and lifecycle policies for shared resources within a namespace |
 
 Resource generation, reconciliation, and cleanup paths handle `service` and `share`; the shared evaluation builder handles `eval`. See the [architecture and trait documentation](docs/架构文档.md) for the other traits’ processing order, nesting rules, and permission boundaries. Standalone Jobs accept their own subset of traits; they cannot use a complete component configuration unchanged.

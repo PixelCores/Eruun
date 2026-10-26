@@ -7,13 +7,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-// NormalizeApplicationNames gives component names, template target refs and
-// workflow step names of a create request their stored form; create and Try
-// apply it before validation.
+// NormalizeApplicationNames gives component names, template target refs,
+// Service trait names and workflow step names of a create request their stored
+// form; create and Try apply it before validation.
 func NormalizeApplicationNames(req *CreateApplicationsRequest) {
 	for i := range req.Components {
 		component := &req.Components[i]
 		component.Name = spec.NormalizeName(component.Name)
+		spec.NormalizeServiceTraitNames(&component.Traits)
 		if component.Template != nil {
 			component.Template.Target = spec.NormalizeName(component.Template.Target)
 		}

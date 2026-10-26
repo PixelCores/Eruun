@@ -74,12 +74,14 @@ func appendConvertedComponent(
 	return components, refs
 }
 
-func convertKubeYAMLToComponents(yamlText string) ([]apis.CreateComponentRequest, []string, error) {
+// convertKubeYAMLToComponents reads the platform gateway from cfg only to
+// compare the IngressClass of converted Ingresses.
+func convertKubeYAMLToComponents(yamlText string, cfg *config.Config) ([]apis.CreateComponentRequest, []string, error) {
 	objects, err := decodeKubeObjects(yamlText)
 	if err != nil {
 		return nil, nil, err
 	}
-	return convertKubeObjects(objects)
+	return convertKubeObjects(objects, cfg)
 }
 
 func decodeKubeObjects(yamlText string) ([]*unstructured.Unstructured, error) {

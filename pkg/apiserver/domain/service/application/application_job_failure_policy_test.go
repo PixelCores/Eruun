@@ -109,6 +109,33 @@ func TestUpdateVersionAddPersistsJobFailurePolicyOptOut(t *testing.T) {
 	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
 }
 
+func TestUpdateVersionAddStoresTrimmedServiceTraitNames(t *testing.T) {
+	store := versionUpdateFailurePolicyStore()
+	svc := newMockServiceWithStore(store)
+	replicas := int32(1)
+
+	_, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+		Version: "1.1.0",
+		Components: []apisv1.ComponentUpdateSpec{{
+			Action:        "add",
+			Name:          "api",
+			ComponentType: config.ServerJob,
+			Image:         "nginx:1.27",
+			Replicas:      &replicas,
+			Properties:    &apisv1.Properties{Labels: map[string]string{"app": "api"}},
+			Traits: &apisv1.Traits{Service: []spec.ServiceTraitSpec{{
+				Name: " api-svc ", Type: string(spec.ServiceAccessInternal), Selector: map[string]string{"app": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}},
+			}}},
+		}},
+		AutoExec: boolPtr(false),
+	})
+	require.NoError(t, err)
+
+	var traits apisv1.Traits
+	require.NoError(t, decodeJSONStruct(store.components["api"].Traits, &traits))
+	require.Equal(t, "api-svc", traits.Service[0].Name)
+}
+
 func TestUpdateVersionUpdatePersistsJobFailurePolicyOptOut(t *testing.T) {
 	store := versionUpdateFailurePolicyStore()
 	store.components["existing-job"] = &model.ApplicationComponent{
