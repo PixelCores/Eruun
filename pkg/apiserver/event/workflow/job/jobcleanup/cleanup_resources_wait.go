@@ -81,6 +81,12 @@ func (c *CleanupResourcesJobCtl) resourceGone(ctx context.Context, ref cleanupRe
 		_, err = c.Client.CoreV1().PersistentVolumeClaims(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceIngress:
 		_, err = c.Client.NetworkingV1().Ingresses(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+	case domainspec.ResourceHTTPRoute:
+		routes, routesErr := c.httpRoutes(ref.namespace)
+		if routesErr != nil {
+			return false, routesErr
+		}
+		_, err = routes.Get(ctx, ref.name, metav1.GetOptions{})
 	default:
 		return false, fmt.Errorf("unsupported cleanup resource kind %q", ref.kind)
 	}

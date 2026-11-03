@@ -11,6 +11,7 @@ const (
 	ResourceConfigMap   ResourceKind = "configmap"
 	ResourceSecret      ResourceKind = "secret"
 	ResourceIngress     ResourceKind = "ingress"
+	ResourceHTTPRoute   ResourceKind = "httproute"
 	ResourceJob         ResourceKind = "job"
 	ResourceCronJob     ResourceKind = "cronjob"
 )
@@ -25,6 +26,7 @@ const (
 	KubeKindConfigMap             KubeKind = "ConfigMap"
 	KubeKindSecret                KubeKind = "Secret"
 	KubeKindIngress               KubeKind = "Ingress"
+	KubeKindHTTPRoute             KubeKind = "HTTPRoute"
 	KubeKindJob                   KubeKind = "Job"
 	KubeKindCronJob               KubeKind = "CronJob"
 	KubeKindServiceAccount        KubeKind = "ServiceAccount"

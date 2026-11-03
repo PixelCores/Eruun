@@ -9,6 +9,8 @@ import (
 
 func TestGatewayConfigValidate(t *testing.T) {
 	ingress := GatewayConfig{Provider: GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	gatewayAPI := GatewayConfig{Provider: GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+		ParentRef: GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: GatewayHTTPSListener}}
 	for _, tc := range []struct {
 		name   string
 		mutate func(*GatewayConfig)
@@ -18,13 +20,23 @@ func TestGatewayConfigValidate(t *testing.T) {
 		{name: "disabled", base: GatewayConfig{}},
 		{name: "disabled with domain", base: GatewayConfig{Domain: "apps.example.com"}, errMsg: "require a gateway provider"},
 		{name: "disabled with ingress class", base: GatewayConfig{IngressClass: "nginx"}, errMsg: "require a gateway provider"},
+		{name: "disabled with parent Gateway", base: GatewayConfig{ParentRef: GatewayParentRef{Name: "eruun"}}, errMsg: "require a gateway provider"},
 		{name: "ingress", base: ingress},
-		{name: "unknown provider", base: ingress, mutate: func(c *GatewayConfig) { c.Provider = "gatewayapi" }, errMsg: "gateway provider must be empty or"},
+		{name: "unknown provider", base: ingress, mutate: func(c *GatewayConfig) { c.Provider = "istio" }, errMsg: "gateway provider must be empty,"},
 		{name: "ingress without domain", base: ingress, mutate: func(c *GatewayConfig) { c.Domain = "" }, errMsg: "gateway domain"},
 		{name: "ingress with wildcard domain", base: ingress, mutate: func(c *GatewayConfig) { c.Domain = "*.example.com" }, errMsg: "gateway domain"},
 		{name: "ingress without proxy namespace", base: ingress, mutate: func(c *GatewayConfig) { c.ProxyNamespace = "" }, errMsg: "gateway proxy namespace"},
 		{name: "proxy namespace is not a label", base: ingress, mutate: func(c *GatewayConfig) { c.ProxyNamespace = "ingress.nginx" }, errMsg: "gateway proxy namespace"},
 		{name: "ingress without class", base: ingress, mutate: func(c *GatewayConfig) { c.IngressClass = "" }, errMsg: "gateway ingress class"},
+		{name: "ingress with parent Gateway", base: ingress, mutate: func(c *GatewayConfig) { c.ParentRef = gatewayAPI.ParentRef }, errMsg: "takes no parent Gateway"},
+		{name: "gatewayapi", base: gatewayAPI},
+		{name: "gatewayapi without domain", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.Domain = "" }, errMsg: "gateway domain"},
+		{name: "gatewayapi without proxy namespace", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.ProxyNamespace = "" }, errMsg: "gateway proxy namespace"},
+		{name: "gatewayapi with ingress class", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.IngressClass = "nginx" }, errMsg: "takes no ingress class"},
+		{name: "gatewayapi without parent namespace", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.ParentRef.Namespace = "" }, errMsg: "gateway parent namespace"},
+		{name: "gatewayapi parent namespace is not a label", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.ParentRef.Namespace = "istio.ingress" }, errMsg: "gateway parent namespace"},
+		{name: "gatewayapi without parent name", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.ParentRef.Name = "" }, errMsg: "gateway parent name"},
+		{name: "gatewayapi on the HTTP listener", base: gatewayAPI, mutate: func(c *GatewayConfig) { c.ParentRef.SectionName = "http" }, errMsg: "gateway parent listener"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := tc.base

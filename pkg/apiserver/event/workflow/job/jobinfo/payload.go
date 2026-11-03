@@ -190,6 +190,8 @@ func RouteFromJobInfo(job *model.JobTask) (*unstructured.Unstructured, RouteReso
 	switch gvk := route.GroupVersionKind(); gvk {
 	case networkingv1.SchemeGroupVersion.WithKind(string(spec.KubeKindIngress)):
 		return route, RouteResource{Kind: spec.ResourceIngress, GVR: networkingv1.SchemeGroupVersion.WithResource("ingresses")}, nil
+	case spec.GatewayAPIGroupVersion.WithKind(string(spec.KubeKindHTTPRoute)):
+		return route, RouteResource{Kind: spec.ResourceHTTPRoute, GVR: spec.HTTPRouteResource}, nil
 	default:
 		return nil, RouteResource{}, fmt.Errorf("unsupported route kind %s", gvk)
 	}

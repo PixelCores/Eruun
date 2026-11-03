@@ -190,6 +190,14 @@ func (c *Config) Validate() []error {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
 	errs = append(errs, c.Workflow.Validate()...)
+	// The platform Gateway's HTTPS listener and, by default, its namespace's
+	// data-plane Pods are fixed by the chart; derive them before validating.
+	if c.Gateway.Provider == spec.GatewayProviderGatewayAPI {
+		c.Gateway.ParentRef.SectionName = spec.GatewayHTTPSListener
+		if c.Gateway.ProxyNamespace == "" {
+			c.Gateway.ProxyNamespace = c.Gateway.ParentRef.Namespace
+		}
+	}
 	if err := c.Gateway.Validate(); err != nil {
 		errs = append(errs, err)
 	}
@@ -277,10 +285,12 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.DurationVar(&c.Workflow.LeaseReaperInterval, "workflow-lease-reaper-interval", configParameter.Workflow.LeaseReaperInterval, "interval for recovering expired workflow leases")
 	fs.IntVar(&c.Workflow.LeaseReaperBatchSize, "workflow-lease-reaper-batch-size", configParameter.Workflow.LeaseReaperBatchSize, "maximum expired workflow leases recovered per pass (1..10000)")
 	fs.DurationVar(&c.Workflow.WorkerDrainTimeout, "workflow-worker-drain-timeout", configParameter.Workflow.WorkerDrainTimeout, "maximum graceful worker drain duration")
-	fs.StringVar((*string)(&c.Gateway.Provider), "gateway-provider", string(configParameter.Gateway.Provider), "inbound gateway provider: empty disables component routes; ingress renders Kubernetes Ingress")
+	fs.StringVar((*string)(&c.Gateway.Provider), "gateway-provider", string(configParameter.Gateway.Provider), "inbound gateway provider: empty disables component routes; ingress renders Kubernetes Ingress; gatewayapi renders Gateway API HTTPRoute")
 	fs.StringVar(&c.Gateway.Domain, "gateway-domain", configParameter.Gateway.Domain, "DNS suffix of component hosts (required with a gateway provider)")
-	fs.StringVar(&c.Gateway.ProxyNamespace, "gateway-proxy-namespace", configParameter.Gateway.ProxyNamespace, "namespace of the gateway data-plane Pods admitted by workspace NetworkPolicy (required with a gateway provider)")
+	fs.StringVar(&c.Gateway.ProxyNamespace, "gateway-proxy-namespace", configParameter.Gateway.ProxyNamespace, "namespace of the gateway data-plane Pods admitted by workspace NetworkPolicy (required with ingress; defaults to the parent Gateway namespace with gatewayapi)")
 	fs.StringVar(&c.Gateway.IngressClass, "gateway-ingress-class", configParameter.Gateway.IngressClass, "IngressClass used by the ingress gateway provider")
+	fs.StringVar(&c.Gateway.ParentRef.Namespace, "gateway-parent-namespace", configParameter.Gateway.ParentRef.Namespace, "namespace of the platform Gateway used by the gatewayapi gateway provider")
+	fs.StringVar(&c.Gateway.ParentRef.Name, "gateway-parent-name", configParameter.Gateway.ParentRef.Name, "name of the platform Gateway used by the gatewayapi gateway provider")
 	// profiling flags live in the profiling package; wire them here for convenience
 	profiling.AddFlags(fs)
 }

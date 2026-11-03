@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -110,17 +111,46 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 // deleteLabeledNetworkingResources removes the component route of the current
 // gateway provider; without one the workspace holds no route resources.
 func (c *CleanupResourcesJobCtl) deleteLabeledNetworkingResources(ctx context.Context, ns string, listOptions metav1.ListOptions, deleted *cleanupResourceSet) {
-	if c.Runtime == nil || c.Runtime.Gateway.Provider != domainspec.GatewayProviderIngress {
+	if c.Runtime == nil {
 		return
 	}
-	if list, err := c.Client.NetworkingV1().Ingresses(ns).List(ctx, listOptions); err != nil {
-		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled ingresses: %w", err))
-	} else {
+	switch c.Runtime.Gateway.Provider {
+	case domainspec.GatewayProviderIngress:
+		list, err := c.Client.NetworkingV1().Ingresses(ns).List(ctx, listOptions)
+		if err != nil {
+			deleted.errs = append(deleted.errs, fmt.Errorf("list labeled ingresses: %w", err))
+			return
+		}
 		for i := range list.Items {
 			item := &list.Items[i]
 			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceIngress, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteIngress(deleteCtx, item.Namespace, item.Name)
 			})
 		}
+	case domainspec.GatewayProviderGatewayAPI:
+		routes, err := c.httpRoutes(ns)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
+		list, err := routes.List(ctx, listOptions)
+		if err != nil {
+			deleted.errs = append(deleted.errs, fmt.Errorf("list labeled httproutes: %w", err))
+			return
+		}
+		for i := range list.Items {
+			item := &list.Items[i]
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceHTTPRoute, item.GetNamespace(), item.GetName(), false, func(deleteCtx context.Context) error {
+				return routes.Delete(deleteCtx, item.GetName(), metav1.DeleteOptions{})
+			})
+		}
 	}
+}
+
+// httpRoutes returns the namespaced HTTPRoute client of the workspace identity.
+func (c *CleanupResourcesJobCtl) httpRoutes(namespace string) (dynamic.ResourceInterface, error) {
+	if c.Runtime == nil || c.Runtime.Dynamic == nil {
+		return nil, fmt.Errorf("dynamic client is nil")
+	}
+	return c.Runtime.Dynamic.Resource(domainspec.HTTPRouteResource).Namespace(namespace), nil
 }

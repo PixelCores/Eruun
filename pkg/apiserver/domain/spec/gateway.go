@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	kvalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -13,9 +14,21 @@ type GatewayProvider string
 
 const (
 	// GatewayProviderNone disables component routes in every workspace.
-	GatewayProviderNone    GatewayProvider = ""
-	GatewayProviderIngress GatewayProvider = "ingress"
+	GatewayProviderNone       GatewayProvider = ""
+	GatewayProviderIngress    GatewayProvider = "ingress"
+	GatewayProviderGatewayAPI GatewayProvider = "gatewayapi"
 )
+
+// GatewayAPIGroupVersion is the Gateway API version whose HTTPRoute the
+// gatewayapi provider writes.
+var GatewayAPIGroupVersion = schema.GroupVersion{Group: "gateway.networking.k8s.io", Version: "v1"}
+
+// HTTPRouteResource is the API resource the gatewayapi provider writes.
+var HTTPRouteResource = GatewayAPIGroupVersion.WithResource("httproutes")
+
+// GatewayHTTPSListener is the listener of the chart-created platform Gateway
+// that workspace routes attach to.
+const GatewayHTTPSListener = "https"
 
 // GatewayConfig is the inbound entry point selected when the platform is installed.
 // It comes from server configuration, never from the account configuration Secret.
@@ -26,28 +39,53 @@ type GatewayConfig struct {
 	// ProxyNamespace hosts the data-plane Pods admitted by workspace NetworkPolicy.
 	ProxyNamespace string
 	IngressClass   string
+	// ParentRef names the platform Gateway listener that workspace routes attach to.
+	ParentRef GatewayParentRef
+}
+
+// GatewayParentRef identifies a listener of the platform Gateway.
+type GatewayParentRef struct {
+	Namespace   string
+	Name        string
+	SectionName string
 }
 
 // Validate requires exactly the fields used by the selected provider.
 func (c GatewayConfig) Validate() error {
 	switch c.Provider {
 	case GatewayProviderNone:
-		if c.Domain != "" || c.ProxyNamespace != "" || c.IngressClass != "" {
-			return fmt.Errorf("gateway domain, proxy namespace and ingress class require a gateway provider")
+		if c.Domain != "" || c.ProxyNamespace != "" || c.IngressClass != "" || c.ParentRef != (GatewayParentRef{}) {
+			return fmt.Errorf("gateway domain, proxy namespace, ingress class and parent Gateway require a gateway provider")
 		}
 		return nil
 	case GatewayProviderIngress:
+		if c.ParentRef != (GatewayParentRef{}) {
+			return fmt.Errorf("the ingress gateway provider takes no parent Gateway")
+		}
+		if len(kvalidation.IsDNS1123Subdomain(c.IngressClass)) != 0 {
+			return fmt.Errorf("gateway ingress class must be a DNS-1123 subdomain, got %q", c.IngressClass)
+		}
+	case GatewayProviderGatewayAPI:
+		if c.IngressClass != "" {
+			return fmt.Errorf("the gatewayapi gateway provider takes no ingress class")
+		}
+		if len(kvalidation.IsDNS1123Label(c.ParentRef.Namespace)) != 0 {
+			return fmt.Errorf("gateway parent namespace must be a DNS-1123 label, got %q", c.ParentRef.Namespace)
+		}
+		if len(kvalidation.IsDNS1123Subdomain(c.ParentRef.Name)) != 0 {
+			return fmt.Errorf("gateway parent name must be a DNS-1123 subdomain, got %q", c.ParentRef.Name)
+		}
+		if c.ParentRef.SectionName != GatewayHTTPSListener {
+			return fmt.Errorf("gateway parent listener must be %q, got %q", GatewayHTTPSListener, c.ParentRef.SectionName)
+		}
 	default:
-		return fmt.Errorf("gateway provider must be empty or %q, got %q", GatewayProviderIngress, c.Provider)
+		return fmt.Errorf("gateway provider must be empty, %q or %q, got %q", GatewayProviderIngress, GatewayProviderGatewayAPI, c.Provider)
 	}
 	if len(kvalidation.IsDNS1123Subdomain(c.Domain)) != 0 {
 		return fmt.Errorf("gateway domain must be a DNS-1123 subdomain, got %q", c.Domain)
 	}
 	if len(kvalidation.IsDNS1123Label(c.ProxyNamespace)) != 0 {
 		return fmt.Errorf("gateway proxy namespace must be a DNS-1123 label, got %q", c.ProxyNamespace)
-	}
-	if len(kvalidation.IsDNS1123Subdomain(c.IngressClass)) != 0 {
-		return fmt.Errorf("gateway ingress class must be a DNS-1123 subdomain, got %q", c.IngressClass)
 	}
 	return nil
 }

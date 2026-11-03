@@ -34,7 +34,7 @@ func TestBuildRouteDeployInfo(t *testing.T) {
 	}
 	cfg := spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com"}
 	require.Equal(t, "gateway: nginx-default.apps.example.com/, nginx-default.apps.example.com/api, web-default.apps.example.com/, web-default.apps.example.com/api",
-		buildRouteDeployInfo("nginx", gateway, component, cfg))
+		buildRouteDeployInfo(spec.ResourceIngress, "nginx", gateway, component, cfg))
 }
 
 func TestBuildServiceDeployInfoOmitsUnsetTargetPort(t *testing.T) {

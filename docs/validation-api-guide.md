@@ -844,7 +844,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 ### Gateway 规则
 
-`traits.gateway` 声明组件经平台入口对外提供的 HTTP 路由，首期只有入站方向。入口后端在部署时选定（Helm `gateway` values 或 `--gateway-*` flag，见 [Helm 部署契约](helm-deployment.md#入口网关)），当前只实现 `ingress` 后端。设计背景见 [Gateway Trait 设计](gateway-trait-design.md)。
+`traits.gateway` 声明组件经平台入口对外提供的 HTTP 路由，首期只有入站方向。入口后端在部署时选定（Helm `gateway` values 或 `--gateway-*` flag，见 [Helm 部署契约](helm-deployment.md#入口网关)），后端为 `ingress`（Kubernetes Ingress）或 `gatewayapi`（Gateway API HTTPRoute，Istio 等经 Gateway API 接入）。设计背景见 [Gateway Trait 设计](gateway-trait-design.md)。
 
 - 只允许在 `webservice`、`store` 组件顶层使用，其他组件类型和平台未配置入口后端时返回 `GATEWAY_NOT_ALLOWED`；command Job 步骤和 `type: "job"` 评测组件同样拒绝 `gateway`。
 - `hosts` 可选，最多 8 个且不能重复。每个 host 由一个 DNS label 和平台域名组成：`<前缀>-<空间 namespace>.<domain>`，前缀非空，label 为小写且不超过 63 个字符；不满足时返回 `INVALID_GATEWAY_HOST`。省略时使用默认 host `<小写组件名>-<空间 namespace>.<domain>`；组件名过长使默认 label 超过 63 个字符时，需要显式声明 `hosts`。
@@ -858,7 +858,8 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   - `service` 为空：组件只有一个非 `external` Service Trait 时使用它（未命名时为生成的 Service 名）；没有 Service Trait 时使用由 `properties.ports` 生成的默认 Service；有多个非 `external` Service Trait 时必须填写；
   - `service` 非空：必须是本组件已命名、非 `external` 的 Service Trait 名，不接受生成的默认 Service 名；Service Trait 名在写入时去除首尾空白后保存，按保存值比较；
   - `port` 为空时取所选 Service 的第一个 TCP 端口，非空时必须是该 Service 的 TCP 端口。
-- TLS 在平台入口终止，组件不声明证书。`ingress` 后端为每个组件生成一个 Ingress：名称为 `GatewayRouteName(组件名, 应用资源名)`，`ingressClassName` 取平台配置，每个 host 一条规则且共享同一组 path，不带 TLS 和默认后端；注解只有 Eruun 用于任务聚合的 `eruun.io/component-name`。
+- TLS 在平台入口终止，组件不声明证书。`gatewayapi` 后端为每个组件生成一个 HTTPRoute：名称同样为 `GatewayRouteName(组件名, 应用资源名)`，`parentRefs` 只指向平台 Gateway 的 `https` 监听器，`hostnames` 为全部有效 host，每条路由一条 rule（`PathPrefix`/`Exact` 匹配、可选 `URLRewrite` 的 `ReplacePrefixMatch` 与 `timeouts.request`、唯一的本组件 Service backend）。部署时等待该监听器对当前 generation 报告 `Accepted=True` 与 `ResolvedRefs=True`；`Accepted=False`、`PartiallyInvalid=True` 或 `BackendNotFound` 以外的 `ResolvedRefs=False` 立即失败，其余情况等到部署超时。
+- `ingress` 后端为每个组件生成一个 Ingress：名称为 `GatewayRouteName(组件名, 应用资源名)`，`ingressClassName` 取平台配置，每个 host 一条规则且共享同一组 path，不带 TLS 和默认后端；注解只有 Eruun 用于任务聚合的 `eruun.io/component-name`。
 - 版本更新去掉保留组件的 `gateway` 时要求 `autoExec=true`，本次 task 会删除该组件的入口对象，见 [版本更新 API](version-update-api.md)。
 - 这些检查只在带空间身份的请求中执行，需要空间 namespace 判断 host 归属。Try 返回字段级错误（`component[i].traits.gateway...`）；创建与版本更新使用同一套规则，以客户端可见的消息返回第一条错误（含嵌套位置的 `GATEWAY_NOT_ALLOWED`）（版本更新的字段前缀为 `component[<组件名>].traits.gateway`）。
 

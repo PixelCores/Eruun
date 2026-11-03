@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -152,6 +153,8 @@ func (t *tenantTransport) prepare(kind string, obj map[string]interface{}) error
 		return t.pvc(specification)
 	case "ingresses":
 		return t.prepareIngress(obj, specification)
+	case "httproutes":
+		return t.prepareHTTPRoute(obj, specification)
 	}
 	return nil
 }
@@ -186,6 +189,93 @@ func (t *tenantTransport) prepareIngress(obj, specification map[string]interface
 	}
 	return nil
 }
+
+// prepareHTTPRoute admits only the HTTPRoute shape Eruun renders: one parent,
+// the platform Gateway's HTTPS listener; workspace-owned hosts; per rule path
+// matches, URL rewrites, a request timeout and one Service in this namespace.
+func (t *tenantTransport) prepareHTTPRoute(obj, specification map[string]interface{}) error {
+	gateway := t.config.Gateway
+	if gateway.Provider != spec.GatewayProviderGatewayAPI || !onlyKeys(specification, "parentRefs", "hostnames", "rules") {
+		return bcode.ErrForbidden
+	}
+	if meta := mapAt(obj, "metadata"); meta != nil {
+		for key := range mapAt(meta, "annotations") {
+			if key != config.AnnotationComponentName {
+				return bcode.ErrForbidden
+			}
+		}
+	}
+	parents, _ := specification["parentRefs"].([]interface{})
+	if len(parents) != 1 {
+		return bcode.ErrForbidden
+	}
+	parent, _ := parents[0].(map[string]interface{})
+	if !onlyKeys(parent, "group", "kind", "namespace", "name", "sectionName") ||
+		!stringIn(parent["group"], spec.GatewayAPIGroupVersion.Group) || !stringIn(parent["kind"], "Gateway") ||
+		parent["namespace"] != gateway.ParentRef.Namespace || parent["name"] != gateway.ParentRef.Name || parent["sectionName"] != gateway.ParentRef.SectionName {
+		return bcode.ErrForbidden
+	}
+	// Empty hostnames would match every host under the listener's wildcard.
+	hostnames, _ := specification["hostnames"].([]interface{})
+	if len(hostnames) == 0 {
+		return bcode.ErrForbidden
+	}
+	for _, item := range hostnames {
+		host, _ := item.(string)
+		if !spec.GatewayHostAllowed(host, t.namespace, gateway.Domain) {
+			return bcode.ErrForbidden
+		}
+	}
+	rules, _ := specification["rules"].([]interface{})
+	for _, item := range rules {
+		rule, _ := item.(map[string]interface{})
+		if rule == nil || !onlyKeys(rule, "matches", "filters", "timeouts", "backendRefs") || !onlyKeys(mapAt(rule, "timeouts"), "request") {
+			return bcode.ErrForbidden
+		}
+		matches, _ := rule["matches"].([]interface{})
+		for _, entry := range matches {
+			if match, _ := entry.(map[string]interface{}); match == nil || !onlyKeys(match, "path") {
+				return bcode.ErrForbidden
+			}
+		}
+		filters, _ := rule["filters"].([]interface{})
+		for _, entry := range filters {
+			if filter, _ := entry.(map[string]interface{}); filter == nil || filter["type"] != "URLRewrite" || !onlyKeys(filter, "type", "urlRewrite") {
+				return bcode.ErrForbidden
+			}
+		}
+		backends, _ := rule["backendRefs"].([]interface{})
+		if len(backends) != 1 {
+			return bcode.ErrForbidden
+		}
+		backend, _ := backends[0].(map[string]interface{})
+		if !onlyKeys(backend, "group", "kind", "namespace", "name", "port") ||
+			!stringIn(backend["group"], "") || !stringIn(backend["kind"], "Service") || !stringIn(backend["namespace"], t.namespace) {
+			return bcode.ErrForbidden
+		}
+	}
+	return nil
+}
+
+// onlyKeys reports whether m (possibly nil) has no keys outside allowed.
+func onlyKeys(m map[string]interface{}, allowed ...string) bool {
+	for key := range m {
+		if !slices.Contains(allowed, key) {
+			return false
+		}
+	}
+	return true
+}
+
+// stringIn accepts an omitted field or the one value Eruun writes.
+func stringIn(value interface{}, want string) bool {
+	if value == nil {
+		return true
+	}
+	got, ok := value.(string)
+	return ok && got == want
+}
+
 func lenValue(v interface{}) int { a, _ := v.([]interface{}); return len(a) }
 func (t *tenantTransport) pvc(s map[string]interface{}) error {
 	if s == nil {

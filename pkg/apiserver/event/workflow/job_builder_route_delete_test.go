@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
@@ -96,4 +97,44 @@ func TestBuildJobsForComponent_NoRouteJobWithoutGatewayRemoval(t *testing.T) {
 			require.Empty(t, routeJobs(buckets, config.JobDeleteRoute))
 		})
 	}
+}
+
+var testGatewayAPIGateway = spec.GatewayConfig{Provider: spec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+	ParentRef: spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener}}
+
+// Under the gatewayapi provider the complete route payload, with the labels and
+// annotation the builder adds, is an HTTPRoute that passes the workspace write
+// boundary; the delete payload names the same HTTPRoute.
+func TestBuildJobsForComponent_GatewayAPIRoutePassesWorkspacePolicy(t *testing.T) {
+	propsJSON, err := model.NewJSONStructByStruct(model.Properties{Ports: []model.Ports{{Port: 8080}}})
+	require.NoError(t, err)
+	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{Gateway: &spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{
+		{}, {Path: "/api", Rewrite: "/", Timeout: "600s"},
+	}}})
+	require.NoError(t, err)
+	component := &model.ApplicationComponent{ID: 3, Name: "chat", AppID: "app-1", Namespace: "nvg", ComponentType: config.ServerJob, Image: "chat:1", Properties: propsJSON, Traits: traitsJSON}
+
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, routeDeleteTask(t, component.AppID), testJobTimeoutSeconds, testGatewayAPIGateway, "")
+	require.NoError(t, err)
+	deployJobs := routeJobs(buckets, config.JobDeployRoute)
+	require.Len(t, deployJobs, 1)
+	require.Equal(t, "gateway: chat-nvg.apps.example.com/, chat-nvg.apps.example.com/api", deployJobs[0].Info)
+	route, resource, err := jobinfo.RouteFromJobInfo(deployJobs[0])
+	require.NoError(t, err)
+	require.Equal(t, spec.ResourceHTTPRoute, resource.Kind)
+	require.Equal(t, spec.HTTPRouteResource, resource.GVR)
+	deploy, err := jobexec.PrepareTask(deployJobs[0], component.AppID, &model.Workspace{ID: "space", Namespace: "nvg"}, spec.WorkspaceConfig{Gateway: testGatewayAPIGateway})
+	require.NoError(t, err)
+	require.True(t, deploy)
+
+	component.Traits = nil
+	buckets, err = buildJobsForComponent(context.Background(), nil, component, routeDeleteTask(t, component.AppID, "chat"), testJobTimeoutSeconds, testGatewayAPIGateway, "")
+	require.NoError(t, err)
+	deleteJobs := routeJobs(buckets, config.JobDeleteRoute)
+	require.Len(t, deleteJobs, 1)
+	ref, resource, err := jobinfo.RouteFromJobInfo(deleteJobs[0])
+	require.NoError(t, err)
+	require.Equal(t, spec.ResourceHTTPRoute, resource.Kind)
+	require.Equal(t, route.GetName(), ref.GetName())
+	require.Equal(t, "delete httproute: nvg/"+route.GetName(), deleteJobs[0].Info)
 }

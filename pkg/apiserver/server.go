@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -72,6 +73,10 @@ type restServer struct {
 	leaderCancel              context.CancelFunc
 	leaderPodUID              string
 	leaderServiceDone         <-chan struct{}
+	// platformDiscovery reads API metadata with the platform identity.
+	platformDiscovery discovery.DiscoveryInterface
+	// gatewayIssue explains why the current Leader cannot serve component routes.
+	gatewayIssue string
 }
 
 func (s *restServer) RuntimeRole() string {
@@ -85,9 +90,13 @@ func (s *restServer) RuntimeReady() (bool, string) {
 	if s.leading.Load() {
 		s.leaderMu.RLock()
 		ready := s.leaderCtx != nil && s.leaderCtx.Err() == nil
+		gatewayIssue := s.gatewayIssue
 		s.leaderMu.RUnlock()
 		if !ready {
 			return false, "leader is initializing or stopping"
+		}
+		if gatewayIssue != "" {
+			return false, gatewayIssue
 		}
 		return true, ""
 	}

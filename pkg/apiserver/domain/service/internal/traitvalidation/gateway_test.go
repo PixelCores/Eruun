@@ -14,6 +14,8 @@ import (
 func TestValidateGateway(t *testing.T) {
 	const field = "component[0].traits.gateway"
 	ingress := spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	gatewayAPI := spec.GatewayConfig{Provider: spec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+		ParentRef: spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener}}
 	routes := func(n int) []spec.GatewayRouteSpec {
 		result := make([]spec.GatewayRouteSpec, n)
 		for i := range result {
@@ -131,6 +133,10 @@ func TestValidateGateway(t *testing.T) {
 		{
 			name: "timeout on ingress", gateway: spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Timeout: "1h"}}},
 			want: map[string]string{field + ".routes[0].timeout": apisv1.ErrCodeGatewayUnsupported},
+		},
+		{
+			name: "rewrite and timeouts on gatewayapi", cfg: &gatewayAPI,
+			gateway: spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Path: "/api", Rewrite: "/", Timeout: "1h"}, {Path: "/stream", Timeout: "0s"}}},
 		},
 		{
 			name: "unknown backend service", gateway: spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Backend: &spec.GatewayBackendSpec{Service: "other"}}}},

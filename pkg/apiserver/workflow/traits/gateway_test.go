@@ -79,7 +79,7 @@ func TestBuildGatewayRouteDefaultsAndRejections(t *testing.T) {
 		cfg     spec.GatewayConfig
 		want    string
 	}{
-		{"disabled provider", spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}, spec.GatewayConfig{}, "cannot render routes"},
+		{"disabled provider", spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{}}}, spec.GatewayConfig{}, "has no route resource"},
 		{"foreign host", spec.GatewayTraitSpec{Hosts: []string{"api-ws-b.apps.example.com"}, Routes: []spec.GatewayRouteSpec{{}}}, cfg, `"-ws-a"`},
 		{"rewrite", spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Path: "/api", Rewrite: "/"}}}, cfg, "neither rewrite nor timeout"},
 		{"timeout", spec.GatewayTraitSpec{Routes: []spec.GatewayRouteSpec{{Timeout: "30s"}}}, cfg, "neither rewrite nor timeout"},
@@ -89,4 +89,55 @@ func TestBuildGatewayRouteDefaultsAndRejections(t *testing.T) {
 			require.ErrorContains(t, err, tt.want)
 		})
 	}
+}
+
+// The HTTPRoute matches design §6.5: attached to the platform Gateway's HTTPS
+// listener, one rule per route, rewrite and timeout only where declared.
+func TestBuildGatewayRouteRendersHTTPRoute(t *testing.T) {
+	cfg := spec.GatewayConfig{Provider: spec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+		ParentRef: spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener}}
+	component := &model.ApplicationComponent{Name: "agent", AppID: "demo", Namespace: "ws-a", ComponentType: "webservice"}
+	gateway := spec.GatewayTraitSpec{
+		Hosts: []string{"chat-ws-a.apps.example.com"},
+		Routes: []spec.GatewayRouteSpec{
+			{Backend: &spec.GatewayBackendSpec{Port: 3000}},
+			{Path: "/api", Rewrite: "/", Timeout: "120s", Backend: &spec.GatewayBackendSpec{Port: 8080}},
+			{Path: "/healthz", Match: spec.GatewayMatchExact, Timeout: "0s", Backend: &spec.GatewayBackendSpec{Port: 8080}},
+		},
+	}
+	ports := []spec.Ports{{Port: 3000}, {Port: 8080}}
+
+	route, err := BuildGatewayRoute(component, gateway, nil, ports, cfg)
+	require.NoError(t, err)
+	service := naming.ServiceName("agent", "demo")
+	require.Equal(t, map[string]interface{}{
+		"apiVersion": "gateway.networking.k8s.io/v1",
+		"kind":       "HTTPRoute",
+		"metadata":   map[string]interface{}{"name": naming.GatewayRouteName("agent", "demo"), "namespace": "ws-a"},
+		"spec": map[string]interface{}{
+			"parentRefs": []interface{}{map[string]interface{}{
+				"group": "gateway.networking.k8s.io", "kind": "Gateway", "namespace": "istio-ingress", "name": "eruun", "sectionName": "https",
+			}},
+			"hostnames": []interface{}{"chat-ws-a.apps.example.com"},
+			"rules": []interface{}{
+				map[string]interface{}{
+					"matches":     []interface{}{map[string]interface{}{"path": map[string]interface{}{"type": "PathPrefix", "value": "/"}}},
+					"backendRefs": []interface{}{map[string]interface{}{"name": service, "port": int64(3000)}},
+				},
+				map[string]interface{}{
+					"matches":     []interface{}{map[string]interface{}{"path": map[string]interface{}{"type": "PathPrefix", "value": "/api"}}},
+					"filters":     []interface{}{map[string]interface{}{"type": "URLRewrite", "urlRewrite": map[string]interface{}{"path": map[string]interface{}{"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}}}},
+					"timeouts":    map[string]interface{}{"request": "120s"},
+					"backendRefs": []interface{}{map[string]interface{}{"name": service, "port": int64(8080)}},
+				},
+				map[string]interface{}{
+					"matches":     []interface{}{map[string]interface{}{"path": map[string]interface{}{"type": "Exact", "value": "/healthz"}}},
+					"timeouts":    map[string]interface{}{"request": "0s"},
+					"backendRefs": []interface{}{map[string]interface{}{"name": service, "port": int64(8080)}},
+				},
+			},
+		},
+	}, route.Object)
+	// The payload must survive JSON round trips (task checkpoints, transport).
+	require.NotPanics(t, func() { route.DeepCopy() })
 }

@@ -10,6 +10,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func (s *restServer) setupRuntimeLeaderElection(ctx, runtimeCtx context.Context, errChan chan error) (leaderelection.LeaderElectionConfig, error) {
@@ -66,9 +68,20 @@ func (s *restServer) startLeader(parent context.Context, errChan chan error) {
 	if !s.onStartedSchedulerLeading(ctx, errChan) || ctx.Err() != nil {
 		return
 	}
+	gatewayIssue := ""
+	if s.platformDiscovery != nil {
+		var err error
+		if gatewayIssue, err = gatewayAPIIssue(s.platformDiscovery, s.cfg.Gateway.Provider); err != nil {
+			klog.ErrorS(err, "cannot check the gateway provider API")
+		}
+	}
 	s.leaderMu.Lock()
 	s.leaderCtx, s.leaderCancel = ctx, cancel
+	s.gatewayIssue = gatewayIssue
 	s.leaderMu.Unlock()
+	if s.platformDiscovery != nil && s.cfg.Gateway.Provider != spec.GatewayProviderNone {
+		go s.watchGatewayAPI(ctx)
+	}
 	publishCtx, finishPublish := context.WithTimeout(ctx, leaderElectionReleaseTimeout)
 	err := s.publishLeaderService(publishCtx)
 	finishPublish()

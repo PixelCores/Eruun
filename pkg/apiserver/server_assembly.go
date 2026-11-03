@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -73,6 +74,13 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	// Sandbox lifecycle uses the platform identity after its own Runner claim
 	// checks. Preserve the shared limiter before APIClient adds tenant transport.
 	sandboxKubeConfig := rest.CopyConfig(kubeConfig)
+	// The Leader checks the gateway API while starting; bound that request so
+	// an unresponsive API server cannot hold up the leadership term.
+	discoveryConfig := rest.CopyConfig(kubeConfig)
+	discoveryConfig.Timeout = 10 * time.Second
+	if s.platformDiscovery, err = discovery.NewDiscoveryClientForConfig(discoveryConfig); err != nil {
+		return fmt.Errorf("create platform discovery client: %w", err)
+	}
 
 	schemaMode := mysql.SchemaModeMigrate
 	if s.cfg.NormalizedDatastoreSchemaMode() == config.DatastoreSchemaModeValidate {

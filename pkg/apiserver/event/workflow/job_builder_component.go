@@ -531,7 +531,11 @@ func buildRouteDeleteJob(component *model.ApplicationComponent, properties *mode
 	routeJob := NewJobTask(route.GetName(), route.GetNamespace(), task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
 	routeJob.JobType = string(config.JobDeleteRoute)
 	routeJob.JobInfo = route
-	routeJob.Info = "delete " + buildResourceInfo(domainspec.ResourceIngress, route.GetNamespace(), route.GetName())
+	_, resource, err := jobinfo.RouteFromJobInfo(routeJob)
+	if err != nil {
+		return nil, err
+	}
+	routeJob.Info = "delete " + buildResourceInfo(resource.Kind, route.GetNamespace(), route.GetName())
 	setDeployTimeout(routeJob)
 	markJobSkippedIfIgnored(share, routeJob)
 	return routeJob, nil
@@ -550,7 +554,11 @@ func buildRouteJob(component *model.ApplicationComponent, properties *model.Prop
 	routeJob := NewJobTask(route.GetName(), route.GetNamespace(), task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
 	routeJob.JobType = string(config.JobDeployRoute)
 	routeJob.JobInfo = route
-	routeJob.Info = buildRouteDeployInfo(route.GetName(), *traits.Gateway, component, gateway)
+	_, resource, err := jobinfo.RouteFromJobInfo(routeJob)
+	if err != nil {
+		return nil, err
+	}
+	routeJob.Info = buildRouteDeployInfo(resource.Kind, route.GetName(), *traits.Gateway, component, gateway)
 	setDeployTimeout(routeJob)
 	markJobSkippedIfIgnored(share, routeJob)
 	return routeJob, nil
