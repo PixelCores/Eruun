@@ -111,14 +111,16 @@
         "provider",
         "domain",
         "proxyNamespace",
-        "ingress"
+        "ingress",
+        "gatewayapi"
       ],
       "properties": {
         "provider": {
           "type": "string",
           "enum": [
             "",
-            "ingress"
+            "ingress",
+            "gatewayapi"
           ]
         },
         "domain": {
@@ -139,6 +141,32 @@
           ],
           "properties": {
             "className": {
+              "type": "string",
+              "maxLength": 253,
+              "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
+            }
+          }
+        },
+        "gatewayapi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "namespace",
+            "className",
+            "tlsSecretName"
+          ],
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "maxLength": 63,
+              "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$"
+            },
+            "className": {
+              "type": "string",
+              "maxLength": 253,
+              "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
+            },
+            "tlsSecretName": {
               "type": "string",
               "maxLength": 253,
               "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"

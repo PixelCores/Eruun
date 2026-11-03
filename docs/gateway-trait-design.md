@@ -1,6 +1,6 @@
 # Gateway Trait 与网络入口设计
 
-> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。第 1 节的决策已全部确认。§9 的 PR 1 已实现：入口平台配置（`--gateway-*` flag、Helm `gateway` values，provider 只有 `ingress`）、`route_deploy` 执行顺序，以及 `traits.gateway` 契约替换与 `ingress` 后端；实现与本文的差异见 §9.1，现行契约以 [Validation API](validation-api-guide.md#gateway-规则)、[Components API](components-api-sidecar-field.md) 与 [Helm 部署契约](helm-deployment.md#入口网关) 为准。PR 2 分两步：2a（服务端 `gatewayapi` 后端：配置、HTTPRoute 渲染与就绪判断、`httproutes` 写入边界、空间 Role、清理与 Discovery 检查）已实现，记录见 §9.2；2b（Helm `gatewayapi` values、chart 创建的 Gateway、ClusterRole 规则与安装器）未实现，相关章节不构成部署承诺。
+> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。第 1 节的决策已全部确认。§9 的 PR 1 已实现：入口平台配置（`--gateway-*` flag、Helm `gateway` values，provider 只有 `ingress`）、`route_deploy` 执行顺序，以及 `traits.gateway` 契约替换与 `ingress` 后端；实现与本文的差异见 §9.1，现行契约以 [Validation API](validation-api-guide.md#gateway-规则)、[Components API](components-api-sidecar-field.md) 与 [Helm 部署契约](helm-deployment.md#入口网关) 为准。PR 2 分两步：2a（服务端 `gatewayapi` 后端：配置、HTTPRoute 渲染与就绪判断、`httproutes` 写入边界、空间 Role、清理与 Discovery 检查）已实现，记录见 §9.2；2b（Helm `gatewayapi` values、chart 创建的 Gateway、ClusterRole 规则与安装器）已实现，记录见 §9.3。真实 Istio 环境的验收（§10）尚未进行。
 >
 > 基线：`origin/main` `a73d15f`（2026-10-23）。Eruun 尚未发布，本方案直接替换 `traits.ingress`，不保留兼容字段、别名或迁移窗口。本文经 Codex 两轮独立审核与一轮设计讨论（R1–R14、S1–S8）。
 
@@ -725,6 +725,15 @@ PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Ch
 - **清理**：清理 Job 与应用级清理都按 provider 只访问当前后端的路由资源；HTTPRoute 通过空间身份的 dynamic client 删除（Workflow 用 `jobexec.Runtime.Dynamic`，应用服务从注入的请求级 `kubeConfig` 创建），等待对象消失复用现有逻辑。
 - **Discovery**：Leader 任期开始时同步检查一次，之后在任期内每 30 秒复查。确认缺失（404 或资源列表中没有）时 `RuntimeReady` 返回原因，API 恢复后的下一次复查即清除；其他错误只记日志，不改变上一次结论。检查结果不影响选举，复查结果只写入发起它的任期。Discovery 客户端单独设 10 秒请求超时。
 - **未处理**：资源名冲突检查（`application_resource_validation.go`）仍以 `ResourceIngress` 作为路由名的登记类别，只用于同应用内的名字去重，不影响行为。Helm values、ClusterRole 规则、`templates/gateway.yaml`、安装器与 Helm/服务端共用边界用例属于 2b。真实 Istio 验收见 §10。
+
+### 9.3 PR 2b 实现记录
+
+- **Gateway 名称**：§6.6 示例中的 `eruun` 改为 `<fullname>-<release namespace>`（`eruun.gatewayName`，截断到 63），避免多个 release 共用 `gateway.gatewayapi.namespace` 时同名；重定向路由为 `<Gateway 名前 48 字符>-https-redirect`。Chart 把同一名字渲染为 `ERUUN_GATEWAY_PARENT_NAME`，Quickstart 用相同规则计算等待对象。
+- **proxyNamespace**：`gatewayapi` 时 Chart 把省略的 `gateway.proxyNamespace` 渲染为 `gateway.gatewayapi.namespace`，与服务端 `Config.Validate` 的派生一致。
+- **一致性**：`eruun.validateRuntime` 按 §6.1 整张表 `fail`；`values.schema.json` 的 provider 枚举加入 `gatewayapi` 并新增 `gateway.gatewayapi` 对象，禁止未知字段。
+- **选择器常量**：`deploy/helm_gateway_test.go` 断言 `templates/gateway.yaml` 的选择器键等于 `workspace.OwnerLabel`。
+- **安装器**：`GATEWAY_API_NAMESPACE`、`GATEWAY_API_CLASS`、`GATEWAY_API_TLS_SECRET` 映射到 `gateway.gatewayapi.*`；`WAIT_READY=true` 时在 rollout 之后等待 Gateway `Accepted`/`Programmed`，并轮询两个监听器的 `Programmed`/`ResolvedRefs` 与重定向路由的 `Accepted`（`kubectl wait` 只能读顶层 condition），最后输出 Gateway 地址。轮询上限固定 120 秒。
+- **验证边界**：Helm 模板测试使用从模块缓存离线编译的 Helm v3.19.0，CI 固定的是 v4.2.0（CI 当前停用）；未在真实集群执行 `helm install`。
 
 ## 10. 测试与验证边界
 

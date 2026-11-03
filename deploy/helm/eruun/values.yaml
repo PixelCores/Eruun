@@ -79,15 +79,24 @@ jobs:
 # Inbound entry point for component routes, chosen at install time. This is the
 # only source of ERUUN_GATEWAY_*; see docs/gateway-trait-design.md.
 gateway:
-  # "" disables component routes; ingress renders Kubernetes Ingress objects.
+  # "" disables component routes; ingress renders Kubernetes Ingress objects;
+  # gatewayapi renders Gateway API HTTPRoutes attached to a Gateway this Chart creates.
   provider: ""
   # DNS suffix of component hosts, for example apps.example.com.
   domain: ""
   # Namespace of the gateway data-plane Pods; workspace NetworkPolicy admits them.
+  # Required with ingress; with gatewayapi it defaults to gatewayapi.namespace.
   proxyNamespace: ""
   ingress:
     # IngressClass used when provider=ingress, for example nginx.
     className: ""
+  gatewayapi:
+    # Existing namespace for the platform Gateway, for example istio-ingress.
+    namespace: ""
+    # GatewayClass provided by the platform's Gateway controller, for example istio.
+    className: ""
+    # Secret in gatewayapi.namespace holding the *.<domain> wildcard certificate.
+    tlsSecretName: ""
 
 env:
   # Example extra environment variables for the application

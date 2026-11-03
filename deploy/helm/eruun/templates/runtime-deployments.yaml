@@ -74,9 +74,16 @@ spec:
             - name: ERUUN_GATEWAY_DOMAIN
               value: {{ .domain | quote }}
             - name: ERUUN_GATEWAY_PROXY_NAMESPACE
-              value: {{ .proxyNamespace | quote }}
+              value: {{ include "eruun.gatewayProxyNamespace" $root | quote }}
+            {{- if eq .provider "ingress" }}
             - name: ERUUN_GATEWAY_INGRESS_CLASS
               value: {{ .ingress.className | quote }}
+            {{- else }}
+            - name: ERUUN_GATEWAY_PARENT_NAMESPACE
+              value: {{ .gatewayapi.namespace | quote }}
+            - name: ERUUN_GATEWAY_PARENT_NAME
+              value: {{ include "eruun.gatewayName" $root | quote }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- include "eruun.datastoreEnv" $root | nindent 12 }}

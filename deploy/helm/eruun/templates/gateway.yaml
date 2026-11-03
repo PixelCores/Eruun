@@ -1,0 +1,68 @@
+{{- include "eruun.validateRuntime" . -}}
+{{- if eq .Values.gateway.provider "gatewayapi" }}
+{{- $api := .Values.gateway.gatewayapi }}
+{{- $name := include "eruun.gatewayName" . }}
+{{- $hostname := printf "*.%s" .Values.gateway.domain }}
+# Platform entry point for workspace HTTPRoutes (docs/gateway-trait-design.md
+# §6.6). Workspace routes may attach only to the https listener; the http
+# listener serves the redirect below. The Gateway controller, GatewayClass and
+# Gateway API CRDs are installed by the platform, not by this Chart.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $name }}
+  namespace: {{ $api.namespace }}
+  labels:
+    {{- include "eruun.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ $api.className | quote }}
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: {{ $hostname | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $api.tlsSecretName | quote }}
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            # Workspace namespaces carry this owner label; it must equal
+            # workspace.OwnerLabel in pkg/apiserver/infrastructure/workspace.
+            matchExpressions:
+              - key: eruun.io/workspace-id
+                operator: Exists
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: {{ $hostname | quote }}
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "%s-https-redirect" ($name | trunc 48 | trimSuffix "-") }}
+  namespace: {{ $api.namespace }}
+  labels:
+    {{- include "eruun.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $name }}
+      sectionName: http
+  hostnames:
+    - {{ $hostname | quote }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+{{- end }}
