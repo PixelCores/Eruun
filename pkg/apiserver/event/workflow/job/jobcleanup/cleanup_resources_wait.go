@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
@@ -115,7 +116,7 @@ func (c *CleanupResourcesJobCtl) componentPodsGone(ctx context.Context, componen
 		if strings.TrimSpace(pod.Name) == "" {
 			continue
 		}
-		if strategy, protected := cleanupResourceShareProtected(pod.Labels); protected {
+		if strategy, protected := jobexec.ShareProtectedFromDeletion(pod.Labels); protected {
 			klog.Infof("cleanup resources: keep shared pod %s/%s strategy=%s", namespace, pod.Name, strategy)
 			continue
 		}

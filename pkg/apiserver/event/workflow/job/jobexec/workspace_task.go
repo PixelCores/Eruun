@@ -50,7 +50,7 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 	case config.JobDeployScheduled:
 		// Scheduled execution supports CronJob and one-shot Job payloads.
 		resource = "cronjobs"
-	case config.JobDeployCallback, config.JobCleanupResources, config.JobDatabaseReset, config.JobLogArchiveUpload, config.JobVersionRestart:
+	case config.JobDeleteRoute, config.JobDeployCallback, config.JobCleanupResources, config.JobDatabaseReset, config.JobLogArchiveUpload, config.JobVersionRestart:
 		return false, nil
 	default:
 		return false, bcode.ErrForbidden

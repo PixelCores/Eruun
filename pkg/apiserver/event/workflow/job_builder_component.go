@@ -507,9 +507,34 @@ func buildJobsForComponent(
 			return nil, err
 		}
 		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], routeJob)
+	} else if gateway.Provider != domainspec.GatewayProviderNone && versionUpdateDeletesRoute(task, component.Name) {
+		routeJob, err := buildRouteDeleteJob(component, &properties, task, gateway, defaultJobTimeoutSeconds, share)
+		if err != nil {
+			return nil, err
+		}
+		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], routeJob)
 	}
 
 	return buckets, nil
+}
+
+// buildRouteDeleteJob removes the route left behind when /version drops a
+// component's gateway trait. The payload carries only the route identity and
+// the labels that prove the component owns it.
+func buildRouteDeleteJob(component *model.ApplicationComponent, properties *model.Properties, task *model.WorkflowQueue, gateway domainspec.GatewayConfig, defaultJobTimeoutSeconds int64, share shareConfig) (*model.JobTask, error) {
+	route, err := workflowtraits.GatewayRouteRef(component, gateway)
+	if err != nil {
+		return nil, fmt.Errorf("component %s gateway route: %w", component.Name, err)
+	}
+	route.SetLabels(jobexec.BuildLabels(component, properties))
+	applyShareLabelsToObject(route, share)
+	routeJob := NewJobTask(route.GetName(), route.GetNamespace(), task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
+	routeJob.JobType = string(config.JobDeleteRoute)
+	routeJob.JobInfo = route
+	routeJob.Info = "delete " + buildResourceInfo(domainspec.ResourceIngress, route.GetNamespace(), route.GetName())
+	setDeployTimeout(routeJob)
+	markJobSkippedIfIgnored(share, routeJob)
+	return routeJob, nil
 }
 
 // buildRouteJob renders the component route for the platform gateway. It runs in

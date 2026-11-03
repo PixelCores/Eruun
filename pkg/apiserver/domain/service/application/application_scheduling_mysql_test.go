@@ -101,7 +101,7 @@ func TestDirectVersionUpdateMySQLApplicationLock(t *testing.T) {
 		}
 		go func() {
 			_, _, _, _, _, err := auto.commitAutoExecVersionUpdate(ctx, &autoApp, autoComponents,
-				apis.UpdateVersionRequest{Components: []apis.ComponentUpdateSpec{{Name: "api", Image: "api:auto"}}}, "3.0.0", workflow, 0, nil, versionUpdateResourceActions{}, nil, spec.VersionUpdateExecutionScope(""))
+				apis.UpdateVersionRequest{Components: []apis.ComponentUpdateSpec{{Name: "api", Image: "api:auto"}}}, "3.0.0", workflow, 0, nil, versionUpdateResourceActions{}, nil, nil, spec.VersionUpdateExecutionScope(""))
 			autoDone <- err
 		}()
 		earlyComponentWrite := false

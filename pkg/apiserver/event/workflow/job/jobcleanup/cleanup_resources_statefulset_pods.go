@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
@@ -222,7 +223,7 @@ func (c *CleanupResourcesJobCtl) deleteRequiredStatefulSetPodOwnerJob(
 	if job == nil {
 		return false, fmt.Errorf("verify required StatefulSet pod owner Job %s/%s after delete failure: returned nil object", pod.Namespace, target.name)
 	}
-	if _, protected := cleanupResourceShareProtected(job.Labels); protected {
+	if _, protected := jobexec.ShareProtectedFromDeletion(job.Labels); protected {
 		return false, requiredStatefulSetPodOwnerJobProtectionError(component, pod, target.name)
 	}
 	if job.UID != target.uid {
@@ -316,7 +317,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodOwnerJobsGone(
 		if job == nil {
 			return false, fmt.Errorf("inspect required StatefulSet pod owner Job %s/%s: returned nil object", target.ref.namespace, identity.name)
 		}
-		if _, protected := cleanupResourceShareProtected(job.Labels); protected {
+		if _, protected := jobexec.ShareProtectedFromDeletion(job.Labels); protected {
 			return false, requiredStatefulSetPodOwnerJobProtectionError(component, pod, identity.name)
 		}
 		if job.UID == "" {
@@ -509,7 +510,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetLabeledJobsGone(
 			// before label-only reconciliation can proceed.
 			return false, nil
 		}
-		if _, protected := cleanupResourceShareProtected(job.Labels); protected {
+		if _, protected := jobexec.ShareProtectedFromDeletion(job.Labels); protected {
 			// Preserve the ordinary generic-cleanup contract for a standalone
 			// shared Job. Checkpointed owner Jobs still block in the handler above.
 			continue
@@ -902,7 +903,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodOwnerJobs(
 		if job == nil {
 			return nil, fmt.Errorf("inspect required StatefulSet pod owner Job %s/%s: returned nil object", pod.Namespace, name)
 		}
-		if _, protected := cleanupResourceShareProtected(job.Labels); protected {
+		if _, protected := jobexec.ShareProtectedFromDeletion(job.Labels); protected {
 			return nil, requiredStatefulSetPodOwnerJobProtectionError(component, pod, name)
 		}
 		if owner.UID == "" {
@@ -930,7 +931,7 @@ func requiredStatefulSetPodProtectionError(component *model.ApplicationComponent
 	if pod == nil {
 		return nil
 	}
-	if _, protected := cleanupResourceShareProtected(pod.Labels); !protected {
+	if _, protected := jobexec.ShareProtectedFromDeletion(pod.Labels); !protected {
 		return nil
 	}
 	return fmt.Errorf("required StatefulSet deletion blocked for component %s: pod %s/%s is protected by live share labels", component.Name, pod.Namespace, pod.Name)

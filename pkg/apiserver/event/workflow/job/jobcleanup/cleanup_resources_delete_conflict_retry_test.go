@@ -119,7 +119,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictStillFailsClosed(t *test
 			live, getErr := client.AppsV1().StatefulSets(component.Namespace).Get(ctx, statefulSet.Name, metav1.GetOptions{})
 			require.NoError(t, getErr)
 			require.Equal(t, tt.wantUID, live.UID)
-			_, protected := cleanupResourceShareProtected(live.Labels)
+			_, protected := jobexec.ShareProtectedFromDeletion(live.Labels)
 			require.Equal(t, tt.wantShared, protected)
 		})
 	}
@@ -308,7 +308,7 @@ func TestCleanupResourcesJobCtlPVCDeleteConflictStillFailsClosed(t *testing.T) {
 			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 			live := requiredStatefulSetPVCFromTracker(t, client, component.Namespace, pvc.Name)
 			require.Equal(t, tt.wantUID, live.UID)
-			_, protected := cleanupResourceShareProtected(live.Labels)
+			_, protected := jobexec.ShareProtectedFromDeletion(live.Labels)
 			require.Equal(t, tt.wantShared, protected)
 		})
 	}

@@ -86,6 +86,8 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 		return jobdeploy.NewDeploySecretJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployRoute):
 		return jobdeploy.NewDeployRouteJobCtl(job, runtime, runtime.ShareLocker)
+	case string(config.JobDeleteRoute):
+		return jobdeploy.NewDeleteRouteJobCtl(job, runtime)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return jobinstant.NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
@@ -689,6 +691,7 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployConfigMap,
 		config.JobDeploySecret,
 		config.JobDeployRoute,
+		config.JobDeleteRoute,
 		config.JobDeployInstant,
 		config.JobDeployScheduled,
 		config.JobCleanupResources,

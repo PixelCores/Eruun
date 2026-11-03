@@ -31,6 +31,7 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 	taskCallback *model.JSONStruct,
 	resourceActions versionUpdateResourceActions,
 	readyComponents []string,
+	routeDeleteComponents []string,
 	executionScope domainspec.VersionUpdateExecutionScope,
 ) ([]string, []string, []string, []string, string, error) {
 	if workflow == nil {
@@ -102,6 +103,7 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 			if resourceActionInfo == nil {
 				resourceActionInfo = &model.VersionUpdateResourceActionInfo{}
 			}
+			resourceActionInfo.RouteDeleteComponents = routeDeleteComponents
 			resourceActionInfoJSON, err := marshalVersionUpdateResourceActionInfo(resourceActionInfo)
 			if err != nil {
 				return fmt.Errorf("auto exec resource action state: %w", err)

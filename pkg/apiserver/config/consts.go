@@ -54,6 +54,7 @@ const (
 	JobDeployConfigMap  JobType = "configmap_deploy"
 	JobDeploySecret     JobType = "secret_deploy"
 	JobDeployRoute      JobType = "route_deploy"
+	JobDeleteRoute      JobType = "route_delete"
 	JobDeployInstant    JobType = "instant_job"
 	JobDeployScheduled  JobType = "scheduled_job"
 	JobDeployCallback   JobType = "callback"

@@ -201,6 +201,9 @@ type VersionUpdateResourceActionInfo struct {
 	ImageReadyTimeoutSeconds int64                                  `json:"imageReadyTimeoutSeconds,omitempty"`
 	ExecutionScope           domainspec.VersionUpdateExecutionScope `json:"executionScope,omitempty"`
 	ExecutionComponents      []string                               `json:"executionComponents,omitempty"`
+	// RouteDeleteComponents lists components whose traits.gateway this update
+	// removed; their routes are deleted when the components deploy.
+	RouteDeleteComponents []string `json:"routeDeleteComponents,omitempty"`
 }
 
 func (wq *WorkflowQueue) PrimaryKey() string {

@@ -591,3 +591,24 @@ func (c *applicationsServiceImpl) cleanupVersionUpdateRemovedComponent(ctx conte
 	}
 	return reporter.err()
 }
+
+// versionUpdateRemovedGateways names retained components whose gateway trait the
+// update drops. Their routes are deleted by the workflow of this update; nothing
+// records the removal for a later deployment.
+func versionUpdateRemovedGateways(existing map[string]*model.ApplicationComponent, resolved []spec.Component) ([]string, error) {
+	var names []string
+	for _, component := range resolved {
+		current := existing[component.Name]
+		if current == nil || component.Traits.Gateway != nil {
+			continue
+		}
+		previous, err := current.ComponentSpec()
+		if err != nil {
+			return nil, err
+		}
+		if previous.Traits.Gateway != nil {
+			names = append(names, component.Name)
+		}
+	}
+	return names, nil
+}

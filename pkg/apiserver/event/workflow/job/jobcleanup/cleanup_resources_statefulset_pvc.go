@@ -88,7 +88,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetPVCDeletionAllowed(ctx
 		if !exists {
 			continue
 		}
-		if _, protected := cleanupResourceShareProtected(pvc.Labels); protected {
+		if _, protected := jobexec.ShareProtectedFromDeletion(pvc.Labels); protected {
 			return c.requiredStatefulSetPVCDeletionProtectedError(c.requiredStatefulSetPVCTarget.refForPVC(name))
 		}
 	}
@@ -120,7 +120,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCsGone(ctx context.Context
 			pendingDelete = true
 			continue
 		}
-		if _, protected := cleanupResourceShareProtected(pvc.Labels); protected {
+		if _, protected := jobexec.ShareProtectedFromDeletion(pvc.Labels); protected {
 			return false, c.requiredStatefulSetPVCDeletionProtectedError(targetRef)
 		}
 		if pvc.UID == "" {
@@ -150,7 +150,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCsGone(ctx context.Context
 				if !exists {
 					continue
 				}
-				if _, protected := cleanupResourceShareProtected(livePVC.Labels); protected {
+				if _, protected := jobexec.ShareProtectedFromDeletion(livePVC.Labels); protected {
 					return false, fmt.Errorf(
 						"%v after delete returned Conflict: %w",
 						c.requiredStatefulSetPVCDeletionProtectedError(targetRef), err,

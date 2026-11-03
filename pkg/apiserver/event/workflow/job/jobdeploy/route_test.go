@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	networkingv1 "k8s.io/api/networking/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -204,4 +205,61 @@ func TestDeployRouteJobKeepsExistingRouteAndSkipsUnchangedUpdate(t *testing.T) {
 	ctl.Clean(ctx)
 	_, err := dynamicClient.Resource(ingressGVR).Namespace("team-a").Get(context.Background(), "web-ingress", metav1.GetOptions{})
 	require.NoError(t, err, "failure cleanup must keep a route this job did not create")
+}
+
+// A route delete removes only the route this component owns; a missing route,
+// another component's route and a shared route all leave the job successful.
+func TestDeleteRouteJobDeletesOnlyOwnedUnsharedRoute(t *testing.T) {
+	owner := map[string]string{domainspec.LabelAppID: "app-1", domainspec.LabelComponentName: "web"}
+	withLabels := func(extra map[string]string) map[string]string {
+		labels := map[string]string{}
+		for k, v := range owner {
+			labels[k] = v
+		}
+		for k, v := range extra {
+			labels[k] = v
+		}
+		return labels
+	}
+	spec := ingressSpecForTest("web.team-a.apps.example.com", "/", networkingv1.PathTypePrefix)
+	cases := []struct {
+		name        string
+		existing    map[string]string
+		wantDeleted bool
+	}{
+		{name: "missing route"},
+		{name: "owned route", existing: withLabels(nil), wantDeleted: true},
+		{name: "other app", existing: withLabels(map[string]string{domainspec.LabelAppID: "app-2"})},
+		{name: "other component", existing: withLabels(map[string]string{domainspec.LabelComponentName: "api"})},
+		{name: "shared route", existing: withLabels(map[string]string{domainspec.LabelShareName: "edge", domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault)})},
+		{name: "force shared route", existing: withLabels(map[string]string{domainspec.LabelShareName: "edge", domainspec.LabelShareStrategy: string(domainspec.ShareStrategyForce)}), wantDeleted: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var objects []runtime.Object
+			if tc.existing != nil {
+				existing := newRouteForTest(t, "web-ingress", spec, tc.existing, nil)
+				existing.SetUID("uid-1")
+				objects = append(objects, existing)
+			}
+			dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+				map[schema.GroupVersionResource]string{ingressGVR: "IngressList"}, objects...)
+			ref := &unstructured.Unstructured{}
+			ref.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind("Ingress"))
+			ref.SetName("web-ingress")
+			ref.SetNamespace("team-a")
+			ref.SetLabels(owner)
+			jobTask := &model.JobTask{Name: "web-ingress", Namespace: "team-a", JobType: string(config.JobDeleteRoute), JobInfo: ref}
+			ctl := NewDeleteRouteJobCtl(jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Dynamic: dynamicClient})
+			require.NotNil(t, ctl)
+
+			require.NoError(t, ctl.run(context.Background()))
+			_, err := dynamicClient.Resource(ingressGVR).Namespace("team-a").Get(context.Background(), "web-ingress", metav1.GetOptions{})
+			if tc.existing == nil || tc.wantDeleted {
+				require.True(t, k8serrors.IsNotFound(err), "route must be absent, got %v", err)
+				return
+			}
+			require.NoError(t, err, "a route the component does not own exclusively must stay")
+		})
+	}
 }
