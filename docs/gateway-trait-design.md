@@ -723,7 +723,7 @@ PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Ch
 - **就绪**：按 §7.2 实现。status 中的 parent 按 namespace、name、sectionName 匹配平台监听器。
 - **写入边界**：§7.4 之外，HTTPRoute 与 Ingress 一样只放行 `eruun.io/component-name` 注解；spec、parentRef、rule、match、filter、backendRef、timeouts 都按白名单校验字段（rule 只允许 `matches`/`filters`/`timeouts`/`backendRefs`，match 只允许 `path`，timeouts 只允许 `request`，backendRef 不允许 `weight`）。
 - **清理**：清理 Job 与应用级清理都按 provider 只访问当前后端的路由资源；HTTPRoute 通过空间身份的 dynamic client 删除（Workflow 用 `jobexec.Runtime.Dynamic`，应用服务从注入的请求级 `kubeConfig` 创建），等待对象消失复用现有逻辑。
-- **Discovery**：每个 Leader 任期开始时检查一次。确认缺失（404 或资源列表中没有）时 `RuntimeReady` 返回原因；其他错误只记日志。检查失败不影响选举，Leader 的 readiness 为 false，直到下一任期重新检查。
+- **Discovery**：Leader 任期开始时同步检查一次，之后在任期内每 30 秒复查。确认缺失（404 或资源列表中没有）时 `RuntimeReady` 返回原因，API 恢复后的下一次复查即清除；其他错误只记日志，不改变上一次结论。检查结果不影响选举，复查结果只写入发起它的任期。Discovery 客户端单独设 10 秒请求超时。
 - **未处理**：资源名冲突检查（`application_resource_validation.go`）仍以 `ResourceIngress` 作为路由名的登记类别，只用于同应用内的名字去重，不影响行为。Helm values、ClusterRole 规则、`templates/gateway.yaml`、安装器与 Helm/服务端共用边界用例属于 2b。真实 Istio 验收见 §10。
 
 ## 10. 测试与验证边界

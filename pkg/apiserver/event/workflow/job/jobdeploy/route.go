@@ -247,8 +247,12 @@ func httpRouteReady(route *unstructured.Unstructured, parent domainspec.GatewayP
 	parents, _, _ := unstructured.NestedSlice(route.Object, "status", "parents")
 	for _, item := range parents {
 		status, _ := item.(map[string]interface{})
-		ref, _, _ := unstructured.NestedStringMap(status, "parentRef")
-		if ref["namespace"] != parent.Namespace || ref["name"] != parent.Name || ref["sectionName"] != parent.SectionName {
+		// The reference may carry non-string fields such as port; read only the
+		// three that identify the platform listener.
+		namespace, _, _ := unstructured.NestedString(status, "parentRef", "namespace")
+		name, _, _ := unstructured.NestedString(status, "parentRef", "name")
+		sectionName, _, _ := unstructured.NestedString(status, "parentRef", "sectionName")
+		if namespace != parent.Namespace || name != parent.Name || sectionName != parent.SectionName {
 			continue
 		}
 		conditions := map[string]map[string]interface{}{}

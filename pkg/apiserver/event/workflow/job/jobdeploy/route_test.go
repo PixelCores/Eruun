@@ -290,6 +290,8 @@ func TestHTTPRouteReady(t *testing.T) {
 		{name: "no status yet", route: route(nil)},
 		{name: "other listener only", route: route(otherListener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2))},
 		{name: "accepted and resolved", route: route(listener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2)), ready: true},
+		{name: "listener reported with a port", route: route(map[string]interface{}{"namespace": "istio-ingress", "name": "eruun", "sectionName": "https", "port": int64(443)},
+			condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2)), ready: true},
 		{name: "resolved missing", route: route(listener, condition("Accepted", "True", "Accepted", 2))},
 		{name: "unknown", route: route(listener, condition("Accepted", "Unknown", "Pending", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2))},
 		{name: "stale rejection", route: route(listener, condition("Accepted", "False", "NotAllowedByListeners", 1), condition("ResolvedRefs", "True", "ResolvedRefs", 2))},
@@ -306,6 +308,65 @@ func TestHTTPRouteReady(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.ready, ready)
+		})
+	}
+}
+
+// route_deploy writes an HTTPRoute and waits on the status the platform
+// listener reports, taking the listener from the runtime gateway config.
+func TestDeployRouteJobWaitsForHTTPRouteAcceptance(t *testing.T) {
+	gateway := domainspec.GatewayConfig{Provider: domainspec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+		ParentRef: domainspec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: domainspec.GatewayHTTPSListener}}
+	newRoute := func(path string) *unstructured.Unstructured {
+		route := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{
+			"parentRefs": []interface{}{map[string]interface{}{"namespace": "istio-ingress", "name": "eruun", "sectionName": "https"}},
+			"hostnames":  []interface{}{"web-team-a.apps.example.com"},
+			"rules": []interface{}{map[string]interface{}{
+				"matches":     []interface{}{map[string]interface{}{"path": map[string]interface{}{"type": "PathPrefix", "value": path}}},
+				"backendRefs": []interface{}{map[string]interface{}{"name": "web", "port": int64(80)}},
+			}},
+		}}}
+		route.SetGroupVersionKind(domainspec.GatewayAPIGroupVersion.WithKind(string(domainspec.KubeKindHTTPRoute)))
+		route.SetName("web-route")
+		route.SetNamespace("team-a")
+		return route
+	}
+	for _, tc := range []struct {
+		name     string
+		accepted string
+		failure  string
+	}{
+		{name: "accepted", accepted: "True"},
+		{name: "rejected by the listener", accepted: "False", failure: "Accepted=False reason=NotAllowedByListeners"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			existing := newRoute("/")
+			existing.SetUID("uid-1")
+			require.NoError(t, unstructured.SetNestedSlice(existing.Object, []interface{}{map[string]interface{}{
+				"parentRef": map[string]interface{}{"group": "gateway.networking.k8s.io", "kind": "Gateway", "namespace": "istio-ingress", "name": "eruun", "sectionName": "https"},
+				"conditions": []interface{}{
+					map[string]interface{}{"type": "Accepted", "status": tc.accepted, "reason": "NotAllowedByListeners", "message": "m", "observedGeneration": int64(0)},
+					map[string]interface{}{"type": "ResolvedRefs", "status": "True", "reason": "ResolvedRefs", "message": "m", "observedGeneration": int64(0)},
+				},
+			}}, "status", "parents"))
+			dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+				map[schema.GroupVersionResource]string{domainspec.HTTPRouteResource: "HTTPRouteList"}, existing)
+			jobTask := &model.JobTask{Name: "web-route", Namespace: "team-a", JobType: string(config.JobDeployRoute), JobInfo: newRoute("/api")}
+			ctl := NewDeployRouteJobCtl(jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Dynamic: dynamicClient, Gateway: gateway}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
+			ctx := jobexec.WithCleanupTracker(context.Background())
+
+			require.NoError(t, ctl.run(ctx))
+			updated, err := dynamicClient.Resource(domainspec.HTTPRouteResource).Namespace("team-a").Get(ctx, "web-route", metav1.GetOptions{})
+			require.NoError(t, err)
+			value, _, _ := unstructured.NestedSlice(updated.Object, "spec", "rules")
+			require.Equal(t, "/api", value[0].(map[string]interface{})["matches"].([]interface{})[0].(map[string]interface{})["path"].(map[string]interface{})["value"])
+
+			err = ctl.wait(ctx)
+			if tc.failure == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.failure)
 		})
 	}
 }
