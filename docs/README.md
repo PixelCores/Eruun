@@ -192,6 +192,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `ai-runtime-vision.md` | Draft / Proposal | AI Runtime 产品方向、能力分层、路线图和实施门禁 |
+| [`agent-task-design.md`](agent-task-design.md) | Draft / Proposal | 一次性 Agent 任务：独立 Job 的 `type: job` + `traits.agent`，可信 Runner 加 Sandbox 运行固定版本 Codex/Claude Code，产出 diff 与轨迹；Runner 协议从评测专用扩展为 Runner 类 Job 通用。决策 D1–D8 已确认，S0 实验待执行，未实现 |
 | `agent-evaluation-job-design.md` | Draft / Proposal | Agent 评测输入、执行、制品、隔离和质量门禁方向 |
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |

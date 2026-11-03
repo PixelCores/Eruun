@@ -1,0 +1,51 @@
+# S0 level 1: a plain Pod with the same security settings as the Sandbox
+# template rendered by pkg/apiserver/jobs/sandbox_runtime.go buildSandbox.
+# Replace <namespace> with an Eruun workspace namespace (restricted PodSecurity
+# and the workspace baseline NetworkPolicy then apply) and <image> with the image
+# under test. Deliberately no eruun.io/* labels, so Eruun maintenance loops ignore it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s0-agent-probe
+  namespace: <namespace>
+  labels:
+    app.kubernetes.io/name: s0-agent-probe
+    # Uncomment both labels to place the Pod on ACS Agent Sandbox compute.
+    # alibabacloud.com/acs: "true"
+    # alibabacloud.com/compute-class: agent-sandbox
+spec:
+  serviceAccountName: default
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  activeDeadlineSeconds: 14400
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: main
+      image: <image>
+      command: ["sleep", "infinity"]
+      env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: s0-model-keys, key: openai, optional: true}
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef: {name: s0-model-keys, key: anthropic, optional: true}
+      resources:
+        requests: {cpu: "1", memory: 2Gi, ephemeral-storage: 10Gi}
+        limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 10Gi}
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        privileged: false
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
