@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -106,7 +107,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 		if statefulSet.UID == "" {
 			return fmt.Errorf("required StatefulSet %s has an empty UID while refreshing safety", cleanupResourceDisplayName(requiredRef))
 		}
-		if _, protected := cleanupResourceShareProtected(statefulSet.Labels); protected {
+		if _, protected := jobexec.ShareProtectedFromDeletion(statefulSet.Labels); protected {
 			return c.requiredStatefulSetDeletionProtectedError(requiredRef)
 		}
 	}

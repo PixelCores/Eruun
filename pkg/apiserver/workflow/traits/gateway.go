@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -56,18 +55,27 @@ func BuildGatewayRoute(component *model.ApplicationComponent, gateway spec.Gatew
 		})
 	}
 	className := cfg.IngressClass
-	ingress := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      naming.GatewayRouteName(component.Name, component.ResourceNameKey()),
-			Namespace: component.Namespace,
-		},
-		Spec: networkingv1.IngressSpec{IngressClassName: &className, Rules: rules},
-	}
-	object, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ingress)
+	object, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&networkingv1.IngressSpec{IngressClassName: &className, Rules: rules})
 	if err != nil {
 		return nil, fmt.Errorf("convert ingress route: %w", err)
 	}
-	route := &unstructured.Unstructured{Object: object}
+	route, err := GatewayRouteRef(component, cfg)
+	if err != nil {
+		return nil, err
+	}
+	route.Object["spec"] = object
+	return route, nil
+}
+
+// GatewayRouteRef identifies the single route object a component owns under the
+// configured provider, without a spec.
+func GatewayRouteRef(component *model.ApplicationComponent, cfg spec.GatewayConfig) (*unstructured.Unstructured, error) {
+	if cfg.Provider != spec.GatewayProviderIngress {
+		return nil, fmt.Errorf("gateway provider %q has no route resource", cfg.Provider)
+	}
+	route := &unstructured.Unstructured{}
 	route.SetGroupVersionKind(networkingv1.SchemeGroupVersion.WithKind(string(spec.KubeKindIngress)))
+	route.SetName(naming.GatewayRouteName(component.Name, component.ResourceNameKey()))
+	route.SetNamespace(component.Namespace)
 	return route, nil
 }

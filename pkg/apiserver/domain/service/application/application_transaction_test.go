@@ -418,7 +418,7 @@ func testVersionUpdateRejectsStalePreflight(t *testing.T, newStore func(*testing
 					err = service.commitDirectVersionUpdate(ctx, &versionUpdateRun{app: &staleApp, normalReq: second, componentMap: staleComponents, newVersion: "2.0.0"})
 				} else {
 					ctx = context.WithValue(ctx, applicationMutationLockContextKey{}, app.ID)
-					_, _, _, _, _, err = service.commitAutoExecVersionUpdate(ctx, &staleApp, staleComponents, second, "2.0.0", workflow, 0, nil, versionUpdateResourceActions{}, nil, spec.VersionUpdateExecutionScope(""))
+					_, _, _, _, _, err = service.commitAutoExecVersionUpdate(ctx, &staleApp, staleComponents, second, "2.0.0", workflow, 0, nil, versionUpdateResourceActions{}, nil, nil, spec.VersionUpdateExecutionScope(""))
 				}
 				require.ErrorIs(t, err, bcode.ErrVersionUpdateConflict)
 				require.Empty(t, client.Actions(), "conflicting preflight must fail before Kubernetes effects")
@@ -474,7 +474,7 @@ func testVersionUpdateAcceptsRuntimeSnapshotChanges(t *testing.T, newStore func(
 				require.NoError(t, service.commitDirectVersionUpdate(ctx, &versionUpdateRun{app: app, componentMap: components, normalReq: req, newVersion: "2.0.0"}))
 			} else {
 				ctx = context.WithValue(ctx, applicationMutationLockContextKey{}, app.ID)
-				_, _, _, _, _, err := service.commitAutoExecVersionUpdate(ctx, app, components, req, "2.0.0", workflow, 0, nil, versionUpdateResourceActions{}, nil, spec.VersionUpdateExecutionScope(""))
+				_, _, _, _, _, err := service.commitAutoExecVersionUpdate(ctx, app, components, req, "2.0.0", workflow, 0, nil, versionUpdateResourceActions{}, nil, nil, spec.VersionUpdateExecutionScope(""))
 				require.NoError(t, err)
 			}
 			persisted := &model.ApplicationComponent{ID: current.ID, AppID: app.ID, Name: current.Name}

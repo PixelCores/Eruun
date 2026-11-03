@@ -3,6 +3,7 @@ package workflow
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -110,6 +111,11 @@ func versionUpdateImageReadyTimeoutForComponent(task *model.WorkflowQueue, compo
 		}
 	}
 	return 0, false
+}
+
+func versionUpdateDeletesRoute(task *model.WorkflowQueue, componentName string) bool {
+	info, ok, err := versionUpdateResourceActionInfoFromTask(task)
+	return err == nil && ok && componentName != "" && slices.Contains(info.RouteDeleteComponents, componentName)
 }
 
 func cloneVersionRestartComponent(component *model.ApplicationComponent) *model.ApplicationComponent {

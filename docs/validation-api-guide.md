@@ -859,6 +859,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   - `service` 非空：必须是本组件已命名、非 `external` 的 Service Trait 名，不接受生成的默认 Service 名；Service Trait 名在写入时去除首尾空白后保存，按保存值比较；
   - `port` 为空时取所选 Service 的第一个 TCP 端口，非空时必须是该 Service 的 TCP 端口。
 - TLS 在平台入口终止，组件不声明证书。`ingress` 后端为每个组件生成一个 Ingress：名称为 `GatewayRouteName(组件名, 应用资源名)`，`ingressClassName` 取平台配置，每个 host 一条规则且共享同一组 path，不带 TLS 和默认后端；注解只有 Eruun 用于任务聚合的 `eruun.io/component-name`。
+- 版本更新去掉保留组件的 `gateway` 时要求 `autoExec=true`，本次 task 会删除该组件的入口对象，见 [版本更新 API](version-update-api.md)。
 - 这些检查只在带空间身份的请求中执行，需要空间 namespace 判断 host 归属。Try 返回字段级错误（`component[i].traits.gateway...`）；创建与版本更新使用同一套规则，以客户端可见的消息返回第一条错误（含嵌套位置的 `GATEWAY_NOT_ALLOWED`）（版本更新的字段前缀为 `component[<组件名>].traits.gateway`）。
 
 示例（只有一个默认 Service，`backend` 可省略）：

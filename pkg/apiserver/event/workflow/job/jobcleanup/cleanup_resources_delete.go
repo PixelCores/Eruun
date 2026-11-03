@@ -82,7 +82,7 @@ func (c *CleanupResourcesJobCtl) resourceDeleteProtected(ctx context.Context, re
 	if err != nil || !exists {
 		return false, exists, err
 	}
-	strategy, protected := cleanupResourceShareProtected(resourceLabels)
+	strategy, protected := jobexec.ShareProtectedFromDeletion(resourceLabels)
 	if protected {
 		klog.Infof("cleanup resources: keep shared %s %s strategy=%s", ref.kind, cleanupResourceDisplayName(ref), strategy)
 	}
@@ -156,7 +156,7 @@ func (c *CleanupResourcesJobCtl) deleteStatefulSet(ctx context.Context, namespac
 				}
 				return fmt.Errorf("get required StatefulSet %s before delete: %w", cleanupResourceDisplayName(ref), err)
 			}
-			if _, protected := cleanupResourceShareProtected(statefulSet.Labels); protected {
+			if _, protected := jobexec.ShareProtectedFromDeletion(statefulSet.Labels); protected {
 				return c.requiredStatefulSetDeletionProtectedError(ref)
 			}
 			retentionTarget, remembered := c.statefulSetRetentionTargets[ref.namespace+"/"+ref.name]
@@ -286,14 +286,6 @@ func newCleanupResourceRef(kind domainspec.ResourceKind, namespace, name string,
 		ns = ""
 	}
 	return cleanupResourceRef{kind: kind, namespace: ns, name: name, cluster: cluster}, true
-}
-
-func cleanupResourceShareProtected(resourceLabels map[string]string) (domainspec.ShareStrategy, bool) {
-	shareName, strategy := jobexec.ShareInfoFromLabels(resourceLabels)
-	if strings.TrimSpace(shareName) == "" {
-		return "", false
-	}
-	return strategy, strategy == domainspec.ShareStrategyDefault || strategy == domainspec.ShareStrategyIgnore
 }
 
 func cleanupResourceDisplayName(ref cleanupResourceRef) string {

@@ -257,7 +257,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetDeletionTargetsAllowed
 		if !ok {
 			continue
 		}
-		_, protected := cleanupResourceShareProtected(item.Labels)
+		_, protected := jobexec.ShareProtectedFromDeletion(item.Labels)
 		if ref.namespace != requiredRef.namespace || ref.name != requiredRef.name {
 			if protected {
 				return c.requiredStatefulSetDeletionProtectedError(ref)

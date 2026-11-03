@@ -116,7 +116,7 @@ func TestCleanupResourcesJobCtlPVCDeletePreconditionsRejectLateProtection(t *tes
 	require.True(t, k8serrors.IsConflict(err))
 	current, getErr := client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
 	require.NoError(t, getErr)
-	_, protected := cleanupResourceShareProtected(current.Labels)
+	_, protected := jobexec.ShareProtectedFromDeletion(current.Labels)
 	require.True(t, protected)
 }
 

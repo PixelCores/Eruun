@@ -31,6 +31,16 @@ func ShareInfoFromLabels(labels map[string]string) (string, domainspec.ShareStra
 	return name, strategy
 }
 
+// ShareProtectedFromDeletion reports whether a resource is shared under a
+// strategy that keeps it when one of its owners stops using it.
+func ShareProtectedFromDeletion(labels map[string]string) (domainspec.ShareStrategy, bool) {
+	name, strategy := ShareInfoFromLabels(labels)
+	if name == "" {
+		return "", false
+	}
+	return strategy, strategy == domainspec.ShareStrategyDefault || strategy == domainspec.ShareStrategyIgnore
+}
+
 func shareListOptions(name string) metav1.ListOptions {
 	selector := labels.Set{domainspec.LabelShareName: name}.String()
 	return metav1.ListOptions{LabelSelector: selector}
