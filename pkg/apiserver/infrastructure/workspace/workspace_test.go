@@ -376,3 +376,122 @@ func TestIngressFollowsWorkspaceGatewaySelection(t *testing.T) {
 		require.NotContains(t, rule.Resources, "ingresses", "a disabled gateway grants no route permissions")
 	}
 }
+
+// Under the gatewayapi provider the write boundary admits only the HTTPRoute
+// shape Eruun renders (design §7.4); every other field or target is rejected.
+func TestHTTPRouteFollowsWorkspaceGatewaySelection(t *testing.T) {
+	cfg := workspaceConfig(t)
+	cfg.Gateway = spec.GatewayConfig{Provider: spec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+		ParentRef: spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener}}
+	const route = `{"metadata":{"name":"web","annotations":{"eruun.io/component-name":"web"}},"spec":{
+		"parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","namespace":"istio-ingress","name":"eruun","sectionName":"https"}],
+		"hostnames":["web-own.apps.example.com"],
+		"rules":[{"matches":[{"path":{"type":"PathPrefix","value":"/api"}}],
+			"filters":[{"type":"URLRewrite","urlRewrite":{"path":{"type":"ReplacePrefixMatch","replacePrefixMatch":"/"}}}],
+			"timeouts":{"request":"120s"},
+			"backendRefs":[{"name":"web","port":8080}]}]}}`
+	decode := func(mutate func(obj, specification map[string]interface{})) map[string]interface{} {
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(route), &obj))
+		if mutate != nil {
+			mutate(obj, obj["spec"].(map[string]interface{}))
+		}
+		return obj
+	}
+	rule := func(s map[string]interface{}) map[string]interface{} {
+		return s["rules"].([]interface{})[0].(map[string]interface{})
+	}
+	backend := func(s map[string]interface{}) map[string]interface{} {
+		return rule(s)["backendRefs"].([]interface{})[0].(map[string]interface{})
+	}
+	parent := func(s map[string]interface{}) map[string]interface{} {
+		return s["parentRefs"].([]interface{})[0].(map[string]interface{})
+	}
+
+	require.NoError(t, PrepareResource("own", "httproutes", decode(nil), cfg))
+	ingressCfg := workspaceConfig(t)
+	require.ErrorIs(t, PrepareResource("own", "httproutes", decode(nil), ingressCfg), bcode.ErrForbidden, "only the gatewayapi provider writes HTTPRoutes")
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(obj, s map[string]interface{})
+	}{
+		{"controller annotation", func(obj, _ map[string]interface{}) {
+			obj["metadata"].(map[string]interface{})["annotations"] = map[string]interface{}{"konghq.com/plugins": "x"}
+		}},
+		{"no parent", func(_, s map[string]interface{}) { s["parentRefs"] = []interface{}{} }},
+		{"second parent", func(_, s map[string]interface{}) {
+			s["parentRefs"] = append(s["parentRefs"].([]interface{}), parent(s))
+		}},
+		{"plain HTTP listener", func(_, s map[string]interface{}) { parent(s)["sectionName"] = "http" }},
+		{"listener omitted", func(_, s map[string]interface{}) { delete(parent(s), "sectionName") }},
+		{"other Gateway", func(_, s map[string]interface{}) { parent(s)["name"] = "internal" }},
+		{"parent is a Service", func(_, s map[string]interface{}) { parent(s)["kind"] = "Service" }},
+		{"parent port", func(_, s map[string]interface{}) { parent(s)["port"] = float64(443) }},
+		{"hostnames omitted", func(_, s map[string]interface{}) { delete(s, "hostnames") }},
+		{"hostnames null", func(_, s map[string]interface{}) { s["hostnames"] = nil }},
+		{"hostnames empty", func(_, s map[string]interface{}) { s["hostnames"] = []interface{}{} }},
+		{"foreign workspace host", func(_, s map[string]interface{}) { s["hostnames"] = []interface{}{"web-other.apps.example.com"} }},
+		{"wildcard host", func(_, s map[string]interface{}) { s["hostnames"] = []interface{}{"*.apps.example.com"} }},
+		{"two backends", func(_, s map[string]interface{}) {
+			rule(s)["backendRefs"] = append(rule(s)["backendRefs"].([]interface{}), backend(s))
+		}},
+		{"backend in other namespace", func(_, s map[string]interface{}) { backend(s)["namespace"] = "other" }},
+		{"backend is not a Service", func(_, s map[string]interface{}) { backend(s)["kind"] = "ServiceImport" }},
+		{"weighted backend", func(_, s map[string]interface{}) { backend(s)["weight"] = float64(10) }},
+		{"mirror filter", func(_, s map[string]interface{}) {
+			rule(s)["filters"] = []interface{}{map[string]interface{}{"type": "RequestMirror", "requestMirror": map[string]interface{}{}}}
+		}},
+		{"header match", func(_, s map[string]interface{}) {
+			rule(s)["matches"] = []interface{}{map[string]interface{}{"headers": []interface{}{}}}
+		}},
+		{"retry", func(_, s map[string]interface{}) { rule(s)["retry"] = map[string]interface{}{"attempts": float64(3)} }},
+		{"session persistence", func(_, s map[string]interface{}) { rule(s)["sessionPersistence"] = map[string]interface{}{} }},
+		{"backend timeout", func(_, s map[string]interface{}) {
+			rule(s)["timeouts"] = map[string]interface{}{"backendRequest": "10s"}
+		}},
+		{"unknown spec field", func(_, s map[string]interface{}) { s["useDefaultGateways"] = "All" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.ErrorIs(t, PrepareResource("own", "httproutes", decode(tc.mutate), cfg), bcode.ErrForbidden)
+		})
+	}
+}
+
+// The workspace Role grants the route resource of the selected provider only.
+func TestWorkspaceRoleGrantsSelectedRouteResource(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		gateway  spec.GatewayConfig
+		resource string
+	}{
+		{name: "disabled"},
+		{name: "ingress", gateway: spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}, resource: "ingresses"},
+		{name: "gatewayapi", gateway: spec.GatewayConfig{Provider: spec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+			ParentRef: spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener}}, resource: "httproutes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := workspaceConfig(t)
+			cfg.Gateway = tc.gateway
+			client := fake.NewSimpleClientset()
+			w := &model.Workspace{ID: "a", Namespace: "eruun-ws-a"}
+			require.NoError(t, (&Manager{Client: client, Config: cfg}).Ensure(context.Background(), w))
+			role, err := client.RbacV1().Roles(w.Namespace).Get(context.Background(), runnerName, metav1.GetOptions{})
+			require.NoError(t, err)
+			var routes []string
+			for _, rule := range role.Rules {
+				for _, resource := range rule.Resources {
+					if resource == "ingresses" || resource == "httproutes" {
+						routes = append(routes, resource)
+						require.Equal(t, []string{"get", "list", "create", "update", "patch", "delete"}, rule.Verbs)
+					}
+				}
+			}
+			if tc.resource == "" {
+				require.Empty(t, routes)
+				return
+			}
+			require.Equal(t, []string{tc.resource}, routes)
+		})
+	}
+}

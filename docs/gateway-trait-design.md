@@ -1,6 +1,6 @@
 # Gateway Trait 与网络入口设计
 
-> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。第 1 节的决策已全部确认。§9 的 PR 1 已实现：入口平台配置（`--gateway-*` flag、Helm `gateway` values，provider 只有 `ingress`）、`route_deploy` 执行顺序，以及 `traits.gateway` 契约替换与 `ingress` 后端；实现与本文的差异见 §9.1，现行契约以 [Validation API](validation-api-guide.md#gateway-规则)、[Components API](components-api-sidecar-field.md) 与 [Helm 部署契约](helm-deployment.md#入口网关) 为准。PR 2（`gatewayapi` 后端、chart 创建的 Gateway、`httproutes` 写入边界与 Discovery 检查）未实现，相关章节不构成 API 或部署承诺。
+> 状态：Draft / Proposal。本文替代原 `gateway-abstraction-design.md` 与 `gateway-trait-implementation-plan.md`。第 1 节的决策已全部确认。§9 的 PR 1 已实现：入口平台配置（`--gateway-*` flag、Helm `gateway` values，provider 只有 `ingress`）、`route_deploy` 执行顺序，以及 `traits.gateway` 契约替换与 `ingress` 后端；实现与本文的差异见 §9.1，现行契约以 [Validation API](validation-api-guide.md#gateway-规则)、[Components API](components-api-sidecar-field.md) 与 [Helm 部署契约](helm-deployment.md#入口网关) 为准。PR 2 分两步：2a（服务端 `gatewayapi` 后端：配置、HTTPRoute 渲染与就绪判断、`httproutes` 写入边界、空间 Role、清理与 Discovery 检查）已实现，记录见 §9.2；2b（Helm `gatewayapi` values、chart 创建的 Gateway、ClusterRole 规则与安装器）未实现，相关章节不构成部署承诺。
 >
 > 基线：`origin/main` `a73d15f`（2026-10-23）。Eruun 尚未发布，本方案直接替换 `traits.ingress`，不保留兼容字段、别名或迁移窗口。本文经 Codex 两轮独立审核与一轮设计讨论（R1–R14、S1–S8）。
 
@@ -713,6 +713,18 @@ PR 1 按 1a（平台配置）、1b（`route_deploy` 与执行顺序）、1c（�
 - **安装器**：`INSTALL_MODE=helm` 未设置 `GATEWAY_*` 时入口保持关闭，manifest 模式拒绝这些变量。
 - **去掉 gateway 的组件**（PR 1 之后补上）：§7.3 的 `versionUpdateCleanupIngressTraits` 只服务于移除组件，保留组件去掉 `traits.gateway` 后不再生成路由 Job，旧入口会一直对外暴露。现在 `/version` 预检识别这类组件，记入 task 的 `resource_action_info.routeDeleteComponents`，该组件部署时生成 `route_delete` Job，按确定性名称读取路由，只删除 app-id 与组件名标签都属于本组件、且不受 `default`/`ignore` share 保护的对象，删除前校验 workflow 所有权并带 UID 前置条件。没有声明 gateway 的组件不生成任何路由 Job。只写 DB 的更新（`autoExec=false`）无法把删除带到之后的部署，因此被拒绝，与 `remove cleanup_all` 的约束一致。
 - **未处理**：同一空间内两个应用的同名组件使用默认 host 时会得到相同 host，与旧 `traits.ingress` 的默认 host 行为相同，冲突只影响本空间，未做跨应用唯一性检查。task 在 `route_delete` 执行前失败时入口会保留，见 [版本更新 API](version-update-api.md)。Service Trait 去掉后留下的 Service 是同类缺口，未处理。
+
+### 9.2 PR 2a 实现记录
+
+PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Chart 仍只支持 `ingress`，平台 Gateway 由 2b 渲染。与上文不同或上文未写明之处：
+
+- **配置**：新增 `--gateway-parent-namespace`、`--gateway-parent-name`。`Config.Validate` 在 `gatewayapi` 时派生 `ParentRef.SectionName=https`，并在 `proxyNamespace` 为空时取 `ParentRef.Namespace`（§6.1 表中的派生在服务端同样成立，便于不经 Helm 运行）。`ingress` 不接受 ParentRef，`gatewayapi` 不接受 IngressClass。
+- **渲染**：`BuildGatewayRoute` 先按路由解析 backend，再按 provider 生成 Ingress 或 HTTPRoute spec；路由身份（GVK、名称、namespace）只由 `GatewayRouteRef` 决定，部署与 `route_delete` 共用。Gateway API 的组版本与 `httproutes` 资源定义在 `spec`（`GatewayAPIGroupVersion`、`HTTPRouteResource`），渲染、Job 载荷、写入边界、清理与 Discovery 检查共用。
+- **就绪**：按 §7.2 实现。status 中的 parent 按 namespace、name、sectionName 匹配平台监听器。
+- **写入边界**：§7.4 之外，HTTPRoute 与 Ingress 一样只放行 `eruun.io/component-name` 注解；spec、parentRef、rule、match、filter、backendRef、timeouts 都按白名单校验字段（rule 只允许 `matches`/`filters`/`timeouts`/`backendRefs`，match 只允许 `path`，timeouts 只允许 `request`，backendRef 不允许 `weight`）。
+- **清理**：清理 Job 与应用级清理都按 provider 只访问当前后端的路由资源；HTTPRoute 通过空间身份的 dynamic client 删除（Workflow 用 `jobexec.Runtime.Dynamic`，应用服务从注入的请求级 `kubeConfig` 创建），等待对象消失复用现有逻辑。
+- **Discovery**：每个 Leader 任期开始时检查一次。确认缺失（404 或资源列表中没有）时 `RuntimeReady` 返回原因；其他错误只记日志。检查失败不影响选举，Leader 的 readiness 为 false，直到下一任期重新检查。
+- **未处理**：资源名冲突检查（`application_resource_validation.go`）仍以 `ResourceIngress` 作为路由名的登记类别，只用于同应用内的名字去重，不影响行为。Helm values、ClusterRole 规则、`templates/gateway.yaml`、安装器与 Helm/服务端共用边界用例属于 2b。真实 Istio 验收见 §10。
 
 ## 10. 测试与验证边界
 

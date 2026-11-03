@@ -66,8 +66,13 @@ func (s *restServer) startLeader(parent context.Context, errChan chan error) {
 	if !s.onStartedSchedulerLeading(ctx, errChan) || ctx.Err() != nil {
 		return
 	}
+	gatewayIssue := ""
+	if s.platformDiscovery != nil {
+		gatewayIssue = gatewayAPIIssue(s.platformDiscovery, s.cfg.Gateway.Provider)
+	}
 	s.leaderMu.Lock()
 	s.leaderCtx, s.leaderCancel = ctx, cancel
+	s.gatewayIssue = gatewayIssue
 	s.leaderMu.Unlock()
 	publishCtx, finishPublish := context.WithTimeout(ctx, leaderElectionReleaseTimeout)
 	err := s.publishLeaderService(publishCtx)

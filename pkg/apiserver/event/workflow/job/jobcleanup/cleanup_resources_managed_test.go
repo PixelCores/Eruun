@@ -12,6 +12,10 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -122,6 +126,43 @@ func TestCleanupResourcesJobCtlSkipsIngressWithoutIngressGateway(t *testing.T) {
 	}
 	_, err := client.NetworkingV1().Ingresses(component.Namespace).Get(ctx, "web-ingress", metav1.GetOptions{})
 	require.NoError(t, err)
+}
+
+// Under the gatewayapi provider cleanup deletes the component's HTTPRoute with
+// the workspace dynamic client, waits for it to disappear, and never requests
+// Ingresses or another component's routes.
+func TestCleanupResourcesJobCtlDeletesHTTPRouteWithGatewayAPI(t *testing.T) {
+	ctx := context.Background()
+	component := &model.ApplicationComponent{ID: 1, Name: "web", AppID: "app-reset", Namespace: "default", ComponentType: config.ServerJob}
+	route := func(name, appID string) *unstructured.Unstructured {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(spec.GatewayAPIGroupVersion.WithKind(string(spec.KubeKindHTTPRoute)))
+		obj.SetName(name)
+		obj.SetNamespace(component.Namespace)
+		obj.SetLabels(map[string]string{spec.LabelAppID: appID, spec.LabelComponentName: component.Name})
+		return obj
+	}
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{spec.HTTPRouteResource: "HTTPRouteList"}, route("web-route", component.AppID), route("other-route", "app-other"))
+	client := fake.NewSimpleClientset()
+	task := &model.JobTask{
+		Name: component.Name, Namespace: component.Namespace, AppID: component.AppID,
+		JobType: string(config.JobCleanupResources), JobInfo: component, Timeout: 1,
+	}
+	gatewayAPI := spec.GatewayConfig{Provider: spec.GatewayProviderGatewayAPI, Domain: "apps.example.com", ProxyNamespace: "istio-ingress",
+		ParentRef: spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener}}
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Dynamic: dynamicClient, Store: &jobtest.CleanupComponentStore{Component: component}, Gateway: gatewayAPI, Ack: func() {}})
+	require.NoError(t, ctl.Run(ctx))
+	require.Equal(t, config.StatusCompleted, task.Status)
+
+	routes := dynamicClient.Resource(spec.HTTPRouteResource).Namespace(component.Namespace)
+	_, err := routes.Get(ctx, "web-route", metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = routes.Get(ctx, "other-route", metav1.GetOptions{})
+	require.NoError(t, err, "another application's route must stay")
+	for _, action := range client.Actions() {
+		require.NotEqual(t, "ingresses", action.GetResource().Resource)
+	}
 }
 
 func TestCleanupResourcesJobCtlKeepsProtectedSharedResources(t *testing.T) {

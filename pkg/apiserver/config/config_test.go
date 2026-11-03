@@ -71,6 +71,34 @@ func TestGatewayFlagEnvironmentAndValidation(t *testing.T) {
 	require.Contains(t, errorsJoin(cfg.Validate()), "require a gateway provider")
 }
 
+// In the startup order (environment, then Validate), the gatewayapi provider
+// needs only the variables the chart renders; Validate derives the listener
+// and the proxy namespace before checking them.
+func TestGatewayAPIConfigDerivesListenerAndProxyNamespace(t *testing.T) {
+	cfg := NewConfig()
+	flags := pflag.NewFlagSet("gateway", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	t.Setenv("ERUUN_GATEWAY_PROVIDER", "gatewayapi")
+	t.Setenv("ERUUN_GATEWAY_DOMAIN", "apps.example.com")
+	t.Setenv("ERUUN_GATEWAY_PARENT_NAMESPACE", "istio-ingress")
+	t.Setenv("ERUUN_GATEWAY_PARENT_NAME", "eruun")
+	require.NoError(t, flags.Parse(nil))
+	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+
+	require.Empty(t, cfg.Validate())
+	require.Equal(t, spec.GatewayConfig{
+		Provider:       spec.GatewayProviderGatewayAPI,
+		Domain:         "apps.example.com",
+		ProxyNamespace: "istio-ingress",
+		ParentRef:      spec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: spec.GatewayHTTPSListener},
+	}, cfg.Gateway)
+
+	cfg.Gateway = spec.GatewayConfig{Provider: spec.GatewayProviderIngress, Domain: "apps.example.com", ProxyNamespace: "ingress-nginx", IngressClass: "nginx"}
+	require.Empty(t, cfg.Validate())
+	require.Empty(t, cfg.Gateway.ParentRef.SectionName, "only gatewayapi attaches to a parent listener")
+}
+
 func TestTracingFlagEnvironmentAndExporter(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

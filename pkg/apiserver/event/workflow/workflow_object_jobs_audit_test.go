@@ -669,7 +669,7 @@ func TestBuildJobsForComponent_GatewayRequiresRenderableRoute(t *testing.T) {
 	}
 
 	_, err = buildJobsForComponent(context.Background(), nil, component(config.ServerJob, spec.Traits{Gateway: gateway}), task, testJobTimeoutSeconds, spec.GatewayConfig{}, "")
-	require.ErrorContains(t, err, "cannot render routes")
+	require.ErrorContains(t, err, "has no route resource")
 	_, err = buildJobsForComponent(context.Background(), nil, component(config.InstantJob, spec.Traits{Gateway: gateway}), task, testJobTimeoutSeconds, testIngressGateway, "")
 	require.ErrorContains(t, err, "only supported by webservice and store")
 

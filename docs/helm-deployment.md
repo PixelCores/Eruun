@@ -94,7 +94,7 @@ generation/token ownership 始终启用，不提供关闭开关。
 
 ## 入口网关
 
-组件入口的后端在安装时选定，`gateway` values 是唯一来源：Chart 把它渲染为 `ERUUN_GATEWAY_*` 环境变量注入所有节点；账号配置 Secret 不再保存入口配置。当前只支持 `ingress` 后端；设计与后续的 Gateway API 后端见 [Gateway Trait 设计](gateway-trait-design.md)（Draft）。
+组件入口的后端在安装时选定，`gateway` values 是唯一来源：Chart 把它渲染为 `ERUUN_GATEWAY_*` 环境变量注入所有节点；账号配置 Secret 不再保存入口配置。Chart 当前只支持 `ingress` 后端；服务端已支持 `gatewayapi` 后端（见下文 flag），Chart 的 `gatewayapi` values 与平台 Gateway 模板尚未实现，见 [Gateway Trait 设计](gateway-trait-design.md)（Draft）。
 
 | Value | 默认值 | 语义 |
 | --- | --- | --- |
@@ -106,7 +106,8 @@ generation/token ownership 始终启用，不提供关闭开关。
 - `provider` 为空时其余字段必须为空；`ingress` 缺少任一必填字段时渲染失败。
 - `env` 不能设置任何 `ERUUN_GATEWAY_*`，否则渲染失败，避免与上表的值不一致。
 - 运行身份的 ClusterRole 只在 `ingress` 时包含 `networking.k8s.io/ingresses` 规则，空间 Role 同步只在 `ingress` 时授予这些动词；关闭入口时服务端也不再读写或清理 Ingress。从 `ingress` 切换为关闭前，应先删除各空间已部署的组件入口。
-- 不经 Helm 运行时，对应 flag 为 `--gateway-provider`、`--gateway-domain`、`--gateway-proxy-namespace`、`--gateway-ingress-class`，启动时按同样规则校验。
+- 不经 Helm 运行时，对应 flag 为 `--gateway-provider`、`--gateway-domain`、`--gateway-proxy-namespace`、`--gateway-ingress-class`，启动时按同样规则校验。`--gateway-provider=gatewayapi` 另需 `--gateway-parent-namespace` 与 `--gateway-parent-name` 指向平台 Gateway，不接受 `--gateway-ingress-class`；路由挂到该 Gateway 名为 `https` 的监听器，`--gateway-proxy-namespace` 省略时取 Gateway 所在 namespace。
+- Leader 启动时用平台身份通过 Discovery 检查所选后端的 API（`networking.k8s.io/v1` 的 `ingresses` 或 `gateway.networking.k8s.io/v1` 的 `httproutes`）。集群确认不提供时，Leader 的 readiness 失败并给出原因；Discovery 返回 403 等其他错误只记录日志，不判定为缺失。
 - 静态清单 `deploy/eruun-stack.yaml` 固定使用 `ingress` 后端，直接在 `eruun-flags` ConfigMap 中写出这些变量。Quickstart 的 Helm 模式可通过 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN`、`GATEWAY_PROXY_NAMESPACE`、`GATEWAY_INGRESS_CLASS` 传值，未设置时保持关闭；manifest 模式拒绝这些变量。
 
 ```yaml

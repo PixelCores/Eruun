@@ -263,3 +263,49 @@ func TestDeleteRouteJobDeletesOnlyOwnedUnsharedRoute(t *testing.T) {
 		})
 	}
 }
+
+// HTTPRoute readiness follows design §7.2: only conditions of the current
+// generation for the platform listener count.
+func TestHTTPRouteReady(t *testing.T) {
+	parent := domainspec.GatewayParentRef{Namespace: "istio-ingress", Name: "eruun", SectionName: domainspec.GatewayHTTPSListener}
+	listener := map[string]interface{}{"group": "gateway.networking.k8s.io", "kind": "Gateway", "namespace": "istio-ingress", "name": "eruun", "sectionName": "https"}
+	condition := func(conditionType, status, reason string, generation int64) interface{} {
+		return map[string]interface{}{"type": conditionType, "status": status, "reason": reason, "message": "m", "observedGeneration": generation}
+	}
+	route := func(parentRef map[string]interface{}, conditions ...interface{}) *unstructured.Unstructured {
+		obj := &unstructured.Unstructured{Object: map[string]interface{}{}}
+		obj.SetGeneration(2)
+		if parentRef != nil {
+			obj.Object["status"] = map[string]interface{}{"parents": []interface{}{map[string]interface{}{"parentRef": parentRef, "conditions": conditions}}}
+		}
+		return obj
+	}
+	otherListener := map[string]interface{}{"namespace": "istio-ingress", "name": "eruun", "sectionName": "http"}
+	for _, tc := range []struct {
+		name    string
+		route   *unstructured.Unstructured
+		ready   bool
+		failure string
+	}{
+		{name: "no status yet", route: route(nil)},
+		{name: "other listener only", route: route(otherListener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2))},
+		{name: "accepted and resolved", route: route(listener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2)), ready: true},
+		{name: "resolved missing", route: route(listener, condition("Accepted", "True", "Accepted", 2))},
+		{name: "unknown", route: route(listener, condition("Accepted", "Unknown", "Pending", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2))},
+		{name: "stale rejection", route: route(listener, condition("Accepted", "False", "NotAllowedByListeners", 1), condition("ResolvedRefs", "True", "ResolvedRefs", 2))},
+		{name: "backend not observed yet", route: route(listener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "False", "BackendNotFound", 2))},
+		{name: "rejected", route: route(listener, condition("Accepted", "False", "NotAllowedByListeners", 2)), failure: "Accepted=False reason=NotAllowedByListeners"},
+		{name: "partially invalid", route: route(listener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "True", "ResolvedRefs", 2), condition("PartiallyInvalid", "True", "UnsupportedValue", 2)), failure: "PartiallyInvalid=True"},
+		{name: "invalid kind", route: route(listener, condition("Accepted", "True", "Accepted", 2), condition("ResolvedRefs", "False", "InvalidKind", 2)), failure: "ResolvedRefs=False reason=InvalidKind"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ready, err := httpRouteReady(tc.route, parent)
+			if tc.failure != "" {
+				require.ErrorContains(t, err, tc.failure)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.ready, ready)
+		})
+	}
+}

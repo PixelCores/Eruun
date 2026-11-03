@@ -83,10 +83,10 @@ func buildServiceDeployInfo(svc *corev1.Service, fallbackName, fallbackNamespace
 }
 
 // buildRouteDeployInfo lists the effective host and path of every route.
-func buildRouteDeployInfo(name string, gateway domainspec.GatewayTraitSpec, component *model.ApplicationComponent, cfg domainspec.GatewayConfig) string {
+func buildRouteDeployInfo(kind domainspec.ResourceKind, name string, gateway domainspec.GatewayTraitSpec, component *model.ApplicationComponent, cfg domainspec.GatewayConfig) string {
 	hosts, err := domainspec.GatewayHosts(gateway, component.Name, component.Namespace, cfg)
 	if err != nil || len(gateway.Routes) == 0 {
-		return buildResourceInfo(domainspec.ResourceIngress, component.Namespace, name)
+		return buildResourceInfo(kind, component.Namespace, name)
 	}
 	routes := make([]string, 0, len(hosts)*len(gateway.Routes))
 	seen := make(map[string]struct{})

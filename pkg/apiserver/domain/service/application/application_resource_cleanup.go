@@ -14,6 +14,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -339,7 +340,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 	}
 
 	c.deleteServiceForComponent(ctx, componentPtr, reporter)
-	c.deleteIngressForComponent(ctx, componentPtr, reporter)
+	c.deleteRouteForComponent(ctx, componentPtr, reporter)
 	return nil
 }
 
@@ -408,10 +409,10 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 	}
 }
 
-// deleteIngressForComponent removes the component route when the platform
-// renders routes as Ingress; other providers leave no Ingress to delete.
-func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) {
-	if component == nil || reporter == nil || c.Cfg == nil || c.Cfg.Gateway.Provider != domainspec.GatewayProviderIngress {
+// deleteRouteForComponent removes the component route of the platform gateway
+// provider; without a provider the workspace holds no route resources.
+func (c *applicationsServiceImpl) deleteRouteForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *operationReporter) {
+	if component == nil || reporter == nil || c.Cfg == nil || c.Cfg.Gateway.Provider == domainspec.GatewayProviderNone {
 		return
 	}
 	ns := component.Namespace
@@ -420,26 +421,49 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 	if appID == "" || componentName == "" {
 		return
 	}
-
-	labelSet := labels.Set{
+	listOptions := metav1.ListOptions{LabelSelector: labels.Set{
 		domainspec.LabelAppID:         appID,
 		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
-	}
-	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
-	ingressList, err := c.KubeClient.NetworkingV1().Ingresses(ns).List(opCtx, metav1.ListOptions{
-		LabelSelector: labelSet.AsSelector().String(),
-	})
-	cancel()
-	if err != nil {
-		reporter.record("Ingress", ns, componentName, false, fmt.Errorf("list ingresses: %w", err))
+	}.AsSelector().String()}
+
+	if c.Cfg.Gateway.Provider == domainspec.GatewayProviderIngress {
+		opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
+		ingressList, err := c.KubeClient.NetworkingV1().Ingresses(ns).List(opCtx, listOptions)
+		cancel()
+		if err != nil {
+			reporter.record("Ingress", ns, componentName, false, fmt.Errorf("list ingresses: %w", err))
+			return
+		}
+		for i := range ingressList.Items {
+			if name := strings.TrimSpace(ingressList.Items[i].Name); name != "" {
+				reporter.record("Ingress", ns, name, false, c.deleteIngress(ctx, ns, name))
+			}
+		}
 		return
 	}
-	for i := range ingressList.Items {
-		ingressName := strings.TrimSpace(ingressList.Items[i].Name)
-		if ingressName == "" {
-			continue
-		}
-		reporter.record("Ingress", ns, ingressName, false, c.deleteIngress(ctx, ns, ingressName))
+
+	if c.KubeConfig == nil {
+		reporter.record("HTTPRoute", ns, componentName, false, fmt.Errorf("kube config is nil"))
+		return
+	}
+	client, err := dynamic.NewForConfig(c.KubeConfig)
+	if err != nil {
+		reporter.record("HTTPRoute", ns, componentName, false, fmt.Errorf("create dynamic client: %w", err))
+		return
+	}
+	routes := client.Resource(domainspec.HTTPRouteResource)
+	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
+	routeList, err := routes.Namespace(ns).List(opCtx, listOptions)
+	cancel()
+	if err != nil {
+		reporter.record("HTTPRoute", ns, componentName, false, fmt.Errorf("list httproutes: %w", err))
+		return
+	}
+	for i := range routeList.Items {
+		name := routeList.Items[i].GetName()
+		reporter.record("HTTPRoute", ns, name, false, c.deleteNamespaced(ctx, ns, func(opCtx context.Context, ns string) error {
+			return routes.Namespace(ns).Delete(opCtx, name, metav1.DeleteOptions{})
+		}))
 	}
 }
 

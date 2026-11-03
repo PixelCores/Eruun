@@ -132,8 +132,9 @@ func (c *DeployRouteJobCtl) run(ctx context.Context) error {
 	return nil
 }
 
-// wait polls until the route exists. Ingress has no portable acceptance status,
-// so its presence is the readiness signal.
+// wait polls until the route is ready. Ingress has no portable acceptance
+// status, so its presence is the readiness signal; an HTTPRoute must be
+// accepted by the platform Gateway with resolved references.
 func (c *DeployRouteJobCtl) wait(ctx context.Context) error {
 	route, resource, err := jobinfo.RouteFromJobInfo(c.Job)
 	if err != nil {
@@ -153,14 +154,23 @@ func (c *DeployRouteJobCtl) wait(ctx context.Context) error {
 		case <-timeout:
 			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait route %s timeout", name))
 		case <-ticker.C:
-			_, err := c.Dynamic.Resource(resource.GVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+			current, err := c.Dynamic.Resource(resource.GVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 			if k8serrors.IsNotFound(err) {
 				continue
 			}
 			if err != nil {
 				return fmt.Errorf("wait route %s error: %w", name, err)
 			}
-			return nil
+			if resource.Kind != domainspec.ResourceHTTPRoute {
+				return nil
+			}
+			ready, err := httpRouteReady(current, c.Runtime.Gateway.ParentRef)
+			if err != nil {
+				return fmt.Errorf("route %s/%s: %w", namespace, name, err)
+			}
+			if ready {
+				return nil
+			}
 		}
 	}
 }
@@ -227,6 +237,45 @@ func (c *DeleteRouteJobCtl) run(ctx context.Context) error {
 	}
 	klog.Infof("Route %s %s/%s deleted", ref.GetKind(), namespace, name)
 	return nil
+}
+
+// httpRouteReady reads the status the platform Gateway's listener reports for
+// the route's current generation. It fails on a rejection, a partially invalid
+// route, or a broken reference other than a Service the controller has not
+// observed yet; anything else keeps waiting.
+func httpRouteReady(route *unstructured.Unstructured, parent domainspec.GatewayParentRef) (bool, error) {
+	parents, _, _ := unstructured.NestedSlice(route.Object, "status", "parents")
+	for _, item := range parents {
+		status, _ := item.(map[string]interface{})
+		ref, _, _ := unstructured.NestedStringMap(status, "parentRef")
+		if ref["namespace"] != parent.Namespace || ref["name"] != parent.Name || ref["sectionName"] != parent.SectionName {
+			continue
+		}
+		conditions := map[string]map[string]interface{}{}
+		items, _, _ := unstructured.NestedSlice(status, "conditions")
+		for _, entry := range items {
+			condition, _ := entry.(map[string]interface{})
+			observed, _, _ := unstructured.NestedInt64(condition, "observedGeneration")
+			if conditionType, _ := condition["type"].(string); observed == route.GetGeneration() {
+				conditions[conditionType] = condition
+			}
+		}
+		accepted, resolved, partial := conditions["Accepted"], conditions["ResolvedRefs"], conditions["PartiallyInvalid"]
+		switch {
+		case accepted["status"] == "False":
+			return false, routeConditionError(accepted)
+		case partial["status"] == "True":
+			return false, routeConditionError(partial)
+		case resolved["status"] == "False" && resolved["reason"] != "BackendNotFound":
+			return false, routeConditionError(resolved)
+		}
+		return accepted["status"] == "True" && resolved["status"] == "True", nil
+	}
+	return false, nil
+}
+
+func routeConditionError(condition map[string]interface{}) error {
+	return fmt.Errorf("%v=%v reason=%v: %v", condition["type"], condition["status"], condition["reason"], condition["message"])
 }
 
 func (c *DeployRouteJobCtl) timeout() int64 {
