@@ -49,11 +49,16 @@ REDIS_WORKLOAD_KIND=$(printf '%s' "${REDIS_WORKLOAD_KIND:-statefulset}" | tr '[:
 AUTH_CONFIG_FILE="${AUTH_CONFIG_FILE:-}"
 # Helm-only gateway values; the static manifest carries its own ingress settings.
 # Record presence first: an explicitly empty value is still a setting.
-GATEWAY_INPUT_SET="${GATEWAY_PROVIDER+x}${GATEWAY_DOMAIN+x}${GATEWAY_PROXY_NAMESPACE+x}${GATEWAY_INGRESS_CLASS+x}"
+GATEWAY_INPUT_SET="${GATEWAY_PROVIDER+x}${GATEWAY_DOMAIN+x}${GATEWAY_PROXY_NAMESPACE+x}${GATEWAY_INGRESS_CLASS+x}${GATEWAY_API_NAMESPACE+x}${GATEWAY_API_CLASS+x}${GATEWAY_API_TLS_SECRET+x}"
 GATEWAY_PROVIDER="${GATEWAY_PROVIDER:-}"
 GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-}"
 GATEWAY_PROXY_NAMESPACE="${GATEWAY_PROXY_NAMESPACE:-}"
 GATEWAY_INGRESS_CLASS="${GATEWAY_INGRESS_CLASS:-}"
+# gatewayapi only: namespace, GatewayClass and wildcard certificate Secret of
+# the platform Gateway the Chart creates.
+GATEWAY_API_NAMESPACE="${GATEWAY_API_NAMESPACE:-}"
+GATEWAY_API_CLASS="${GATEWAY_API_CLASS:-}"
+GATEWAY_API_TLS_SECRET="${GATEWAY_API_TLS_SECRET:-}"
 
 TEMP_FILES=()
 PORT_FORWARD_PID=
@@ -498,6 +503,9 @@ installHelm() {
   if [ -n "${GATEWAY_DOMAIN}" ]; then args+=(--set-string "gateway.domain=${GATEWAY_DOMAIN}"); fi
   if [ -n "${GATEWAY_PROXY_NAMESPACE}" ]; then args+=(--set-string "gateway.proxyNamespace=${GATEWAY_PROXY_NAMESPACE}"); fi
   if [ -n "${GATEWAY_INGRESS_CLASS}" ]; then args+=(--set-string "gateway.ingress.className=${GATEWAY_INGRESS_CLASS}"); fi
+  if [ -n "${GATEWAY_API_NAMESPACE}" ]; then args+=(--set-string "gateway.gatewayapi.namespace=${GATEWAY_API_NAMESPACE}"); fi
+  if [ -n "${GATEWAY_API_CLASS}" ]; then args+=(--set-string "gateway.gatewayapi.className=${GATEWAY_API_CLASS}"); fi
+  if [ -n "${GATEWAY_API_TLS_SECRET}" ]; then args+=(--set-string "gateway.gatewayapi.tlsSecretName=${GATEWAY_API_TLS_SECRET}"); fi
 
   runCmd "${HELM_BIN}" "${args[@]}"
 }
@@ -524,11 +532,72 @@ waitForReady() {
     runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/$(helmSuffixedName runtime)" --timeout="${WAIT_TIMEOUT}"
     runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/$(helmSuffixedName mysql)" --timeout="${WAIT_TIMEOUT}"
     runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/$(helmSuffixedName redis)" --timeout="${WAIT_TIMEOUT}"
+    if [ "${GATEWAY_PROVIDER}" = "gatewayapi" ]; then
+      waitForPlatformGateway
+    fi
     return 0
   fi
   runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/${DEPLOYMENT_NAME}-runtime" --timeout="${WAIT_TIMEOUT}"
   runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/${DEPLOYMENT_NAME}-mysql" --timeout="${WAIT_TIMEOUT}"
   runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "${REDIS_WORKLOAD_KIND}/${DEPLOYMENT_NAME}-redis" --timeout="${WAIT_TIMEOUT}"
+}
+
+# helmGatewayName mirrors the Chart's eruun.gatewayName.
+helmGatewayName() {
+  local name
+  name="$(helmBaseName)-${NAMESPACE}"
+  name="${name:0:63}"
+  printf '%s' "${name%-}"
+}
+
+# durationSeconds converts a kubectl duration such as 300s, 5m or 1h30m.
+durationSeconds() {
+  local value="$1"
+  if [ -z "${value}" ] || ! [[ "${value}" =~ ^([0-9]+h)?([0-9]+m)?([0-9]+s)?$ ]]; then
+    bail "WAIT_TIMEOUT must be a duration such as 300s, 5m or 1h30m; got ${value:-empty}"
+  fi
+  local hours="${BASH_REMATCH[1]%h}" minutes="${BASH_REMATCH[2]%m}" seconds="${BASH_REMATCH[3]%s}"
+  printf '%d' $((10#${hours:-0} * 3600 + 10#${minutes:-0} * 60 + 10#${seconds:-0}))
+}
+
+# waitForGatewayStatus polls one condition status of a Gateway API object until
+# it reports True or the shared deadline (in $SECONDS) passes. kubectl wait
+# reads only top-level conditions, while listeners and route parents report
+# their own.
+waitForGatewayStatus() {
+  local resource="$1" jsonpath="$2" description="$3" deadline="$4" actual=""
+  while :; do
+    actual=$("${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" get "${resource}" -o "jsonpath=${jsonpath}" 2>/dev/null || true)
+    if [ "${actual}" = "True" ]; then
+      return 0
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      bail "${description} is not ready within WAIT_TIMEOUT=${WAIT_TIMEOUT} (status: ${actual:-missing}); check kubectl -n ${GATEWAY_API_NAMESPACE} describe ${resource}"
+    fi
+    sleep 2
+  done
+}
+
+# waitForPlatformGateway follows docs/gateway-trait-design.md §6.4 step 3: the
+# Gateway, both listeners with their certificate reference, and the HTTPS
+# redirect route must be accepted before DNS can point at the Gateway address.
+waitForPlatformGateway() {
+  local gateway route listener condition address timeout deadline
+  timeout=$(durationSeconds "${WAIT_TIMEOUT}")
+  gateway="gateway/$(helmGatewayName)"
+  route="httproute/$(helmGatewayName | cut -c1-48 | sed 's/-$//')-https-redirect"
+  runCmd "${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" wait "${gateway}" --for=condition=Accepted --timeout="${WAIT_TIMEOUT}"
+  runCmd "${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" wait "${gateway}" --for=condition=Programmed --timeout="${WAIT_TIMEOUT}"
+  deadline=$((SECONDS + timeout))
+  for listener in https http; do
+    for condition in Programmed ResolvedRefs; do
+      waitForGatewayStatus "${gateway}" "{.status.listeners[?(@.name==\"${listener}\")].conditions[?(@.type==\"${condition}\")].status}" \
+        "Gateway listener ${listener} condition ${condition}" "${deadline}"
+    done
+  done
+  waitForGatewayStatus "${route}" '{.status.parents[*].conditions[?(@.type=="Accepted")].status}' "HTTPS redirect route" "${deadline}"
+  address=$("${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" get "${gateway}" -o 'jsonpath={.status.addresses[*].value}')
+  logInfo "Platform Gateway ready at ${address:-<no address>}; point *.${GATEWAY_DOMAIN} DNS at it"
 }
 
 startPortForward() {

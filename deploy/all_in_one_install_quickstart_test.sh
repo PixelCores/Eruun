@@ -62,6 +62,12 @@ if [ "${ERUUN_QUICKSTART_FAKE_COMMAND:-false}" = "true" ]; then
         exit 1
       fi
       ;;
+    *"get gateway/"*"addresses"*)
+      printf '%s' '203.0.113.10'
+      ;;
+    *"get gateway/"*|*"get httproute/"*)
+      printf '%s' "${FAKE_GATEWAY_STATUS:-True}"
+      ;;
     *"create secret generic"*)
       printf '%s\n' 'apiVersion: v1' 'kind: Secret' 'metadata:' '  name: fake'
       ;;
@@ -197,9 +203,104 @@ runGatewayValuesContract() {
   assertContains "${command_log}" "--set-string gateway.ingress.className=nginx"
   assertTempFilesCleaned "${case_dir}"
 
+  # gatewayapi passes the platform Gateway values and, when waiting, checks the
+  # Gateway, both listeners and the redirect route in the Gateway namespace.
+  case_dir=$(newCase helm-gatewayapi-values)
+  command_log="${case_dir}/commands.log"
+  output="${case_dir}/output.log"
+  env \
+    ERUUN_QUICKSTART_FAKE_COMMAND=true \
+    FAKE_COMMAND_LOG="${command_log}" \
+    INSTALL_MODE=helm \
+    CHART_PATH="${CHART_SOURCE}" \
+    KUBECTL_BIN="${TEST_SCRIPT}" \
+    HELM_BIN="${TEST_SCRIPT}" \
+    OPENSSL_BIN="${TEST_SCRIPT}" \
+    GATEWAY_PROVIDER=gatewayapi \
+    GATEWAY_DOMAIN=apps.example.com \
+    GATEWAY_API_NAMESPACE=istio-ingress \
+    GATEWAY_API_CLASS=istio \
+    GATEWAY_API_TLS_SECRET=wildcard-apps-tls \
+    TMPDIR="${case_dir}/tmp" \
+    SKIP_CONFIRM=true \
+    WAIT_READY=true \
+    "${case_dir}/installer.sh" > "${output}" 2>&1
+
+  assertContains "${command_log}" "--set-string gateway.provider=gatewayapi"
+  assertContains "${command_log}" "--set-string gateway.gatewayapi.namespace=istio-ingress"
+  assertContains "${command_log}" "--set-string gateway.gatewayapi.className=istio"
+  assertContains "${command_log}" "--set-string gateway.gatewayapi.tlsSecretName=wildcard-apps-tls"
+  assertNotContains "${command_log}" "gateway.ingress.className"
+  assertContains "${command_log}" "-n istio-ingress wait gateway/eruun-eruun-system --for=condition=Accepted"
+  assertContains "${command_log}" "-n istio-ingress wait gateway/eruun-eruun-system --for=condition=Programmed"
+  local listener condition
+  for listener in https http; do
+    for condition in Programmed ResolvedRefs; do
+      assertContains "${command_log}" "listeners[?(@.name==\"${listener}\")].conditions[?(@.type==\"${condition}\")].status"
+    done
+  done
+  assertContains "${command_log}" "-n istio-ingress get httproute/eruun-eruun-system-https-redirect"
+  assertContains "${output}" "Platform Gateway ready at 203.0.113.10"
+  assertTempFilesCleaned "${case_dir}"
+
+  # The Chart truncates the Gateway name to 63 and the redirect route prefix to
+  # 48; helm_template_test.sh pins the same names for this fullnameOverride.
+  local long_name
+  long_name=$(printf 'f%.0s' $(seq 1 50))
+  case_dir=$(newCase helm-gatewayapi-long-name)
+  command_log="${case_dir}/commands.log"
+  output="${case_dir}/output.log"
+  env \
+    ERUUN_QUICKSTART_FAKE_COMMAND=true \
+    FAKE_COMMAND_LOG="${command_log}" \
+    INSTALL_MODE=helm \
+    CHART_PATH="${CHART_SOURCE}" \
+    KUBECTL_BIN="${TEST_SCRIPT}" \
+    HELM_BIN="${TEST_SCRIPT}" \
+    OPENSSL_BIN="${TEST_SCRIPT}" \
+    FULLNAME_OVERRIDE="${long_name}" \
+    GATEWAY_PROVIDER=gatewayapi \
+    GATEWAY_DOMAIN=apps.example.com \
+    GATEWAY_API_NAMESPACE=istio-ingress \
+    GATEWAY_API_CLASS=istio \
+    GATEWAY_API_TLS_SECRET=wildcard-apps-tls \
+    TMPDIR="${case_dir}/tmp" \
+    SKIP_CONFIRM=true \
+    WAIT_READY=true \
+    "${case_dir}/installer.sh" > "${output}" 2>&1
+  assertContains "${command_log}" "wait gateway/${long_name}-eruun-system --for=condition=Programmed"
+  assertContains "${command_log}" "get httproute/${long_name:0:48}-https-redirect"
+
+  # Listener and route polling share the WAIT_TIMEOUT deadline.
+  case_dir=$(newCase helm-gatewayapi-timeout)
+  command_log="${case_dir}/commands.log"
+  output="${case_dir}/output.log"
+  if env \
+    ERUUN_QUICKSTART_FAKE_COMMAND=true \
+    FAKE_COMMAND_LOG="${command_log}" \
+    FAKE_GATEWAY_STATUS=False \
+    INSTALL_MODE=helm \
+    CHART_PATH="${CHART_SOURCE}" \
+    KUBECTL_BIN="${TEST_SCRIPT}" \
+    HELM_BIN="${TEST_SCRIPT}" \
+    OPENSSL_BIN="${TEST_SCRIPT}" \
+    GATEWAY_PROVIDER=gatewayapi \
+    GATEWAY_DOMAIN=apps.example.com \
+    GATEWAY_API_NAMESPACE=istio-ingress \
+    GATEWAY_API_CLASS=istio \
+    GATEWAY_API_TLS_SECRET=wildcard-apps-tls \
+    WAIT_TIMEOUT=1s \
+    TMPDIR="${case_dir}/tmp" \
+    SKIP_CONFIRM=true \
+    WAIT_READY=true \
+    "${case_dir}/installer.sh" > "${output}" 2>&1; then
+    fail "an unready Gateway listener must fail the install"
+  fi
+  assertContains "${output}" "Gateway listener https condition Programmed is not ready within WAIT_TIMEOUT=1s"
+
   # An explicitly empty provider is still a gateway setting.
   local setting
-  for setting in GATEWAY_DOMAIN=apps.example.com GATEWAY_PROVIDER=; do
+  for setting in GATEWAY_DOMAIN=apps.example.com GATEWAY_PROVIDER= GATEWAY_API_NAMESPACE=istio-ingress; do
     case_dir=$(newCase "manifest-gateway-${setting%%=*}")
     command_log="${case_dir}/commands.log"
     output="${case_dir}/output.log"

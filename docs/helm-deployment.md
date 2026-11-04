@@ -94,21 +94,26 @@ generation/token ownership 始终启用，不提供关闭开关。
 
 ## 入口网关
 
-组件入口的后端在安装时选定，`gateway` values 是唯一来源：Chart 把它渲染为 `ERUUN_GATEWAY_*` 环境变量注入所有节点；账号配置 Secret 不再保存入口配置。Chart 当前只支持 `ingress` 后端；服务端已支持 `gatewayapi` 后端（见下文 flag），Chart 的 `gatewayapi` values 与平台 Gateway 模板尚未实现，见 [Gateway Trait 设计](gateway-trait-design.md)（Draft）。
+组件入口的后端在安装时选定，`gateway` values 是唯一来源：Chart 把它渲染为 `ERUUN_GATEWAY_*` 环境变量注入所有节点、ClusterRole 中所选后端的路由规则，以及 `gatewayapi` 时的平台 Gateway；账号配置 Secret 不再保存入口配置。设计背景见 [Gateway Trait 设计](gateway-trait-design.md)（Draft）。
 
 | Value | 默认值 | 语义 |
 | --- | --- | --- |
-| `gateway.provider` | `""` | `""` 关闭组件入口（`traits.gateway` 被拒绝）；`ingress` 为每个声明 `traits.gateway` 的组件生成 Kubernetes Ingress |
-| `gateway.domain` | `""` | 组件 host 的 DNS 后缀；`ingress` 时必填。组件 host 为单层 `<前缀>-<空间 namespace>.<domain>`，默认前缀为小写组件名；DNS（建议泛域名 `*.<domain>`）与证书由部署方提供 |
-| `gateway.proxyNamespace` | `""` | 入口数据面 Pod 所在 namespace，空间基线 NetworkPolicy 放行其入站流量；`ingress` 时必填，须为 DNS-1123 label |
-| `gateway.ingress.className` | `""` | `ingress` 时使用的 IngressClass，必填 |
+| `gateway.provider` | `""` | `""` 关闭组件入口（`traits.gateway` 被拒绝）；`ingress` 为每个声明 `traits.gateway` 的组件生成 Kubernetes Ingress；`gatewayapi` 生成挂到平台 Gateway 的 Gateway API HTTPRoute |
+| `gateway.domain` | `""` | 组件 host 的 DNS 后缀，两种后端都必填。组件 host 为单层 `<前缀>-<空间 namespace>.<domain>`，默认前缀为小写组件名 |
+| `gateway.proxyNamespace` | `""` | 入口数据面 Pod 所在 namespace，空间基线 NetworkPolicy 放行其入站流量；`ingress` 时必填；`gatewayapi` 时省略即取 `gateway.gatewayapi.namespace`（Istio 把网关 Pod 部署在 Gateway 所在 namespace），Envoy Gateway 等部署在控制器 namespace 时需显式填写 |
+| `gateway.ingress.className` | `""` | `ingress` 时使用的 IngressClass，必填；其他后端必须为空 |
+| `gateway.gatewayapi.namespace` | `""` | `gatewayapi` 时平台 Gateway 所在的已有 namespace，必填，例如 `istio-ingress` |
+| `gateway.gatewayapi.className` | `""` | `gatewayapi` 时平台 Gateway 使用的 GatewayClass，必填，例如 `istio` |
+| `gateway.gatewayapi.tlsSecretName` | `""` | `gatewayapi` 时 `*.<domain>` 通配证书 Secret，位于 `gateway.gatewayapi.namespace`，必填 |
 
-- `provider` 为空时其余字段必须为空；`ingress` 缺少任一必填字段时渲染失败。
+- 一致性：`provider` 为空时其余字段必须为空；`ingress` 不接受 `gateway.gatewayapi.*`；`gatewayapi` 不接受 `gateway.ingress.className`；缺少任一必填字段或 `provider` 不是三者之一时渲染失败。
 - `env` 不能设置任何 `ERUUN_GATEWAY_*`，否则渲染失败，避免与上表的值不一致。
-- 运行身份的 ClusterRole 只在 `ingress` 时包含 `networking.k8s.io/ingresses` 规则，空间 Role 同步只在 `ingress` 时授予这些动词；关闭入口时服务端也不再读写或清理 Ingress。从 `ingress` 切换为关闭前，应先删除各空间已部署的组件入口。
+- 运行身份的 ClusterRole 只包含所选后端的一条路由规则（`networking.k8s.io/ingresses` 或 `gateway.networking.k8s.io/httproutes`，动词与空间 Role 相同），空间 Role 同步只授予同一种资源；关闭入口时服务端不再读写或清理任何路由资源。切换后端（包括切到关闭）前，应先在旧配置下删除各空间已部署的组件入口，见设计文档 §7.3。
 - 不经 Helm 运行时，对应 flag 为 `--gateway-provider`、`--gateway-domain`、`--gateway-proxy-namespace`、`--gateway-ingress-class`，启动时按同样规则校验。`--gateway-provider=gatewayapi` 另需 `--gateway-parent-namespace` 与 `--gateway-parent-name` 指向平台 Gateway，不接受 `--gateway-ingress-class`；路由挂到该 Gateway 名为 `https` 的监听器，`--gateway-proxy-namespace` 省略时取 Gateway 所在 namespace。
 - Leader 启动时及任期内每 30 秒，用平台身份通过 Discovery 检查所选后端的 API（`networking.k8s.io/v1` 的 `ingresses` 或 `gateway.networking.k8s.io/v1` 的 `httproutes`）。集群确认不提供时，Leader 的 readiness 失败并给出原因，API 恢复后自动解除；Discovery 返回 403 等其他错误只记录日志，不判定为缺失。
-- 静态清单 `deploy/eruun-stack.yaml` 固定使用 `ingress` 后端，直接在 `eruun-flags` ConfigMap 中写出这些变量。Quickstart 的 Helm 模式可通过 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN`、`GATEWAY_PROXY_NAMESPACE`、`GATEWAY_INGRESS_CLASS` 传值，未设置时保持关闭；manifest 模式拒绝这些变量。
+- 静态清单 `deploy/eruun-stack.yaml` 固定使用 `ingress` 后端，直接在 `eruun-flags` ConfigMap 中写出这些变量；`gatewayapi` 依赖 Chart 创建的 Gateway，只能经 Helm 安装。Quickstart 的 Helm 模式可通过 `GATEWAY_PROVIDER`、`GATEWAY_DOMAIN`、`GATEWAY_PROXY_NAMESPACE`、`GATEWAY_INGRESS_CLASS`、`GATEWAY_API_NAMESPACE`、`GATEWAY_API_CLASS`、`GATEWAY_API_TLS_SECRET` 传值，未设置时保持关闭；manifest 模式拒绝这些变量。
+
+`ingress` 示例：
 
 ```yaml
 gateway:
@@ -117,6 +122,46 @@ gateway:
   proxyNamespace: ingress-nginx
   ingress:
     className: nginx
+```
+
+`ingress` 后端渲染的 Ingress 不带 `tls`：HTTPS 由 Controller 的默认证书（如 ingress-nginx `--default-ssl-certificate`）或前置负载均衡提供，HTTP 到 HTTPS 的重定向由平台全局配置负责。
+
+### gatewayapi 后端
+
+`gatewayapi` 时 Chart 在 `gateway.gatewayapi.namespace` 中创建平台 Gateway 和一条 HTTP→HTTPS 301 重定向 HTTPRoute。Gateway 名为 `<fullname>-<release namespace>`（截断到 63 字符），例如 `helm install eruun -n eruun-system` 时为 `eruun-eruun-eruun-system`，Quickstart 默认（`fullnameOverride=eruun`）时为 `eruun-eruun-system`；重定向路由名为 Gateway 名的前 48 个字符加 `-https-redirect`。
+
+- `https` 监听器（443，hostname `*.<domain>`）用 `tlsSecretName` 终止 TLS，只接受带 `eruun.io/workspace-id` 标签的空间 namespace 中的 HTTPRoute；
+- `http` 监听器（80）只接受 Gateway 所在 namespace 的重定向路由；
+- Gateway 与重定向路由归本 release 所有，`helm uninstall` 或把 `provider` 改离 `gatewayapi` 会删除它们，挂在上面的空间路由随之失效。
+
+网络组件本身（Gateway API CRD、Gateway Controller 与 GatewayClass）由平台单独安装，不在 Chart 中。安装顺序：
+
+1. 安装 Gateway API Standard Channel CRD（不低于 v1.2.0）和 Gateway Controller（首期以 Istio 的 Gateway API 模式验收），Controller 须支持 `HTTPRouteRequestTimeout`、`HTTPRoutePathRewrite`、`HTTPRouteSchemeRedirect`；创建 `gateway.gatewayapi.namespace` 并放入 `*.<domain>` 证书 Secret。
+2. `helm install`/`helm upgrade`。CRD 不存在时会因无法创建 Gateway 对象而失败。
+3. 确认 Gateway 就绪（Quickstart 的 Helm 模式在 `WAIT_READY=true` 时执行同样的检查）：
+
+```bash
+NS=istio-ingress
+GW=eruun-eruun-eruun-system   # <fullname>-<release namespace>，见上文
+kubectl -n "$NS" wait "gateway/$GW" --for=condition=Accepted --timeout=300s
+kubectl -n "$NS" wait "gateway/$GW" --for=condition=Programmed --timeout=300s
+kubectl -n "$NS" get "gateway/$GW" -o jsonpath='{range .status.listeners[*]}{.name}{" "}{range .conditions[*]}{.type}={.status}{" "}{end}{"\n"}{end}'
+kubectl -n "$NS" get "httproute/${GW:0:48}-https-redirect" -o jsonpath='{.status.parents[*].conditions[?(@.type=="Accepted")].status}{"\n"}'
+kubectl -n "$NS" get "gateway/$GW" -o jsonpath='{.status.addresses[*].value}{"\n"}'
+```
+
+   两个监听器的 `Programmed` 与 `ResolvedRefs` 都应为 `True`，重定向路由 `Accepted` 为 `True`。
+4. 把 `*.<domain>` 泛解析指向第 3 步的 Gateway 地址。
+5. 验收：任一 `*.<domain>` 名称的 HTTPS 证书校验通过，HTTP 请求被 301 重定向到 HTTPS。
+
+```yaml
+gateway:
+  provider: gatewayapi
+  domain: apps.example.com
+  gatewayapi:
+    namespace: istio-ingress
+    className: istio
+    tlsSecretName: wildcard-apps-tls
 ```
 
 ## ServiceAccount 与 RBAC

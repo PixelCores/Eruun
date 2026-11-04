@@ -621,6 +621,129 @@ gateway_ingress_rbac="${TEST_ROOT}/gateway-ingress-rbac.yaml"
 runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/serviceaccount-rbac.yaml \
   "${gateway_ingress_args[@]}" > "${gateway_ingress_rbac}"
 assertEqual "$(clusterRoleRuleVerbs "${gateway_ingress_rbac}" networking.k8s.io ingresses)" "get list create update patch delete" "runtime ingress permissions must match workspace runner Roles"
+assertEqual "$(clusterRoleRuleVerbs "${gateway_ingress_rbac}" gateway.networking.k8s.io httproutes)" "" "the ingress gateway grants no HTTPRoute permissions"
+if grep -q 'ERUUN_GATEWAY_PARENT_' "${gateway_ingress_manifest}"; then
+  fail "the ingress gateway must not render parent Gateway variables"
+fi
+for args_name in "" gateway_ingress_args; do
+  gateway_objects="${TEST_ROOT}/gateway-objects-${args_name:-default}.yaml"
+  if [ -n "${args_name}" ]; then
+    runHelm template eruun "${TEST_DIR}" --namespace eruun-system "${gateway_ingress_args[@]}" > "${gateway_objects}"
+  else
+    runHelm template eruun "${TEST_DIR}" --namespace eruun-system > "${gateway_objects}"
+  fi
+  if grep -Eq '^kind: (Gateway|HTTPRoute)$' "${gateway_objects}"; then
+    fail "only the gatewayapi provider renders Gateway API objects (${args_name:-disabled})"
+  fi
+done
+
+gateway_api_args=(
+  --set-string gateway.provider=gatewayapi
+  --set-string gateway.domain=apps.example.com
+  --set-string gateway.gatewayapi.namespace=istio-ingress
+  --set-string gateway.gatewayapi.className=istio
+  --set-string gateway.gatewayapi.tlsSecretName=wildcard-apps-tls
+)
+gateway_api_manifest="${TEST_ROOT}/gateway-api.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/runtime-deployments.yaml \
+  "${gateway_api_args[@]}" > "${gateway_api_manifest}"
+assertEnvValue "${gateway_api_manifest}" ERUUN_GATEWAY_PROVIDER gatewayapi
+assertEnvValue "${gateway_api_manifest}" ERUUN_GATEWAY_DOMAIN apps.example.com
+assertEnvValue "${gateway_api_manifest}" ERUUN_GATEWAY_PROXY_NAMESPACE istio-ingress
+assertEnvValue "${gateway_api_manifest}" ERUUN_GATEWAY_PARENT_NAMESPACE istio-ingress
+assertEnvValue "${gateway_api_manifest}" ERUUN_GATEWAY_PARENT_NAME eruun-eruun-eruun-system
+if grep -q 'ERUUN_GATEWAY_INGRESS_CLASS' "${gateway_api_manifest}"; then
+  fail "the gatewayapi gateway must not render an IngressClass"
+fi
+gateway_api_proxy_manifest="${TEST_ROOT}/gateway-api-proxy.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/runtime-deployments.yaml \
+  "${gateway_api_args[@]}" --set-string gateway.proxyNamespace=envoy-gateway-system > "${gateway_api_proxy_manifest}"
+assertEnvValue "${gateway_api_proxy_manifest}" ERUUN_GATEWAY_PROXY_NAMESPACE envoy-gateway-system
+
+gateway_api_rbac="${TEST_ROOT}/gateway-api-rbac.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/serviceaccount-rbac.yaml \
+  "${gateway_api_args[@]}" > "${gateway_api_rbac}"
+assertEqual "$(clusterRoleRuleVerbs "${gateway_api_rbac}" gateway.networking.k8s.io httproutes)" "get list create update patch delete" "runtime HTTPRoute permissions must match workspace runner Roles"
+assertEqual "$(clusterRoleRuleVerbs "${gateway_api_rbac}" networking.k8s.io ingresses)" "" "the gatewayapi gateway grants no Ingress permissions"
+assertEqual "$(clusterRoleRuleVerbs "${gateway_api_rbac}" gateway.networking.k8s.io gateways)" "" "the runtime never writes Gateways; Helm owns them"
+
+gateway_api_objects="${TEST_ROOT}/gateway-api-objects.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/gateway.yaml \
+  "${gateway_api_args[@]}" > "${gateway_api_objects}"
+assertEqual "$(grep -c '^kind: Gateway$' "${gateway_api_objects}")" "1" "gatewayapi must render one platform Gateway"
+assertEqual "$(grep -c '^kind: HTTPRoute$' "${gateway_api_objects}")" "1" "gatewayapi must render one HTTPS redirect route"
+assertEqual "$(grep -c '  namespace: istio-ingress$' "${gateway_api_objects}")" "2" "Gateway objects belong in gateway.gatewayapi.namespace"
+for expected in \
+  'name: eruun-eruun-eruun-system$' \
+  'gatewayClassName: "istio"$' \
+  '- name: https$' \
+  'protocol: HTTPS$' \
+  'hostname: "\*.apps.example.com"$' \
+  'mode: Terminate$' \
+  '- name: "wildcard-apps-tls"$' \
+  'from: Selector$' \
+  '- key: eruun.io/workspace-id$' \
+  'operator: Exists$' \
+  '- name: http$' \
+  'from: Same$' \
+  'sectionName: http$' \
+  'type: RequestRedirect$' \
+  'scheme: https$' \
+  'statusCode: 301$'; do
+  grep -Eq -- "${expected}" "${gateway_api_objects}" || fail "platform Gateway objects must contain ${expected}"
+done
+assertEqual "$(grep -c 'from: Selector' "${gateway_api_objects}")" "1" "only the https listener admits workspace namespaces"
+
+# all_in_one_install_quickstart_test.sh waits on the same names for the same
+# fullnameOverride and namespace, so either side changing the rule breaks a test.
+long_gateway_name=$(repeatChar f 50)
+for fullname in eruun "${long_gateway_name}"; do
+  case "${fullname}" in
+    eruun) want_gateway=eruun-eruun-system want_redirect=eruun-eruun-system-https-redirect ;;
+    *) want_gateway="${fullname}-eruun-system" want_redirect="${fullname:0:48}-https-redirect" ;;
+  esac
+  named_objects="${TEST_ROOT}/gateway-api-names-${#fullname}.yaml"
+  runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set-string "fullnameOverride=${fullname}" \
+    --show-only templates/gateway.yaml "${gateway_api_args[@]}" > "${named_objects}"
+  assertEqual "$(resourceNames Gateway "${named_objects}")" "${want_gateway}" "platform Gateway name for fullnameOverride ${fullname}"
+  assertEqual "$(resourceNames HTTPRoute "${named_objects}")" "${want_redirect}" "redirect route name for fullnameOverride ${fullname}"
+  [ "${#want_gateway}" -le 63 ] && [ "${#want_redirect}" -le 63 ] || fail "Gateway object names must fit 63 characters"
+  named_runtime="${TEST_ROOT}/gateway-api-runtime-${#fullname}.yaml"
+  runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set-string "fullnameOverride=${fullname}" \
+    --show-only templates/runtime-deployments.yaml "${gateway_api_args[@]}" > "${named_runtime}"
+  assertEnvValue "${named_runtime}" ERUUN_GATEWAY_PARENT_NAME "${want_gateway}"
+done
+
+for invalid in \
+  "gateway.gatewayapi.namespace=istio-ingress" \
+  "gateway.gatewayapi.unknown=value"; do
+  if runHelm template eruun "${TEST_DIR}" --set-string "${invalid}" >/dev/null 2>&1; then
+    fail "gatewayapi values require the gatewayapi provider: ${invalid}"
+  fi
+done
+if runHelm template eruun "${TEST_DIR}" "${gateway_ingress_args[@]}" \
+  --set-string gateway.gatewayapi.className=istio >/dev/null 2>&1; then
+  fail "the ingress gateway must reject gatewayapi values"
+fi
+for missing in gateway.domain gateway.gatewayapi.namespace gateway.gatewayapi.className gateway.gatewayapi.tlsSecretName; do
+  if runHelm template eruun "${TEST_DIR}" "${gateway_api_args[@]}" --set-string "${missing}=" >/dev/null 2>&1; then
+    fail "the gatewayapi gateway requires ${missing}"
+  fi
+done
+if runHelm template eruun "${TEST_DIR}" "${gateway_api_args[@]}" \
+  --set-string gateway.ingress.className=nginx >/dev/null 2>&1; then
+  fail "the gatewayapi gateway must reject an IngressClass"
+fi
+if runHelm template eruun "${TEST_DIR}" "${gateway_api_args[@]}" \
+  --set-string gateway.gatewayapi.namespace=istio.ingress >/dev/null 2>&1; then
+  fail "gateway.gatewayapi.namespace must be a DNS-1123 label"
+fi
+for managed in ERUUN_GATEWAY_PARENT_NAMESPACE ERUUN_GATEWAY_PARENT_NAME; do
+  if runHelm template eruun "${TEST_DIR}" "${gateway_api_args[@]}" \
+    --set-string "env[0].name=${managed}" --set-string 'env[0].value=override' >/dev/null 2>&1; then
+    fail "runtime must reject gateway environment override: ${managed}"
+  fi
+done
 
 long_runtime_manifest="${TEST_ROOT}/runtime-long-fullname.yaml"
 runHelm template eruun "${TEST_DIR}" \
