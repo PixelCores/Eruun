@@ -9,6 +9,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -508,37 +509,49 @@ func buildJobsForComponent(
 		}
 		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], routeJob)
 	} else if gateway.Provider != domainspec.GatewayProviderNone && versionUpdateDeletesRoute(task, component.Name) {
-		routeJob, err := buildRouteDeleteJob(component, &properties, task, gateway, defaultJobTimeoutSeconds, share)
+		route, err := workflowtraits.GatewayRouteRef(component, gateway)
+		if err != nil {
+			return nil, fmt.Errorf("component %s gateway route: %w", component.Name, err)
+		}
+		deleteJob, err := buildResourceDeleteJob(component, &properties, route, task, defaultJobTimeoutSeconds, share)
 		if err != nil {
 			return nil, err
 		}
-		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], routeJob)
+		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], deleteJob)
+	}
+	for _, name := range versionUpdateDeletedServices(task, component.Name) {
+		service := &unstructured.Unstructured{}
+		service.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(string(domainspec.KubeKindService)))
+		service.SetName(name)
+		service.SetNamespace(component.Namespace)
+		deleteJob, err := buildResourceDeleteJob(component, &properties, service, task, defaultJobTimeoutSeconds, share)
+		if err != nil {
+			return nil, err
+		}
+		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], deleteJob)
 	}
 
 	return buckets, nil
 }
 
-// buildRouteDeleteJob removes the route left behind when /version drops a
-// component's gateway trait. The payload carries only the route identity and
-// the labels that prove the component owns it.
-func buildRouteDeleteJob(component *model.ApplicationComponent, properties *model.Properties, task *model.WorkflowQueue, gateway domainspec.GatewayConfig, defaultJobTimeoutSeconds int64, share shareConfig) (*model.JobTask, error) {
-	route, err := workflowtraits.GatewayRouteRef(component, gateway)
-	if err != nil {
-		return nil, fmt.Errorf("component %s gateway route: %w", component.Name, err)
-	}
-	route.SetLabels(jobexec.BuildLabels(component, properties))
-	applyShareLabelsToObject(route, share)
-	routeJob := NewJobTask(route.GetName(), route.GetNamespace(), task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
-	routeJob.JobType = string(config.JobDeleteRoute)
-	routeJob.JobInfo = route
-	_, resource, err := jobinfo.RouteFromJobInfo(routeJob)
+// buildResourceDeleteJob removes an object a version update stopped rendering
+// for the component: its route after the gateway trait was dropped, or a
+// Service it no longer declares. The payload carries only the object identity
+// and the labels that prove the component owns it.
+func buildResourceDeleteJob(component *model.ApplicationComponent, properties *model.Properties, target *unstructured.Unstructured, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, share shareConfig) (*model.JobTask, error) {
+	target.SetLabels(jobexec.BuildLabels(component, properties))
+	applyShareLabelsToObject(target, share)
+	deleteJob := NewJobTask(target.GetName(), target.GetNamespace(), task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
+	deleteJob.JobType = string(config.JobDeleteResource)
+	deleteJob.JobInfo = target
+	_, resource, err := jobinfo.DeletionTargetFromJobInfo(deleteJob)
 	if err != nil {
 		return nil, err
 	}
-	routeJob.Info = "delete " + buildResourceInfo(resource.Kind, route.GetNamespace(), route.GetName())
-	setDeployTimeout(routeJob)
-	markJobSkippedIfIgnored(share, routeJob)
-	return routeJob, nil
+	deleteJob.Info = "delete " + buildResourceInfo(resource.Kind, target.GetNamespace(), target.GetName())
+	setDeployTimeout(deleteJob)
+	markJobSkippedIfIgnored(share, deleteJob)
+	return deleteJob, nil
 }
 
 // buildRouteJob renders the component route for the platform gateway. It runs in

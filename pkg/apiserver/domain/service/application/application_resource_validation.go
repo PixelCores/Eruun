@@ -120,12 +120,8 @@ func trackResolvedApplicationResources(
 	for componentIndex, component := range components {
 		componentName := strings.TrimSpace(component.Name)
 		componentNamespace := namespace
-		usesSharedResourceName := createComponentShareEnabled(component)
 		duplicateSafeShared := createComponentDuplicateSafeShare(component)
-		componentResourceAppName := resourceAppName
-		if usesSharedResourceName {
-			componentResourceAppName = componentName
-		}
+		componentResourceAppName := componentResourceNameKey(component, resourceAppName)
 
 		if seenComponentLabels != nil {
 			if err := trackComponentLabelValue(seenComponentLabels, resolvedComponentLabelRef{
@@ -297,6 +293,15 @@ func seedResolvedResource(seen map[string]resolvedResourceRef, current resolvedR
 		return
 	}
 	seen[key] = current
+}
+
+// componentResourceNameKey is the name key of a component's generated
+// resources: the application's, or the component's own when it shares them.
+func componentResourceNameKey(component apisv1.CreateComponentRequest, resourceAppName string) string {
+	if createComponentShareEnabled(component) {
+		return strings.TrimSpace(component.Name)
+	}
+	return resourceAppName
 }
 
 func createComponentShareEnabled(component apisv1.CreateComponentRequest) bool {

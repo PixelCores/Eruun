@@ -711,16 +711,16 @@ PR 1 按 1a（平台配置）、1b（`route_deploy` 与执行顺序）、1c（�
 - **Schema**：canonical JSON Schema 的 `JobStep` 禁止 `traits.gateway`（command 与评测步骤都不提供组件入口）。
 - **gRPC**：`AppSpecTraits` 保留字段号 4 与名称 `ingress`，`gateway` 使用 17（main 上从未分配）；`AppDTOApplicationComponent` 保留 12 与 `ingresses`，`gateway` 使用 20。
 - **安装器**：`INSTALL_MODE=helm` 未设置 `GATEWAY_*` 时入口保持关闭，manifest 模式拒绝这些变量。
-- **去掉 gateway 的组件**（PR 1 之后补上）：§7.3 的 `versionUpdateCleanupIngressTraits` 只服务于移除组件，保留组件去掉 `traits.gateway` 后不再生成路由 Job，旧入口会一直对外暴露。现在 `/version` 预检识别这类组件，记入 task 的 `resource_action_info.routeDeleteComponents`，该组件部署时生成 `route_delete` Job，按确定性名称读取路由，只删除 app-id 与组件名标签都属于本组件、且不受 `default`/`ignore` share 保护的对象，删除前校验 workflow 所有权并带 UID 前置条件。没有声明 gateway 的组件不生成任何路由 Job。只写 DB 的更新（`autoExec=false`）无法把删除带到之后的部署，因此被拒绝，与 `remove cleanup_all` 的约束一致。
+- **去掉 gateway 的组件**（PR 1 之后补上）：§7.3 的 `versionUpdateCleanupIngressTraits` 只服务于移除组件，保留组件去掉 `traits.gateway` 后不再生成路由 Job，旧入口会一直对外暴露。现在 `/version` 预检识别这类组件，记入 task 的 `resource_action_info.routeDeleteComponents`，该组件部署时生成 `resource_delete` Job（最初名为 `route_delete`，后扩展为同时删除不再渲染的 Service，见 [版本更新 API](version-update-api.md)），按确定性名称读取路由，只删除 app-id 与组件名标签都属于本组件、且不受 `default`/`ignore` share 保护的对象，删除前校验 workflow 所有权并带 UID 前置条件。没有声明 gateway 的组件不生成任何路由 Job。只写 DB 的更新（`autoExec=false`）无法把删除带到之后的部署，因此被拒绝，与 `remove cleanup_all` 的约束一致。
 - **host 唯一性**（PR 2 之后补上）：每个有效 host 在空间内只能属于一个组件。检查并入现有的跨应用资源名冲突校验（`validateApplicationResourceNames`，覆盖创建、版本更新、Try 与模板克隆），以 host 的第一个 label 为登记键（所有 host 都是 `<label>.<domain>`，域名唯一），共享豁免只在两个组件都按 `default`/`ignore` 共享且解析到同一个路由对象（`GatewayRouteName` 相同）时成立。与现有资源名检查一样，两个并发写入之间没有锁，同时提交的冲突仍可能都被接受。
-- **未处理**：task 在 `route_delete` 执行前失败时入口会保留，见 [版本更新 API](version-update-api.md)。Service Trait 去掉后留下的 Service 是同类缺口，未处理。
+- **未处理**：task 在 `resource_delete` 执行前失败时对象会保留，见 [版本更新 API](version-update-api.md)。入口路由的标签值经 `applyShareLabelsToObject` 规范化，Service 在未开启 share 时保留原值；应用 ID 由系统生成且为小写，两者目前一致，但这是两条不同的打标签路径。
 
 ### 9.2 PR 2a 实现记录
 
 PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Chart 仍只支持 `ingress`，平台 Gateway 由 2b 渲染。与上文不同或上文未写明之处：
 
 - **配置**：新增 `--gateway-parent-namespace`、`--gateway-parent-name`。`Config.Validate` 在 `gatewayapi` 时派生 `ParentRef.SectionName=https`，并在 `proxyNamespace` 为空时取 `ParentRef.Namespace`（§6.1 表中的派生在服务端同样成立，便于不经 Helm 运行）。`ingress` 不接受 ParentRef，`gatewayapi` 不接受 IngressClass。
-- **渲染**：`BuildGatewayRoute` 先按路由解析 backend，再按 provider 生成 Ingress 或 HTTPRoute spec；路由身份（GVK、名称、namespace）只由 `GatewayRouteRef` 决定，部署与 `route_delete` 共用。Gateway API 的组版本与 `httproutes` 资源定义在 `spec`（`GatewayAPIGroupVersion`、`HTTPRouteResource`），渲染、Job 载荷、写入边界、清理与 Discovery 检查共用。
+- **渲染**：`BuildGatewayRoute` 先按路由解析 backend，再按 provider 生成 Ingress 或 HTTPRoute spec；路由身份（GVK、名称、namespace）只由 `GatewayRouteRef` 决定，部署与 `resource_delete` 共用。Gateway API 的组版本与 `httproutes` 资源定义在 `spec`（`GatewayAPIGroupVersion`、`HTTPRouteResource`），渲染、Job 载荷、写入边界、清理与 Discovery 检查共用。
 - **就绪**：按 §7.2 实现。status 中的 parent 按 namespace、name、sectionName 匹配平台监听器。
 - **写入边界**：§7.4 之外，HTTPRoute 与 Ingress 一样只放行 `eruun.io/component-name` 注解；spec、parentRef、rule、match、filter、backendRef、timeouts 都按白名单校验字段（rule 只允许 `matches`/`filters`/`timeouts`/`backendRefs`，match 只允许 `path`，timeouts 只允许 `request`，backendRef 不允许 `weight`）。
 - **清理**：清理 Job 与应用级清理都按 provider 只访问当前后端的路由资源；HTTPRoute 通过空间身份的 dynamic client 删除（Workflow 用 `jobexec.Runtime.Dynamic`，应用服务从注入的请求级 `kubeConfig` 创建），等待对象消失复用现有逻辑。

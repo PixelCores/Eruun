@@ -100,10 +100,13 @@ POST /api/v1/applications/:appID/version/cancel
 - 普通 `restart` 仍沿用现有 restart-only 逻辑；restart-only 请求只保留前置审批步骤并追加 `version_restart` job。
 - 非法 `executionScope` 会返回应用配置错误，不会静默回退。
 
-去掉 `traits.gateway` 的规则：
-- 保留的组件在本次更新中由有 `traits.gateway` 变为没有时，本次 workflow task 部署该组件时会追加一个 `route_delete` job，删除它此前的入口对象（名称为 `GatewayRouteName(组件名, 应用资源名)`）。只删除 `eruun.io/app-id` 与 `eruun.io/component-name` 标签都属于该组件、且没有被 `default`/`ignore` share 策略保护的对象；对象不存在时直接成功。
-- 该更新要求 `autoExec=true`，否则返回应用配置错误 `removing traits.gateway requires autoExec=true`，不写入版本和组件。只写 DB 的更新之后再执行时，已无法得知 gateway 曾被去掉，旧入口会一直保留。
-- 删除只发生在这一次 task 中。task 在 `route_delete` 执行前失败或被取消时，入口对象会保留；需要重新声明 gateway 后再去掉，或删除该组件。
+不再生成的路由与 Service：
+- 保留的组件在本次更新中不再生成某个对象时，本次 workflow task 部署该组件时会为它追加一个 `resource_delete` job：
+  - 由有 `traits.gateway` 变为没有：删除此前的入口对象（Ingress 或 HTTPRoute，名称为 `GatewayRouteName(组件名, 应用资源名)`）；
+  - 更新前后渲染出的 Service 名称不同（去掉或改名 `traits.service[]`，或去掉全部 Service Trait 且没有 `properties.ports`）：删除更新后不再出现的 Service。去掉未命名的 Service Trait 但保留 `properties.ports` 时，默认 Service 与它同名，不会被删除。
+- 只删除 `eruun.io/app-id` 与 `eruun.io/component-name` 标签都属于该组件、且没有被 `default`/`ignore` share 策略保护的对象；对象不存在时直接成功。删除前校验 workflow 所有权，并带 UID 前置条件。
+- 这类更新要求 `autoExec=true`，否则返回应用配置错误 `removing traits.gateway or a Service requires autoExec=true`，不写入版本和组件。只写 DB 的更新之后再执行时，已无法得知对象曾被去掉，旧对象会一直保留。
+- 删除只发生在这一次 task 中。task 在 `resource_delete` 执行前失败或被取消时，对象会保留；需要重新声明后再去掉，或删除该组件。
 
 版本提交（包括 `autoExec=false`）在数据库事务内先锁应用行，再写组件。预检后应用或组件配置发生变化时返回 `409 / 10043`，不会用旧快照覆盖新配置；调用方应重新读取当前配置，确认更新意图后重新提交。直接提交的结构性更新会在锁内复核原有 idle 条件，普通原地配置更新保持原规则。
 

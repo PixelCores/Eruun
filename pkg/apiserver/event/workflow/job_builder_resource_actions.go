@@ -118,6 +118,14 @@ func versionUpdateDeletesRoute(task *model.WorkflowQueue, componentName string) 
 	return err == nil && ok && componentName != "" && slices.Contains(info.RouteDeleteComponents, componentName)
 }
 
+func versionUpdateDeletedServices(task *model.WorkflowQueue, componentName string) []string {
+	info, ok, err := versionUpdateResourceActionInfoFromTask(task)
+	if err != nil || !ok || componentName == "" {
+		return nil
+	}
+	return info.DeletedServices[componentName]
+}
+
 func cloneVersionRestartComponent(component *model.ApplicationComponent) *model.ApplicationComponent {
 	if component == nil {
 		return nil

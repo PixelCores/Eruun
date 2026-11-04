@@ -204,6 +204,9 @@ type VersionUpdateResourceActionInfo struct {
 	// RouteDeleteComponents lists components whose traits.gateway this update
 	// removed; their routes are deleted when the components deploy.
 	RouteDeleteComponents []string `json:"routeDeleteComponents,omitempty"`
+	// DeletedServices maps a component to the Services this update stopped
+	// rendering for it; they are deleted when the component deploys.
+	DeletedServices map[string][]string `json:"deletedServices,omitempty"`
 }
 
 func (wq *WorkflowQueue) PrimaryKey() string {
