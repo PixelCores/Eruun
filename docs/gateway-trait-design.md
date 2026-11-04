@@ -732,7 +732,7 @@ PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Ch
 - **proxyNamespace**：`gatewayapi` 时 Chart 把省略的 `gateway.proxyNamespace` 渲染为 `gateway.gatewayapi.namespace`，与服务端 `Config.Validate` 的派生一致。
 - **一致性**：`eruun.validateRuntime` 按 §6.1 整张表 `fail`；`values.schema.json` 的 provider 枚举加入 `gatewayapi` 并新增 `gateway.gatewayapi` 对象，禁止未知字段。
 - **选择器常量**：`deploy/helm_gateway_test.go` 断言 `templates/gateway.yaml` 的选择器键等于 `workspace.OwnerLabel`。
-- **安装器**：`GATEWAY_API_NAMESPACE`、`GATEWAY_API_CLASS`、`GATEWAY_API_TLS_SECRET` 映射到 `gateway.gatewayapi.*`；`WAIT_READY=true` 时在 rollout 之后等待 Gateway `Accepted`/`Programmed`，并轮询两个监听器的 `Programmed`/`ResolvedRefs` 与重定向路由的 `Accepted`（`kubectl wait` 只能读顶层 condition），最后输出 Gateway 地址。轮询上限固定 120 秒。
+- **安装器**：`GATEWAY_API_NAMESPACE`、`GATEWAY_API_CLASS`、`GATEWAY_API_TLS_SECRET` 映射到 `gateway.gatewayapi.*`；`WAIT_READY=true` 时在 rollout 之后等待 Gateway `Accepted`/`Programmed`，并轮询两个监听器的 `Programmed`/`ResolvedRefs` 与重定向路由的 `Accepted`（`kubectl wait` 只能读顶层 condition），最后输出 Gateway 地址。轮询与 `kubectl wait` 共用 `WAIT_TIMEOUT`（支持 `300s`、`5m`、`1h30m` 这类写法）。安装器测试与 Helm 模板测试对默认名和 50 字符 `fullnameOverride` 下的 Gateway 名、重定向路由名断言相同的值。
 - **验证边界**：Helm 模板测试使用从模块缓存离线编译的 Helm v3.19.0，CI 固定的是 v4.2.0（CI 当前停用）；未在真实集群执行 `helm install`。
 
 ## 10. 测试与验证边界

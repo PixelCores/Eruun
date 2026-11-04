@@ -128,7 +128,7 @@ gateway:
 
 ### gatewayapi 后端
 
-`gatewayapi` 时 Chart 在 `gateway.gatewayapi.namespace` 中创建平台 Gateway（名称为 `<fullname>-<release namespace>`）和一条 HTTP→HTTPS 301 重定向 HTTPRoute：
+`gatewayapi` 时 Chart 在 `gateway.gatewayapi.namespace` 中创建平台 Gateway 和一条 HTTP→HTTPS 301 重定向 HTTPRoute。Gateway 名为 `<fullname>-<release namespace>`（截断到 63 字符），例如 `helm install eruun -n eruun-system` 时为 `eruun-eruun-eruun-system`，Quickstart 默认（`fullnameOverride=eruun`）时为 `eruun-eruun-system`；重定向路由名为 Gateway 名的前 48 个字符加 `-https-redirect`。
 
 - `https` 监听器（443，hostname `*.<domain>`）用 `tlsSecretName` 终止 TLS，只接受带 `eruun.io/workspace-id` 标签的空间 namespace 中的 HTTPRoute；
 - `http` 监听器（80）只接受 Gateway 所在 namespace 的重定向路由；
@@ -141,11 +141,12 @@ gateway:
 3. 确认 Gateway 就绪（Quickstart 的 Helm 模式在 `WAIT_READY=true` 时执行同样的检查）：
 
 ```bash
-NS=istio-ingress GW=eruun-eruun-system
+NS=istio-ingress
+GW=eruun-eruun-eruun-system   # <fullname>-<release namespace>，见上文
 kubectl -n "$NS" wait "gateway/$GW" --for=condition=Accepted --timeout=300s
 kubectl -n "$NS" wait "gateway/$GW" --for=condition=Programmed --timeout=300s
 kubectl -n "$NS" get "gateway/$GW" -o jsonpath='{range .status.listeners[*]}{.name}{" "}{range .conditions[*]}{.type}={.status}{" "}{end}{"\n"}{end}'
-kubectl -n "$NS" get "httproute/$GW-https-redirect" -o jsonpath='{.status.parents[*].conditions[?(@.type=="Accepted")].status}{"\n"}'
+kubectl -n "$NS" get "httproute/${GW:0:48}-https-redirect" -o jsonpath='{.status.parents[*].conditions[?(@.type=="Accepted")].status}{"\n"}'
 kubectl -n "$NS" get "gateway/$GW" -o jsonpath='{.status.addresses[*].value}{"\n"}'
 ```
 

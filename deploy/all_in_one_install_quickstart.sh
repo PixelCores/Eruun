@@ -550,37 +550,52 @@ helmGatewayName() {
   printf '%s' "${name%-}"
 }
 
+# durationSeconds converts a kubectl duration such as 300s, 5m or 1h30m.
+durationSeconds() {
+  local value="$1"
+  if [ -z "${value}" ] || ! [[ "${value}" =~ ^([0-9]+h)?([0-9]+m)?([0-9]+s)?$ ]]; then
+    bail "WAIT_TIMEOUT must be a duration such as 300s, 5m or 1h30m; got ${value:-empty}"
+  fi
+  local hours="${BASH_REMATCH[1]%h}" minutes="${BASH_REMATCH[2]%m}" seconds="${BASH_REMATCH[3]%s}"
+  printf '%d' $((10#${hours:-0} * 3600 + 10#${minutes:-0} * 60 + 10#${seconds:-0}))
+}
+
 # waitForGatewayStatus polls one condition status of a Gateway API object until
-# it reports True. kubectl wait reads only top-level conditions, while listeners
-# and route parents report their own.
+# it reports True or the shared deadline (in $SECONDS) passes. kubectl wait
+# reads only top-level conditions, while listeners and route parents report
+# their own.
 waitForGatewayStatus() {
-  local resource="$1" jsonpath="$2" description="$3" actual="" attempt
-  for attempt in $(seq 1 60); do
+  local resource="$1" jsonpath="$2" description="$3" deadline="$4" actual=""
+  while :; do
     actual=$("${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" get "${resource}" -o "jsonpath=${jsonpath}" 2>/dev/null || true)
     if [ "${actual}" = "True" ]; then
       return 0
     fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      bail "${description} is not ready within WAIT_TIMEOUT=${WAIT_TIMEOUT} (status: ${actual:-missing}); check kubectl -n ${GATEWAY_API_NAMESPACE} describe ${resource}"
+    fi
     sleep 2
   done
-  bail "${description} is not ready (status: ${actual:-missing}); check kubectl -n ${GATEWAY_API_NAMESPACE} describe ${resource}"
 }
 
 # waitForPlatformGateway follows docs/gateway-trait-design.md §6.4 step 3: the
 # Gateway, both listeners with their certificate reference, and the HTTPS
 # redirect route must be accepted before DNS can point at the Gateway address.
 waitForPlatformGateway() {
-  local gateway route listener condition address
+  local gateway route listener condition address timeout deadline
+  timeout=$(durationSeconds "${WAIT_TIMEOUT}")
   gateway="gateway/$(helmGatewayName)"
   route="httproute/$(helmGatewayName | cut -c1-48 | sed 's/-$//')-https-redirect"
   runCmd "${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" wait "${gateway}" --for=condition=Accepted --timeout="${WAIT_TIMEOUT}"
   runCmd "${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" wait "${gateway}" --for=condition=Programmed --timeout="${WAIT_TIMEOUT}"
+  deadline=$((SECONDS + timeout))
   for listener in https http; do
     for condition in Programmed ResolvedRefs; do
       waitForGatewayStatus "${gateway}" "{.status.listeners[?(@.name==\"${listener}\")].conditions[?(@.type==\"${condition}\")].status}" \
-        "Gateway listener ${listener} condition ${condition}"
+        "Gateway listener ${listener} condition ${condition}" "${deadline}"
     done
   done
-  waitForGatewayStatus "${route}" '{.status.parents[*].conditions[?(@.type=="Accepted")].status}' "HTTPS redirect route"
+  waitForGatewayStatus "${route}" '{.status.parents[*].conditions[?(@.type=="Accepted")].status}' "HTTPS redirect route" "${deadline}"
   address=$("${KUBECTL_BIN}" -n "${GATEWAY_API_NAMESPACE}" get "${gateway}" -o 'jsonpath={.status.addresses[*].value}')
   logInfo "Platform Gateway ready at ${address:-<no address>}; point *.${GATEWAY_DOMAIN} DNS at it"
 }

@@ -694,6 +694,26 @@ for expected in \
 done
 assertEqual "$(grep -c 'from: Selector' "${gateway_api_objects}")" "1" "only the https listener admits workspace namespaces"
 
+# all_in_one_install_quickstart_test.sh waits on the same names for the same
+# fullnameOverride and namespace, so either side changing the rule breaks a test.
+long_gateway_name=$(repeatChar f 50)
+for fullname in eruun "${long_gateway_name}"; do
+  case "${fullname}" in
+    eruun) want_gateway=eruun-eruun-system want_redirect=eruun-eruun-system-https-redirect ;;
+    *) want_gateway="${fullname}-eruun-system" want_redirect="${fullname:0:48}-https-redirect" ;;
+  esac
+  named_objects="${TEST_ROOT}/gateway-api-names-${#fullname}.yaml"
+  runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set-string "fullnameOverride=${fullname}" \
+    --show-only templates/gateway.yaml "${gateway_api_args[@]}" > "${named_objects}"
+  assertEqual "$(resourceNames Gateway "${named_objects}")" "${want_gateway}" "platform Gateway name for fullnameOverride ${fullname}"
+  assertEqual "$(resourceNames HTTPRoute "${named_objects}")" "${want_redirect}" "redirect route name for fullnameOverride ${fullname}"
+  [ "${#want_gateway}" -le 63 ] && [ "${#want_redirect}" -le 63 ] || fail "Gateway object names must fit 63 characters"
+  named_runtime="${TEST_ROOT}/gateway-api-runtime-${#fullname}.yaml"
+  runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set-string "fullnameOverride=${fullname}" \
+    --show-only templates/runtime-deployments.yaml "${gateway_api_args[@]}" > "${named_runtime}"
+  assertEnvValue "${named_runtime}" ERUUN_GATEWAY_PARENT_NAME "${want_gateway}"
+done
+
 for invalid in \
   "gateway.gatewayapi.namespace=istio-ingress" \
   "gateway.gatewayapi.unknown=value"; do
