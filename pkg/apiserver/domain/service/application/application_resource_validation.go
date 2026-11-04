@@ -195,9 +195,40 @@ func trackResolvedApplicationResources(
 			if err := track(spec.ResourceIngress, naming.GatewayRouteName(strings.TrimSpace(component.Name), componentResourceAppName), "traits.gateway"); err != nil {
 				return err
 			}
+			for _, host := range gatewayHostLabels(*component.Traits.Gateway, componentName, componentNamespace) {
+				if err := track(resourceGatewayHost, host.label, host.source); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// resourceGatewayHost registers the hosts of component routes: the platform
+// gateway forwards one host to one route, so two components in a workspace
+// must not claim the same host.
+const resourceGatewayHost spec.ResourceKind = "gateway host"
+
+type gatewayHostLabel struct {
+	label  string
+	source string
+}
+
+// gatewayHostLabels returns the first DNS label of each effective host. Every
+// host is that label under the single platform domain, so the label alone
+// identifies it without the gateway configuration.
+func gatewayHostLabels(gateway spec.GatewayTraitSpec, componentName, namespace string) []gatewayHostLabel {
+	if len(gateway.Hosts) == 0 {
+		label, _, _ := strings.Cut(spec.GatewayDefaultHost(componentName, namespace, ""), ".")
+		return []gatewayHostLabel{{label: label, source: "traits.gateway default host"}}
+	}
+	labels := make([]gatewayHostLabel, 0, len(gateway.Hosts))
+	for i, host := range gateway.Hosts {
+		label, _, _ := strings.Cut(host, ".")
+		labels = append(labels, gatewayHostLabel{label: label, source: fmt.Sprintf("traits.gateway.hosts[%d]", i)})
+	}
+	return labels
 }
 
 func trackResolvedResource(seen map[string]resolvedResourceRef, current resolvedResourceRef) error {
@@ -223,6 +254,8 @@ func trackResolvedResource(seen map[string]resolvedResourceRef, current resolved
 		resourceNameKind = "service name"
 	case spec.ResourcePVC:
 		resourceNameKind = "pvc name"
+	case resourceGatewayHost:
+		resourceNameKind = "gateway host label"
 	}
 	return fmt.Errorf("%w: component[%d] %q%s %s resolves to duplicate %s %q in namespace %s already used by component[%d] %q%s %s",
 		bcode.ErrApplicationConfig,
