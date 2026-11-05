@@ -196,7 +196,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |
-| [`gateway-trait-design.md`](gateway-trait-design.md) | Draft / Proposal | 以 `traits.gateway` 直接替换 `traits.ingress`，定义为组件跨空间的入站与出站声明（首期只实现入站）：平台选择 Gateway API（含 Istio）或 Ingress 后端，统一 LLM 与 Agent 的对外入口、请求超时与单层 host 命名。PR 1（`ingress` 后端）与 PR 2（`gatewayapi` 后端：服务端与 Chart 创建的平台 Gateway）已实现，现行契约见 `validation-api-guide.md` 与 `helm-deployment.md`；真实 Istio 验收未进行 |
+| [`gateway-trait-design.md`](gateway-trait-design.md) | Draft / Proposal | 以 `traits.gateway` 直接替换 `traits.ingress`，定义为组件跨空间的入站声明（出站见出站网关设计）：平台选择 Gateway API（含 Istio）或 Ingress 后端，统一 LLM 与 Agent 的对外入口、请求超时与单层 host 命名。PR 1（`ingress` 后端）与 PR 2（`gatewayapi` 后端：服务端与 Chart 创建的平台 Gateway）已实现，现行契约见 `validation-api-guide.md` 与 `helm-deployment.md`；真实 Istio 验收未进行 |
+| [`egress-gateway-design.md`](egress-gateway-design.md) | Draft / Proposal | Agent 出站网关：Sandbox 出站经网关、网络层强制；控制平面签发 attempt 级 token，网关注入模型凭据并按 host allowlist 放行 CONNECT；E1–E9 已确认，未实现 |
 | `vectorization-job-design.md` | Draft / Proposal | Provider-neutral 向量化批处理方向 |
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
