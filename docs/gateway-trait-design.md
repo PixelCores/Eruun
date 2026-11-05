@@ -16,7 +16,7 @@
 | G6 | 首期 backend 只能指向本组件的 Service；不做跨组件 backend 和按权重分流 | 已确认（2026-10-23） |
 | G7 | host 为单层名称 `<前缀>-<空间 namespace>.<domain>`，平台一张 `*.<domain>` 证书覆盖全部空间 | 已确认（2026-10-23） |
 | G8 | 删除按 host 区分路由的能力：一个组件的所有 host 共用同一组路由 | 已确认（2026-10-23） |
-| G9 | `gateway` 定义为组件跨空间边界的入站与出站声明，`service` 只负责集群内端点；首期只实现入站，出站方向写入本文（§11.1），Schema 不预留 `egress` 字段 | 已确认（2026-10-23） |
+| G9 | `gateway` 定义为组件跨空间边界的入站声明，`service` 只负责集群内端点。出站不是组件声明，由 Eruun 控制平面统一管理、经出站网关执行，见 [Agent 出站网关设计](egress-gateway-design.md)；Schema 不加 `egress` 字段 | 已确认（2026-10-23）；2026-11-05 修订：出站移出 Trait |
 | G10 | 入站后端在 Helm 安装时选定：`values.yaml` 的 `gateway` 是唯一来源，同时渲染服务端配置（`ERUUN_GATEWAY_*`）与 ClusterRole 中所选后端的规则，账号配置 Secret 不再保存入口配置；`gatewayapi` 时由 chart 创建平台 `Gateway` 对象；网络组件（Istio、Gateway Controller、Ingress Controller）仍由平台单独安装 | 已确认（2026-10-23） |
 
 ## 2. 背景
@@ -62,11 +62,10 @@
 | Trait | 负责 | 不负责 |
 | --- | --- | --- |
 | `service` | 组件在集群内的服务端点：Service 名、端口、协议 | 跨空间边界的访问 |
-| `gateway` | 组件跨越空间边界的流量声明：**入站**（向空间外提供什么访问入口）与**出站**（需要访问空间外的哪些目标） | 网络组件、平台 `Gateway` 对象、证书、DNS、网络策略资源本身；它们由平台或 Eruun 的 Helm release 管理，不归任何组件所有 |
+| `gateway` | 组件跨越空间边界的入站声明：向空间外提供什么访问入口 | 网络组件、平台 `Gateway` 对象、证书、DNS、网络策略资源本身；它们由平台或 Eruun 的 Helm release 管理，不归任何组件所有 |
 
-- 首期 `gateway` 只有入站部分（`hosts`、`routes`）。出站的方向与约束见 §11.1，Schema 不预留字段，需求明确后直接扩展契约。
-- “跨空间”不等于“经过实体网关”：访问另一空间中的模型 Service 同样跨空间，可能直接走集群网络，但仍属于 `gateway` 出站声明与空间策略管辖。
-- 入站与出站的适用条件不同：入站要求组件有承载 HTTP 的 Service；出站将适用于任何运行 Pod 的组件，包括一次性 Agent 任务。两部分分别定义适用条件、默认行为与执行时序，不共用检查。
+- `gateway` 只有入站（`hosts`、`routes`），要求组件有承载 HTTP 的 Service。
+- 出站（访问空间外的模型 API、工具、仓库等）不由组件声明：2026-11-05 修订 G9 后，它是平台能力，由控制平面集中管理策略与凭据、由出站网关执行，见 [Agent 出站网关设计](egress-gateway-design.md)。
 - Service Trait 的 `node`（NodePort）与 `public`（LoadBalancer）类型是 L4 跨边界暴露，与本划分冲突。当前空间写入边界只允许 ClusterIP，这两种类型在空间应用部署中不可用，但导入、类型映射与资源生成仍使用它们。是否删除属于对外能力变更，另行逐项确认，不在本方案范围内。
 
 ### 3.2 目标
@@ -81,7 +80,7 @@
 ### 3.3 非目标
 
 - 不安装或管理网络组件（Istio、Gateway Controller、Ingress Controller）、GatewayClass、Gateway API CRD、证书和 DNS；它们由平台单独安装。Eruun 的 Helm chart 只在 `gatewayapi` 时创建平台 `Gateway` 对象（§6.6）。
-- 首期不实现出站，不做跨组件路由、按权重分流、header 匹配、镜像流量、重试和限流；不生成 `VirtualService`、`GRPCRoute`、`TCPRoute`。
+- 不处理出站（见 [Agent 出站网关设计](egress-gateway-design.md)），首期不做跨组件路由、按权重分流、header 匹配、镜像流量、重试和限流；不生成 `VirtualService`、`GRPCRoute`、`TCPRoute`。
 - 不做 Eruun 自己的服务网格或流量控制平面：Eruun 声明流量意图，翻译为集群已安装的网络 API。
 
 ### 3.4 删除的能力
@@ -199,7 +198,7 @@ const (
 - `traits.gateway` 只允许出现在 Application/Workflow 组件的顶层 Traits。出现在 `init[].traits`、`sidecar[].traits`、command Job step 或 evaluation 中时校验失败；`validateJobTraits` 与 evaluation 的拒绝条件从 `Ingress` 改为 `Gateway`，不能随旧字段一起删除。
 - 首期入站只允许 `webservice` 与 `store`：组件必须有 Eruun 管理、指向自身工作负载的 Service，被路由的端口为 TCP。`config`、`secret`、`job`、`scheduledjob` 携带 gateway 时返回 `GATEWAY_NOT_ALLOWED`。端口承载的是否确为 HTTP 无法静态证明，由部署时的路由状态（§7.2）与验收发现。
 - 拒绝 `job`/`scheduledjob` 的理由是**任务实例的入口生命周期尚未设计**（Service 选择哪个执行实例、路由何时开放与撤销、重试和并行如何隔离），不是“一次性任务不需要入站”。有具体场景（交互式任务界面、第三方回调）时另行设计。
-- 首期 `routes` 必填。将来加入出站后，允许只声明出站的 gateway，届时 `routes` 改为仅在声明入站时必填（§11.1）。
+- `routes` 必填。
 
 ### 5.2 字段规则与默认值
 
@@ -426,7 +425,7 @@ type WorkspaceConfig struct {
 - **本地运行**：不经部署清单运行（`go run ./cmd/main.go`）时，`--gateway-*` flag 由使用者自行提供，`Config.Validate` 是唯一的检查。
 - `gatewayapi` 只能通过 Helm 安装，因为它依赖 chart 创建的 Gateway 对象。
 
-`provider` 只选择入站实现。将来的出站实现由独立的平台配置选择（§11.1），不复用本字段。
+`provider` 只选择入站实现。出站由 [出站网关](egress-gateway-design.md) 负责，不复用本字段。
 
 启动时 Leader 用**平台客户端**通过 Discovery 检查所选后端的 API：`gatewayapi` 请求 `GET /apis/gateway.networking.k8s.io/v1`，确认资源列表含 `httproutes`；`ingress` 请求 `GET /apis/networking.k8s.io/v1`，确认含 `ingresses`。
 
@@ -763,31 +762,9 @@ PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Ch
 
 ## 11. 后续阶段
 
-### 11.1 出站方向（G9，未冻结）
+### 11.1 出站方向
 
-出站将作为 `gateway` 的一部分，声明组件需要访问的空间外目标（外部模型 API、MCP Server、工具、模型权重仓库，或集群内其他空间与平台提供的服务）。以下是已确定的方向与约束，字段结构与语义在需求明确后另行设计：
-
-- **适用范围**：任何运行 Pod 的组件，包括 `job`/`scheduledjob` 等一次性 Agent 任务；不要求组件有 Service。加入后允许只声明出站的 gateway，`routes` 改为仅在声明入站时必填。
-- **现状基线**：空间基线 NetworkPolicy（`workspace/namespace.go` `networkPolicy`）已允许所有 Pod 访问公网 TCP 80/443，屏蔽集群网段与私有网段，只放行同 namespace 与 DNS。
-- **收紧需要改基线**：NetworkPolicy 的允许规则取并集，保留覆盖全部 Pod 的公网放行再加组件 allowlist 不会更窄；按组件收紧必须同时调整基线覆盖的对象。跨空间访问还需要目标侧入站策略允许。
-- **平台选择实现，但不承诺等价**：
-
-| 实现 | 能表达 | 不能承诺 |
-| --- | --- | --- |
-| 原生 NetworkPolicy | IP/CIDR、端口、协议、Pod/namespace 选择 | 动态 FQDN、HTTP Host、TLS 服务身份 |
-| CNI FQDN 策略（如 Cilium `toFQDNs`） | 按观察到的 DNS 结果维护允许 IP，可结合端口 | HTTP Host/TLS 身份；集群内 Service 应按端点规则而非外部 FQDN |
-| Istio ServiceEntry + `outboundTrafficPolicy: REGISTRY_ONLY` | 为代理登记目标，限制经代理的未知目标 | 不可绕过的安全边界（官方明确它不是强安全边界） |
-| Istio egress gateway + 网络层阻断 | 集中转发，网络层阻断绕过网关的连接 | 仅创建网关即强制经过网关 |
-
-- 平台只能支持部分语义时（例如只有 CIDR/端口），收到不支持的声明必须明确拒绝，不降级。
-- 出站实现由独立的平台配置选择，不复用入站的 `provider`；入站用 Gateway API、出站用 CNI 策略可以同时存在。
-- 出站声明不能自行获取空间策略禁止的访问（例如集群内网段）；平台配置决定允许申请的范围。
-- NetworkPolicy 等策略资源仍由平台 Manager 写入，不交给空间执行身份。
-- 评测 Runner 现有的按标签出站放行（`workspace/evaluation.go`，由管理员配置的单地址与端口）保留为平台内部策略，不并入用户声明；语义相同时可复用校验或渲染代码。
-- 进入设计前需要用户回答：
-  1. 出站声明是“让正常应用能访问这些目标”，还是“保证不可信 Agent 也无法访问未声明目标”？后者要求网络层强制执行，`REGISTRY_ONLY` 单独不能满足。
-  2. 按域名限制时，放行的是“该域名解析出的 IP 与端口”，还是必须精确到“指定 HTTP Host/TLS 服务身份”？
-  3. 省略出站声明时继承空间基线，还是拒绝全部；空列表的含义。
+2026-11-05 修订 G9：出站不再作为 `gateway` 的一部分由组件声明，原本节列出的待答问题已按“控制平面统一管理、出站网关执行、网络层强制”的方向回答。设计见 [Agent 出站网关设计](egress-gateway-design.md)，其中 E1–E9 已确认。
 
 ### 11.2 其他方向
 
