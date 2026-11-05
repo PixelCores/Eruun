@@ -16,7 +16,7 @@ D1–D8 均按“推荐”一列确认（2026-10-27）。
 | D4 | 仓库获取 | Runner 用 git 凭据克隆，深度 1，再以 tar 上传到 Sandbox | 在 Sandbox 内克隆：git 凭据会进入 Agent 可见的环境 |
 | D5 | 第一版范围 | 只支持独立 Job；不支持 Application 组件、恢复、push 或创建 PR | 见 §3.3 |
 | D6 | 内部字段 | 先用一个无行为变化的重构 PR 把 `EvaluationInfo` 改为 `RunnerInfo`，并引入 `config.IsRunnerJob` | 继续沿用 `EvaluationInfo` 保存 Agent 声明：两类 Runner 共用一个名为“evaluation”的列和结构，会误导后续维护 |
-| D7 | 模型凭据 | 第一版把模型 key 通过 exec 环境变量注入 Sandbox；Agent 能读到自己的 key | 平台模型代理：可避免 key 暴露，但属于 R5（工具与凭据边界），不在本文范围 |
+| D7 | 模型凭据 | 第一版把模型 key 通过 exec 环境变量注入 Sandbox；Agent 能读到自己的 key。[出站网关](egress-gateway-design.md)落地后改为注入 attempt 级出站 token，真实 key 只在网关侧使用（E3、E9） | 平台模型代理：可避免 key 暴露，由出站网关 Proposal 承接，不在本文范围 |
 | D8 | harness 字段名 | `traits.agent.harness` | `traits.agent.agent` 读起来重复。`traits.eval.agent` 表示同一概念，是否统一改名另行决定，不在本文范围 |
 
 ## 2. 背景
@@ -64,7 +64,7 @@ Harbor 评测已经实现了一个 Agent Runtime 需要的大部分机制，但�
 - 故障恢复。Runner 或 Sandbox 丢失时任务失败，Sandbox 按现有规则保留 24 小时供排查。恢复可以复用 `traits.eval.recovery` 的原生会话机制，留到后续。
 - 把结果推送回仓库或创建 PR。这是一个外部副作用，需要写权限凭据和审计，属于 R5。
 - 判断改动是否正确。Agent 任务成功不代表改动正确，正如评测 reward 为 0 也不代表运行失败。
-- 自定义模型端点（`baseURL`）与平台模型代理。空间网络策略本来就拒绝私网地址，集群内代理需要单独设计出站规则。
+- 自定义模型端点（`baseURL`）与平台模型代理。空间网络策略本来就拒绝私网地址；私网与集群内上游改由[出站网关](egress-gateway-design.md)经平台注册后访问。
 - 多轮交互、人工审批工具调用、MCP。
 
 ## 4. 架构
@@ -483,4 +483,4 @@ PR 2 之后，下一个 Phase 1 增量是让 Agent 任务支持现有的原生�
 - **恢复**：复用 `traits.eval.recovery` 的分段运行、原生会话 ID 与 checkpoint 材料，Agent 任务只有一个 trial，比评测更简单。
 - **Application 组件**：共用 `NormalizeComponentEvaluation` 的位置与限制，开放 `traits.agent`。
 - **写回仓库**：推送分支或创建 PR，需要写权限凭据、平台审计与人工审批（R5）。
-- **模型代理**：Sandbox 只拿到短期、限定用途的凭据或代理地址，不再接触长期 key（R5）。
+- **模型代理**：Sandbox 只拿到短期、限定用途的凭据或代理地址，不再接触长期 key。设计见[出站网关](egress-gateway-design.md)，网关落地后 `envs` 中模型 key 的规则改为上游绑定。
