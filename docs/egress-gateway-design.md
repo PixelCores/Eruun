@@ -8,8 +8,8 @@
 
 | 编号 | 决策 | 状态 |
 | --- | --- | --- |
-| E1 | 出站网关是 Sandbox 的唯一出口：Sandbox Pod 的 NetworkPolicy 只放行 DNS 与网关。可信 Runner 保留现有基线与 /32 放行；Application 组件（webservice 等）不受影响 | 已确认（2026-11-05） |
-| E2 | 两种转发模式：带凭据的上游走反向代理，Sandbox 以 base URL 指向 `http://<网关>/<上游名>`，网关替换认证头；其他目标走 `HTTPS_PROXY` 的 CONNECT allowlist，只匹配 `host:port`，不解密 TLS | 已确认（2026-11-05） |
+| E1 | 出站网关是 Sandbox 的唯一出口：Sandbox Pod 的 NetworkPolicy 只放行网关，不放行 DNS；Sandbox 以网关 Service 的 ClusterIP 访问网关，目标域名由网关解析。可信 Runner 保留现有基线与 /32 放行；Application 组件（webservice 等）不受影响 | 已确认（2026-11-05）；同日审阅后去掉 DNS 放行（§8.2） |
+| E2 | 两种转发模式：带凭据的上游走反向代理，Sandbox 以 base URL 指向 `http://<网关>/<上游名>`，网关替换认证头；其他目标走 `HTTPS_PROXY` 的 CONNECT allowlist，只匹配 host（首期端口固定 443），不解密 TLS | 已确认（2026-11-05）；同日审阅后限定 443 |
 | E3 | 每个 attempt 一个出站 token：控制平面签发，绑定 TaskID、RunGeneration、Attempt；attempt 进入终态或被新 generation 取代即失效。Sandbox 中的模型 API key 环境变量填入这个 token，CLI 不改，也拿不到真实 key | 已确认（2026-11-05） |
 | E4 | 策略两层：平台默认 allowlist，空间追加；带凭据的上游由平台注册（名称、base URL、认证方式）；任务以 `SecretSelectorSpec` 引用本空间 Secret，不新增第二种 Secret 引用写法 | 已确认（2026-11-05） |
 | E5 | 网关不读 Kubernetes Secret：凭 token 调 Eruun 内部接口换取策略与凭据，按 attempt 短期缓存；Secret 读取权限只留在 Eruun server。内部接口必须认证调用方，因为它返回凭据明文 | 已确认（2026-11-05） |
@@ -100,7 +100,7 @@ flowchart LR
 | 内部解析接口 | 认证网关后，按 token 返回空间、任务、生效的 allowlist 和该任务绑定的上游凭据 | 不对 Sandbox 或用户开放 |
 | 出站网关 | 认证 Sandbox 请求、匹配策略、注入凭据、转发、审计 | 不读 Kubernetes 资源，不持久化状态 |
 | Runner | 把 token、base URL、`HTTPS_PROXY` 放进 Agent 进程的 exec 环境 | 不把 token 写入 Sandbox 的 Pod spec 或文件 |
-| NetworkPolicy | 让 Sandbox 只能连 DNS 与网关；限制网关自身的出站范围 | — |
+| NetworkPolicy | 让 Sandbox 只能连网关（不含 DNS）；限制网关自身的出站范围 | — |
 
 网关的多副本之间不共享状态；任一副本都能凭 token 独立完成解析，所以副本可以随意扩缩和重启。
 
@@ -113,6 +113,8 @@ Runner 启动一个 attempt 时，控制平面为它生成一个随机 token（3
 - 模型 key 环境变量（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`）的值为 token；
 - base URL 环境变量指向网关上对应的上游路径；
 - `HTTPS_PROXY` 为带 token 的网关代理地址，`NO_PROXY` 不包含任何公网目标。
+
+这两个地址都直接写网关 Service 的 ClusterIP，不写域名，因为 Sandbox 没有 DNS（§7）。ClusterIP 在 Service 存续期间不变；Runner 在每个 attempt 启动时从控制平面取得当前地址，Service 重建后新 attempt 自然拿到新地址。CONNECT 的目标域名由网关解析，客户端不需要解析。
 
 这条路径与 D7 现在传递模型 key 的路径相同，只是传递的值从长期 key 换成了 attempt 级 token。Runner 采集结果时对 token 原值做脱敏，与 Agent 任务设计中对能力 token、git 凭据的处理一致。
 
@@ -146,8 +148,9 @@ stateDiagram-v2
 
 ### 5.2 allowlist 目标（CONNECT）
 
-其余 HTTPS 访问（包仓库、公开 git、文档站点等）通过 `HTTPS_PROXY` 的 CONNECT 进入网关。网关从 `Proxy-Authorization` 中取出 token 并解析，然后按 `host:port` 匹配平台默认 allowlist 与空间追加 allowlist：
+其余 HTTPS 访问（包仓库、公开 git、文档站点等）通过 `HTTPS_PROXY` 的 CONNECT 进入网关。网关从 `Proxy-Authorization` 中取出 token 并解析，然后按 host 匹配平台默认 allowlist 与空间追加 allowlist：
 
+- 首期只接受 443 端口；网关自身的 NetworkPolicy 由 Helm 渲染、只放行公网 443（§6.3），allowlist 存在 MySQL 中，两者无法随策略动态同步，所以端口不进入 allowlist；
 - 拒绝 IP 字面量目标；
 - 解析域名后，若结果落在私网、保留网段或集群网段内则拒绝，防止 DNS rebinding 借 allowlist 访问内网；
 - 建立 TCP 隧道后只透传字节，不终止 TLS。
@@ -159,8 +162,8 @@ stateDiagram-v2
 | 层 | 由谁维护 | 内容 | 约束 |
 | --- | --- | --- | --- |
 | 平台上游 | 系统管理员（`systemAdmin`） | 名称、base URL、认证方式 | 允许私网地址；首期两类认证方式 |
-| 平台默认 allowlist | 系统管理员 | `host:port` 列表（可含通配子域） | 只能是公网目标 |
-| 空间追加 allowlist | 空间 owner 或 admin | `host:port` 列表 | 只能是公网目标；不能放宽平台禁止的范围 |
+| 平台默认 allowlist | 系统管理员 | host 列表（可含通配子域），端口固定 443 | 只能是公网目标 |
+| 空间追加 allowlist | 空间 owner 或 admin | host 列表，端口固定 443 | 只能是公网目标；不能放宽平台禁止的范围 |
 | 任务绑定 | 提交任务的用户 | 使用哪些上游，以及各自引用的空间 Secret | 提交时校验上游存在、Secret 与 key 存在 |
 
 生效策略 = 平台默认 ∪ 空间追加，在 token 解析时计算。三层都存放在 MySQL，管理方式（管理员 API、系统设置或 Console 页面）由实现 PR 确定。
@@ -205,7 +208,7 @@ NetworkPolicy 的允许规则取并集，空间基线覆盖全部 Pod 且放行�
 | 策略 | 选择器 | 出站 | 入站 |
 | --- | --- | --- | --- |
 | 空间基线（修改） | 不带 `eruun.io/sandbox-id` 的 Pod | 不变 | 不变 |
-| Sandbox 策略（新增） | 带 `eruun.io/sandbox-id` 的 Pod | DNS；平台 namespace 中网关 Pod 的代理端口 | 与基线相同（同 namespace） |
+| Sandbox 策略（新增） | 带 `eruun.io/sandbox-id` 的 Pod | 只有平台 namespace 中网关 Pod 的代理端口；不放行 DNS | 与基线相同（同 namespace） |
 
 Runner 与 Application 组件的网络行为不变。Sandbox 选择器同时覆盖一次性 Agent 任务与 Harbor 评测的 Sandbox：两者都运行不可信 Agent，但 Harbor trial 中的 Agent 需要先改为经网关访问模型，否则强制生效后会失去模型连通，因此强制必须在接入完成后最后落地（§9）。
 
@@ -227,6 +230,7 @@ NetworkPolicy 能否在 ACS Agent Sandbox（虚拟节点）上实际执行尚未
 ### 8.2 安全边界
 
 - **token 泄露**：token 只在当前 attempt 有效，只能访问该任务绑定的上游与生效 allowlist，泄露范围限于一个 attempt。
+- **DNS 通道**：kube-dns 会把集群外域名递归转发给上游解析器，Sandbox 只要能发 DNS 查询，就能把数据编码进查询名带出，完全不经过网关。因此 Sandbox 策略不放行 DNS，网关地址用 ClusterIP。代价是 Sandbox 内任何需要自行解析域名的程序都会失败，包括设置了代理但仍先解析目标域名的客户端；这正是 fail closed 的预期行为，但两个 Agent CLI 是否满足需要验证（§10）。
 - **集群内明文**：Sandbox 到网关一段是 HTTP（E8），同节点或网络路径上的嗅探可以拿到 token；短生命周期与 attempt 绑定限制了影响，后续可在 Sandbox 注入 CA 后切到 TLS。
 - **网关被攻破**：攻击者能拿到缓存中所有活跃任务的上游凭据。缓解措施是网关不持有 Kubernetes 权限、缓存短、出站受 NetworkPolicy 限制。
 - **不解密 TLS 的代价**：CONNECT 通道内容不可见，借允许的域名（含模型 API 本身、公开 git）外带数据无法阻止；allowlist 缩小的是可达范围，不是内容审查。
@@ -250,12 +254,12 @@ NetworkPolicy 能否在 ACS Agent Sandbox（虚拟节点）上实际执行尚未
 
 ## 10. 测试与验证边界
 
-单元测试覆盖：token 签发、摘要校验、generation 与 attempt 取代后失效；生效策略的计算；认证头替换与删除；CONNECT 对 IP 字面量、私网解析结果与未授权 host 的拒绝；缓存 TTL 与负缓存；内部接口对非网关调用方的拒绝；NetworkPolicy 渲染（基线排除 Sandbox，Sandbox 策略只放行 DNS 与网关）。
+单元测试覆盖：token 签发、摘要校验、generation 与 attempt 取代后失效；生效策略的计算；认证头替换与删除；CONNECT 对 IP 字面量、私网解析结果与未授权 host 的拒绝；缓存 TTL 与负缓存；内部接口对非网关调用方的拒绝；NetworkPolicy 渲染（基线排除 Sandbox，Sandbox 策略只放行网关、不含 DNS）；allowlist 拒绝非 443 端口。
 
 本地与 fake 测试不能证明、必须在真实环境验收的事项：
 
-- ACS Agent Sandbox 上 NetworkPolicy 的实际执行：Sandbox 内直连公网 443 必须失败，经网关访问必须成功。
-- Codex 与 Claude Code 是否都按环境变量使用 base URL 与 `HTTPS_PROXY`，以及只拿到 token 时是否能正常工作；建议并入 S0 实验。
+- ACS Agent Sandbox 上 NetworkPolicy 的实际执行：Sandbox 内直连公网 443 必须失败，DNS 查询必须失败，经网关 ClusterIP 访问必须成功。
+- Codex 与 Claude Code 是否都按环境变量使用 base URL 与 `HTTPS_PROXY`，只拿到 token 时是否能正常工作，以及在没有 DNS 时是否仍能工作（设置代理后不再自行解析目标域名）；建议并入 S0 实验。
 - SSE 长连接经网关反向代理的行为：首个 token 前长时间无输出、持续数十分钟的流、客户端取消时上游连接是否关闭。
 - 网关吞吐与副本数：并发任务规模下的连接数、延迟和内存占用。
 - TokenReview 在目标集群上对投射 token audience 的校验。
