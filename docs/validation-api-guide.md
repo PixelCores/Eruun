@@ -848,7 +848,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 - 只允许在 `webservice`、`store` 组件顶层使用，其他组件类型和平台未配置入口后端时返回 `GATEWAY_NOT_ALLOWED`；command Job 步骤和 `type: "job"` 评测组件同样拒绝 `gateway`。
 - `hosts` 可选，最多 8 个且不能重复。每个 host 由一个 DNS label 和平台域名组成：`<前缀>-<空间 namespace>.<domain>`，前缀非空，label 为小写且不超过 63 个字符；不满足时返回 `INVALID_GATEWAY_HOST`。省略时使用默认 host `<小写组件名>-<空间 namespace>.<domain>`；组件名过长使默认 label 超过 63 个字符时，需要显式声明 `hosts`。
-- 一个空间内每个有效 host（默认 host 或声明的 host）只能属于一个组件：创建、版本更新、Try 与模板克隆时与同一 namespace 中其他应用的组件以及本应用的其他组件比较，按 host 的第一个 label 判断（平台域名只有一个），冲突时返回应用配置错误，消息形如 `component[0] "api" traits.gateway.hosts[0] resolves to duplicate gateway host label "chat-<空间 namespace>" in namespace <空间 namespace> already used by component[0] "web" in app "chat" (<appID>) traits.gateway default host`。两个应用里同名的组件都使用默认 host 时同样冲突，需要为其中一个声明 `hosts`。按 `default`/`ignore` 策略共享资源的组件共用同一个入口对象，不算冲突。
+- 一个空间内每个有效 host（默认 host 或声明的 host）只能属于一个组件：创建、版本更新、Try 与模板克隆时与同一 namespace 中其他应用的组件以及本应用的其他组件比较，按 host 的第一个 label 判断（平台域名只有一个），冲突时返回应用配置错误，消息形如 `component[0] "api" traits.gateway.hosts[0] resolves to duplicate gateway host label "chat-<空间 namespace>" in namespace <空间 namespace> already used by component[0] "web" in app "chat" (<appID>) traits.gateway default host`。两个应用里同名的组件都使用默认 host 时同样冲突，需要为其中一个声明 `hosts`。按 `default`/`ignore` 策略共享资源的同名组件共用同一个入口对象，不算冲突；不同名的共享组件会生成不同的入口对象，声明同一个 host 时仍然冲突。
 - `routes` 必填，1–16 条，为空返回 `MISSING_GATEWAY_ROUTES`。每条路由：
   - `path` 以 `/` 开头，不含 `?`、`#`、`..`、`//`，省略时为 `/`；
   - `match` 为 `prefix`（默认）或 `exact`，区分大小写；`path` 与 `match` 的组合在组件内唯一；

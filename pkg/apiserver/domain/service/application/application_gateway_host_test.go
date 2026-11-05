@@ -135,3 +135,47 @@ func TestUpdateVersionRejectsGatewayHostCollision(t *testing.T) {
 	require.Equal(t, "1.0.0", store.apps["app-agent"].Version)
 	require.Nil(t, store.components["api"].Traits)
 }
+
+// Sharing exempts a host only when both components resolve to the same route
+// object: same-named shared components share one route, differently named ones
+// would render two routes competing for the host.
+func TestCreateApplicationsGatewayHostShareExemption(t *testing.T) {
+	const namespace = "eruun-ws-0123456789abcdef0123456789abcdef"
+	declared := "chat-" + namespace + ".apps.example.com"
+	shared := func(component apisv1.CreateComponentRequest) apisv1.CreateComponentRequest {
+		component.Traits.Share = &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)}
+		return component
+	}
+	for _, tc := range []struct {
+		name          string
+		existingName  string
+		requestedName string
+		conflict      bool
+	}{
+		{name: "same shared component in two applications", existingName: "web", requestedName: "web"},
+		{name: "differently named shared components", existingName: "web", requestedName: "api", conflict: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gateway := spec.GatewayTraitSpec{Hosts: []string{declared}, Routes: []spec.GatewayRouteSpec{{}}}
+			store := newInMemoryAppStore()
+			store.apps["app-chat"] = &model.Applications{ID: "app-chat", Name: "chat", Version: "1.0.0", Namespace: namespace}
+			store.components[tc.existingName] = &model.ApplicationComponent{
+				Name:          tc.existingName,
+				AppID:         "app-chat",
+				Namespace:     namespace,
+				ComponentType: config.ServerJob,
+				Properties:    mustJSONStruct(&apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}}),
+				Traits:        mustJSONStruct(&apisv1.Traits{Gateway: &gateway, Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)}}),
+			}
+			_, err := newMockServiceWithStore(store).CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+				Namespace: namespace, Name: "agent", Components: []apisv1.CreateComponentRequest{shared(gatewayComponent(tc.requestedName, gateway))},
+			})
+			if !tc.conflict {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+			require.Contains(t, err.Error(), `duplicate gateway host label "chat-`+namespace+`"`)
+		})
+	}
+}

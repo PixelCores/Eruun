@@ -22,11 +22,15 @@ type resolvedResourceRef struct {
 	namespace           string
 	name                string
 	duplicateSafeShared bool
-	componentIndex      int
-	componentName       string
-	source              string
-	appID               string
-	appName             string
+	// sharedObject is what two duplicate-safe shared entries must both resolve
+	// to before the share exempts them: the resource itself, or for a host the
+	// route object that serves it.
+	sharedObject   string
+	componentIndex int
+	componentName  string
+	source         string
+	appID          string
+	appName        string
 }
 
 type resolvedComponentLabelRef struct {
@@ -133,12 +137,13 @@ func trackResolvedApplicationResources(
 			}
 		}
 
-		track := func(kind spec.ResourceKind, name, source string) error {
+		trackShared := func(kind spec.ResourceKind, name, source, sharedObject string) error {
 			ref := resolvedResourceRef{
 				kind:                kind,
 				namespace:           componentNamespace,
 				name:                name,
 				duplicateSafeShared: duplicateSafeShared,
+				sharedObject:        strings.TrimSpace(sharedObject),
 				componentIndex:      componentIndex,
 				componentName:       componentName,
 				source:              source,
@@ -150,6 +155,9 @@ func trackResolvedApplicationResources(
 			}
 			seedResolvedResource(seenResources, ref)
 			return nil
+		}
+		track := func(kind spec.ResourceKind, name, source string) error {
+			return trackShared(kind, name, source, name)
 		}
 
 		switch component.ComponentType {
@@ -192,11 +200,13 @@ func trackResolvedApplicationResources(
 			}
 		}
 		if component.Traits.Gateway != nil {
-			if err := track(spec.ResourceIngress, naming.GatewayRouteName(strings.TrimSpace(component.Name), componentResourceAppName), "traits.gateway"); err != nil {
+			routeName := naming.GatewayRouteName(strings.TrimSpace(component.Name), componentResourceAppName)
+			if err := track(spec.ResourceIngress, routeName, "traits.gateway"); err != nil {
 				return err
 			}
+			// Shared components may hold one host only through one route object.
 			for _, host := range gatewayHostLabels(*component.Traits.Gateway, componentName, componentNamespace) {
-				if err := track(resourceGatewayHost, host.label, host.source); err != nil {
+				if err := trackShared(resourceGatewayHost, host.label, host.source, routeName); err != nil {
 					return err
 				}
 			}
@@ -245,7 +255,7 @@ func trackResolvedResource(seen map[string]resolvedResourceRef, current resolved
 		seen[key] = current
 		return nil
 	}
-	if previous.duplicateSafeShared && current.duplicateSafeShared {
+	if previous.duplicateSafeShared && current.duplicateSafeShared && previous.sharedObject == current.sharedObject {
 		return nil
 	}
 	resourceNameKind := string(current.kind)
