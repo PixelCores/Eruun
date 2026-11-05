@@ -1,0 +1,59 @@
+# S0 level 2: an agents.kruise.io Sandbox shaped like the one Eruun creates in
+# pkg/apiserver/jobs/sandbox_runtime.go buildSandbox, on ACS Agent Sandbox compute.
+# Replace <namespace>, <image> and <shutdown-time> (RFC3339 UTC, for example four
+# hours from now). Model keys come from Pod env here only for the experiment;
+# the design passes them through the exec environment instead.
+apiVersion: agents.kruise.io/v1alpha1
+kind: Sandbox
+metadata:
+  name: s0-agent-probe-sbx
+  namespace: <namespace>
+  labels:
+    app.kubernetes.io/name: s0-agent-probe-sbx
+spec:
+  persistentContents: ["filesystem"]
+  runtimes:
+    - name: agent-runtime
+  shutdownTime: "<shutdown-time>"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: s0-agent-probe-sbx
+        alibabacloud.com/acs: "true"
+        alibabacloud.com/compute-class: agent-sandbox
+    spec:
+      serviceAccountName: default
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      activeDeadlineSeconds: 14400
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: main
+          image: <image>
+          command: ["sleep", "infinity"]
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef: {name: s0-model-keys, key: openai, optional: true}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: {name: s0-model-keys, key: anthropic, optional: true}
+          resources:
+            requests: {cpu: "1", memory: 2Gi, ephemeral-storage: 10Gi}
+            limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 10Gi}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
