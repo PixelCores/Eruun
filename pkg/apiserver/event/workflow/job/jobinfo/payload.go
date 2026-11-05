@@ -173,28 +173,45 @@ func PvcFromJobInfo(job *model.JobTask) (*corev1.PersistentVolumeClaim, error) {
 	return RequiredJobInfo[*corev1.PersistentVolumeClaim](job)
 }
 
-// RouteResource names the API resource a component route payload is written to
-// and the kind used to track it for cleanup.
-type RouteResource struct {
+// ObjectResource names the API resource a payload is written to or deleted
+// from, and the kind used to track it for cleanup.
+type ObjectResource struct {
 	Kind spec.ResourceKind
 	GVR  schema.GroupVersionResource
 }
 
 // RouteFromJobInfo returns a route payload and its resource. Only kinds rendered
 // by a supported gateway provider are accepted.
-func RouteFromJobInfo(job *model.JobTask) (*unstructured.Unstructured, RouteResource, error) {
+func RouteFromJobInfo(job *model.JobTask) (*unstructured.Unstructured, ObjectResource, error) {
 	route, err := RequiredJobInfo[*unstructured.Unstructured](job)
 	if err != nil {
-		return nil, RouteResource{}, err
+		return nil, ObjectResource{}, err
 	}
 	switch gvk := route.GroupVersionKind(); gvk {
 	case networkingv1.SchemeGroupVersion.WithKind(string(spec.KubeKindIngress)):
-		return route, RouteResource{Kind: spec.ResourceIngress, GVR: networkingv1.SchemeGroupVersion.WithResource("ingresses")}, nil
+		return route, ObjectResource{Kind: spec.ResourceIngress, GVR: networkingv1.SchemeGroupVersion.WithResource("ingresses")}, nil
 	case spec.GatewayAPIGroupVersion.WithKind(string(spec.KubeKindHTTPRoute)):
-		return route, RouteResource{Kind: spec.ResourceHTTPRoute, GVR: spec.HTTPRouteResource}, nil
+		return route, ObjectResource{Kind: spec.ResourceHTTPRoute, GVR: spec.HTTPRouteResource}, nil
 	default:
-		return nil, RouteResource{}, fmt.Errorf("unsupported route kind %s", gvk)
+		return nil, ObjectResource{}, fmt.Errorf("unsupported route kind %s", gvk)
 	}
+}
+
+// DeletionTargetFromJobInfo returns the identity of an object a resource_delete
+// job removes: a component route of either gateway provider, or a Service.
+func DeletionTargetFromJobInfo(job *model.JobTask) (*unstructured.Unstructured, ObjectResource, error) {
+	target, err := RequiredJobInfo[*unstructured.Unstructured](job)
+	if err != nil {
+		return nil, ObjectResource{}, err
+	}
+	gvk := target.GroupVersionKind()
+	if gvk == corev1.SchemeGroupVersion.WithKind(string(spec.KubeKindService)) {
+		return target, ObjectResource{Kind: spec.ResourceService, GVR: corev1.SchemeGroupVersion.WithResource("services")}, nil
+	}
+	if _, resource, err := RouteFromJobInfo(job); err == nil {
+		return target, resource, nil
+	}
+	return nil, ObjectResource{}, fmt.Errorf("unsupported deletion target kind %s", gvk)
 }
 
 func BatchJobFromJobInfo(job *model.JobTask) (*batchv1.Job, error) {

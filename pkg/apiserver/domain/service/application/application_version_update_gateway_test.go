@@ -58,7 +58,7 @@ func TestUpdateVersionRemovingGatewayRequiresAutoExec(t *testing.T) {
 		Components: []apisv1.ComponentUpdateSpec{{Name: "web", Traits: &apisv1.Traits{}}},
 	})
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-	require.Contains(t, err.Error(), "removing traits.gateway requires autoExec=true")
+	require.Contains(t, err.Error(), "removing traits.gateway or a Service requires autoExec=true")
 	require.Nil(t, resp)
 	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
 
@@ -79,4 +79,77 @@ func TestUpdateVersionKeepingGatewayRecordsNoRouteDeletion(t *testing.T) {
 	var info model.VersionUpdateResourceActionInfo
 	require.NoError(t, json.Unmarshal([]byte(store.tasks[resp.TaskID].ResourceActionInfo), &info))
 	require.Empty(t, info.RouteDeleteComponents)
+}
+
+func newServiceRemovalFixture(services []spec.ServiceTraitSpec) *inMemoryAppStore {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "DemoApp", Version: "1.0.0", Namespace: "default"}
+	store.components["web"] = &model.ApplicationComponent{
+		Name:          "web",
+		AppID:         "app-1",
+		Image:         "web:v1",
+		Replicas:      1,
+		ComponentType: config.ServerJob,
+		Status:        string(config.ComponentStatusRunning),
+		Properties:    mustJSONStruct(&apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}}),
+		Traits:        mustJSONStruct(&spec.Traits{Service: services}),
+	}
+	store.workflows["wf-1"] = &model.Workflow{
+		ID:    "wf-1",
+		AppID: "app-1",
+		Steps: mustJSONStruct(&model.WorkflowSteps{Steps: []*model.WorkflowStep{{Name: "web", WorkflowType: config.JobDeploy}}}),
+	}
+	return store
+}
+
+// A version update records the Services a retained component stops rendering,
+// whether a Service trait is dropped or renamed, so the same task deletes them.
+func TestUpdateVersionRecordsServicesNoLongerRendered(t *testing.T) {
+	port := []spec.ServicePortTraitSpec{{Port: 8080}}
+	selector := map[string]string{"app": "web"}
+	metrics := spec.ServiceTraitSpec{Name: "web-metrics", Selector: selector, Ports: []spec.ServicePortTraitSpec{{Port: 9100}}}
+	for _, tc := range []struct {
+		name     string
+		before   []spec.ServiceTraitSpec
+		after    []spec.ServiceTraitSpec
+		expected []string
+	}{
+		{name: "named Service dropped", before: []spec.ServiceTraitSpec{{Selector: selector, Ports: port}, metrics}, after: []spec.ServiceTraitSpec{{Selector: selector, Ports: port}}, expected: []string{"web-metrics"}},
+		{name: "Service renamed", before: []spec.ServiceTraitSpec{{Name: "web-api", Selector: selector, Ports: port}}, after: []spec.ServiceTraitSpec{{Name: "web-public", Selector: selector, Ports: port}}, expected: []string{"web-api"}},
+		{name: "unchanged Services", before: []spec.ServiceTraitSpec{{Selector: selector, Ports: port}, metrics}, after: []spec.ServiceTraitSpec{{Selector: selector, Ports: port}, metrics}},
+		// Without Service traits the ports render the default Service, which an
+		// unnamed Service trait also used; it is not dropped.
+		{name: "unnamed trait replaced by the default Service", before: []spec.ServiceTraitSpec{{Selector: selector, Ports: port}}, after: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newServiceRemovalFixture(tc.before)
+			traits := apisv1.Traits{Service: tc.after}
+			resp, err := newMockServiceWithStore(store).UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+				Version:    "1.1.0",
+				Components: []apisv1.ComponentUpdateSpec{{Name: "web", Traits: &traits, Image: "web:v2"}},
+			})
+			require.NoError(t, err)
+			var info model.VersionUpdateResourceActionInfo
+			require.NoError(t, json.Unmarshal([]byte(store.tasks[resp.TaskID].ResourceActionInfo), &info))
+			if tc.expected == nil {
+				require.Empty(t, info.DeletedServices)
+				return
+			}
+			require.Equal(t, map[string][]string{"web": tc.expected}, info.DeletedServices)
+		})
+	}
+}
+
+func TestUpdateVersionDroppingServiceRequiresAutoExec(t *testing.T) {
+	store := newServiceRemovalFixture([]spec.ServiceTraitSpec{{Name: "web-metrics", Selector: map[string]string{"app": "web"}, Ports: []spec.ServicePortTraitSpec{{Port: 9100}}}})
+	autoExec := false
+	traits := apisv1.Traits{}
+	_, err := newMockServiceWithStore(store).UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+		Version:    "1.1.0",
+		AutoExec:   &autoExec,
+		Components: []apisv1.ComponentUpdateSpec{{Name: "web", Traits: &traits}},
+	})
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+	require.Contains(t, err.Error(), "removing traits.gateway or a Service requires autoExec=true")
+	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
 }

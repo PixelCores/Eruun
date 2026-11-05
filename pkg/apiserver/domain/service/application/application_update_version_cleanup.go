@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -592,23 +593,47 @@ func (c *applicationsServiceImpl) cleanupVersionUpdateRemovedComponent(ctx conte
 	return reporter.err()
 }
 
-// versionUpdateRemovedGateways names retained components whose gateway trait the
-// update drops. Their routes are deleted by the workflow of this update; nothing
-// records the removal for a later deployment.
-func versionUpdateRemovedGateways(existing map[string]*model.ApplicationComponent, resolved []spec.Component) ([]string, error) {
-	var names []string
+// versionUpdateRemovals lists objects that retained components stop rendering
+// in an update. The update's workflow deletes them when the components deploy;
+// nothing records them for a later deployment.
+type versionUpdateRemovals struct {
+	// routes names components whose gateway trait the update drops.
+	routes []string
+	// services maps a component to the Service names it no longer renders.
+	services map[string][]string
+}
+
+func (r versionUpdateRemovals) empty() bool {
+	return len(r.routes) == 0 && len(r.services) == 0
+}
+
+func versionUpdateRemovedObjects(existing map[string]*model.ApplicationComponent, resolved []spec.Component, resourceAppName string) (versionUpdateRemovals, error) {
+	var removals versionUpdateRemovals
 	for _, component := range resolved {
 		current := existing[component.Name]
-		if current == nil || component.Traits.Gateway != nil {
+		if current == nil {
 			continue
 		}
 		previous, err := current.ComponentSpec()
 		if err != nil {
-			return nil, err
+			return versionUpdateRemovals{}, err
 		}
-		if previous.Traits.Gateway != nil {
-			names = append(names, component.Name)
+		if previous.Traits.Gateway != nil && component.Traits.Gateway == nil {
+			removals.routes = append(removals.routes, component.Name)
+		}
+		rendered := resolvedServiceResourceNames(component, componentResourceNameKey(component, resourceAppName))
+		var dropped []string
+		for _, name := range resolvedServiceResourceNames(previous, componentResourceNameKey(previous, resourceAppName)) {
+			if !slices.Contains(rendered, name) && !slices.Contains(dropped, name) {
+				dropped = append(dropped, name)
+			}
+		}
+		if len(dropped) > 0 {
+			if removals.services == nil {
+				removals.services = map[string][]string{}
+			}
+			removals.services[component.Name] = dropped
 		}
 	}
-	return names, nil
+	return removals, nil
 }

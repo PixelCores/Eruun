@@ -42,7 +42,7 @@ type versionUpdateRun struct {
 	responseWorkflowID       string
 	taskCallback             *model.JSONStruct
 	readyComponents          []string
-	routeDeleteComponents    []string
+	removals                 versionUpdateRemovals
 	requiresAutoExecWorkflow bool
 	hasPlannedChanges        bool
 
@@ -218,12 +218,12 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err != nil {
 		return err
 	}
-	run.routeDeleteComponents, err = versionUpdateRemovedGateways(run.componentMap, resolvedComponents)
+	run.removals, err = versionUpdateRemovedObjects(run.componentMap, resolvedComponents, applicationResourceNameKey(run.app))
 	if err != nil {
 		return err
 	}
-	if len(run.routeDeleteComponents) > 0 && !run.autoExec {
-		return fmt.Errorf("%w: removing traits.gateway requires autoExec=true", bcode.ErrApplicationConfig)
+	if !run.removals.empty() && !run.autoExec {
+		return fmt.Errorf("%w: removing traits.gateway or a Service requires autoExec=true", bcode.ErrApplicationConfig)
 	}
 	if err := c.validateComponentNodePools(ctx, resolvedComponents); err != nil {
 		return err
@@ -296,7 +296,7 @@ func (c *applicationsServiceImpl) commitVersionUpdateRun(ctx context.Context, ru
 	var err error
 	if run.requiresAutoExecWorkflow {
 		run.updatedComponents, run.addedComponents, run.removedComponents, run.restartedComponents, run.autoExecTaskID, err = c.commitAutoExecVersionUpdate(
-			ctx, run.app, run.componentMap, run.normalReq, run.newVersion, run.autoExecWorkflow, run.executeAt, run.taskCallback, run.resourceActions, run.readyComponents, run.routeDeleteComponents, run.executionScope,
+			ctx, run.app, run.componentMap, run.normalReq, run.newVersion, run.autoExecWorkflow, run.executeAt, run.taskCallback, run.resourceActions, run.readyComponents, run.removals, run.executionScope,
 		)
 		return err
 	}
