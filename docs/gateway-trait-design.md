@@ -712,7 +712,8 @@ PR 1 按 1a（平台配置）、1b（`route_deploy` 与执行顺序）、1c（�
 - **gRPC**：`AppSpecTraits` 保留字段号 4 与名称 `ingress`，`gateway` 使用 17（main 上从未分配）；`AppDTOApplicationComponent` 保留 12 与 `ingresses`，`gateway` 使用 20。
 - **安装器**：`INSTALL_MODE=helm` 未设置 `GATEWAY_*` 时入口保持关闭，manifest 模式拒绝这些变量。
 - **去掉 gateway 的组件**（PR 1 之后补上）：§7.3 的 `versionUpdateCleanupIngressTraits` 只服务于移除组件，保留组件去掉 `traits.gateway` 后不再生成路由 Job，旧入口会一直对外暴露。现在 `/version` 预检识别这类组件，记入 task 的 `resource_action_info.routeDeleteComponents`，该组件部署时生成 `route_delete` Job，按确定性名称读取路由，只删除 app-id 与组件名标签都属于本组件、且不受 `default`/`ignore` share 保护的对象，删除前校验 workflow 所有权并带 UID 前置条件。没有声明 gateway 的组件不生成任何路由 Job。只写 DB 的更新（`autoExec=false`）无法把删除带到之后的部署，因此被拒绝，与 `remove cleanup_all` 的约束一致。
-- **未处理**：同一空间内两个应用的同名组件使用默认 host 时会得到相同 host，与旧 `traits.ingress` 的默认 host 行为相同，冲突只影响本空间，未做跨应用唯一性检查。task 在 `route_delete` 执行前失败时入口会保留，见 [版本更新 API](version-update-api.md)。Service Trait 去掉后留下的 Service 是同类缺口，未处理。
+- **host 唯一性**（PR 2 之后补上）：每个有效 host 在空间内只能属于一个组件。检查并入现有的跨应用资源名冲突校验（`validateApplicationResourceNames`，覆盖创建、版本更新、Try 与模板克隆），以 host 的第一个 label 为登记键（所有 host 都是 `<label>.<domain>`，域名唯一），共享豁免只在两个组件都按 `default`/`ignore` 共享且解析到同一个路由对象（`GatewayRouteName` 相同）时成立。与现有资源名检查一样，两个并发写入之间没有锁，同时提交的冲突仍可能都被接受。
+- **未处理**：task 在 `route_delete` 执行前失败时入口会保留，见 [版本更新 API](version-update-api.md)。Service Trait 去掉后留下的 Service 是同类缺口，未处理。
 
 ### 9.2 PR 2a 实现记录
 
