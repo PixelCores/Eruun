@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func routeDeleteTask(t *testing.T, appID string, components ...string) *model.WorkflowQueue {
@@ -187,4 +188,37 @@ func TestBuildJobsForComponent_ServiceDeleteTargetsDeployedService(t *testing.T)
 	require.Equal(t, metrics.Labels[spec.LabelAppID], target.GetLabels()[spec.LabelAppID])
 	require.Equal(t, metrics.Labels[spec.LabelComponentName], target.GetLabels()[spec.LabelComponentName])
 	require.Equal(t, "delete service: nvg/api-metrics", deleteJobs[0].Info)
+}
+
+// A route and the default Service share one naming rule, so dropping both in
+// one update yields two resource_delete jobs with the same name. Their job
+// records are told apart only by the execution key, which must differ.
+func TestBuildJobsForComponent_SameNamedDeleteJobsHaveDistinctExecutionKeys(t *testing.T) {
+	component := &model.ApplicationComponent{ID: 9, Name: "api", AppID: "app-route", Namespace: "nvg", ComponentType: config.ServerJob, Image: "api:latest"}
+	sharedName := wfNaming.ServiceName(component.Name, component.ResourceNameKey())
+	require.Equal(t, sharedName, wfNaming.GatewayRouteName(component.Name, component.ResourceNameKey()))
+	info, err := json.Marshal(model.VersionUpdateResourceActionInfo{
+		Source: config.JobInfoSourceVersionUpdateAction, Version: 1,
+		RouteDeleteComponents: []string{"api"},
+		DeletedServices:       map[string][]string{"api": {sharedName}},
+	})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{WorkflowID: "wf", ProjectID: "proj", AppID: component.AppID, TaskID: "task", RunGeneration: 1, ResourceActionInfo: string(info)}
+
+	buckets, err := buildJobsForComponent(context.Background(), nil, component, task, testJobTimeoutSeconds, testIngressGateway, "")
+	require.NoError(t, err)
+	normal := buckets[config.JobPriorityNormal]
+	applyWorkflowJobExecutionIdentity(normal, task, 0, config.JobPriorityNormal)
+	deleteJobs := routeJobs(map[int][]*model.JobTask{config.JobPriorityNormal: normal}, config.JobDeleteResource)
+	require.Len(t, deleteJobs, 2)
+	require.Equal(t, deleteJobs[0].Name, deleteJobs[1].Name)
+	require.NotEmpty(t, deleteJobs[0].ExecutionKey)
+	require.NotEqual(t, deleteJobs[0].ExecutionKey, deleteJobs[1].ExecutionKey)
+	kinds := []spec.ResourceKind{}
+	for _, job := range deleteJobs {
+		_, resource, err := jobinfo.DeletionTargetFromJobInfo(job)
+		require.NoError(t, err)
+		kinds = append(kinds, resource.Kind)
+	}
+	require.ElementsMatch(t, []spec.ResourceKind{spec.ResourceIngress, spec.ResourceService}, kinds)
 }
