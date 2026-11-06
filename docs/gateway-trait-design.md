@@ -431,7 +431,7 @@ type WorkspaceConfig struct {
 启动时 Leader 用**平台客户端**通过 Discovery 检查所选后端的 API：`gatewayapi` 请求 `GET /apis/gateway.networking.k8s.io/v1`，确认资源列表含 `httproutes`；`ingress` 请求 `GET /apis/networking.k8s.io/v1`，确认含 `ingresses`。
 
 - 该请求只读 API 元数据，需要非资源 URL 的 `get` 权限，默认由 `system:discovery` 授予已认证身份，不需要新增 RBAC。`TenantClient` 会拒绝不带 namespace 的 URL，不能用于此检查。
-- API 不存在时 readiness 失败并写明原因；返回 403 时报告“无法检查”，不能误报为 API 不存在。不回退到另一个后端。
+- API 不存在时记录警告；返回 403 时报告“无法检查”，不能误报为 API 不存在。不回退到另一个后端。2026-11-06 修订：检查结果不再影响 readiness。Leader 的 Service 只指向 Leader Pod，readiness 失败会让全部业务 API 失去 endpoint，而切换 Leader 也无法恢复（所有节点看到的 API 相同）；因此缺失时只让依赖路由资源的部署与清理失败，路由 Job 的错误写明 NotFound 与该资源。
 - API 存在不代表 Controller 支持全部字段，后者是部署前提（§6.4）。`gatewayapi` 下缺少 CRD 时 `helm install` 本身就会因无法创建 Gateway 对象而失败；启动检查覆盖的是安装后 CRD 被移除等情况。
 
 ### 6.2 Host 命名
@@ -724,7 +724,7 @@ PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Ch
 - **就绪**：按 §7.2 实现。status 中的 parent 按 namespace、name、sectionName 匹配平台监听器。
 - **写入边界**：§7.4 之外，HTTPRoute 与 Ingress 一样只放行 `eruun.io/component-name` 注解；spec、parentRef、rule、match、filter、backendRef、timeouts 都按白名单校验字段（rule 只允许 `matches`/`filters`/`timeouts`/`backendRefs`，match 只允许 `path`，timeouts 只允许 `request`，backendRef 不允许 `weight`）。
 - **清理**：清理 Job 与应用级清理都按 provider 只访问当前后端的路由资源；HTTPRoute 通过空间身份的 dynamic client 删除（Workflow 用 `jobexec.Runtime.Dynamic`，应用服务从注入的请求级 `kubeConfig` 创建），等待对象消失复用现有逻辑。
-- **Discovery**：Leader 任期开始时同步检查一次，之后在任期内每 30 秒复查。确认缺失（404 或资源列表中没有）时 `RuntimeReady` 返回原因，API 恢复后的下一次复查即清除；其他错误只记日志，不改变上一次结论。检查结果不影响选举，复查结果只写入发起它的任期。Discovery 客户端单独设 10 秒请求超时。
+- **Discovery**：Leader 任期开始时同步检查一次，确认缺失（404 或资源列表中没有）时记录警告，其他错误记录错误日志；检查结果不影响选举和 readiness（2026-11-06 修订，原先缺失时 `RuntimeReady` 失败并每 30 秒复查）。路由 Job 遇到逃逸的 NotFound 时，错误写明该资源以及两种可能原因（对象被并发删除、集群不提供该资源）。Discovery 客户端单独设 10 秒请求超时。
 - **未处理**：资源名冲突检查（`application_resource_validation.go`）仍以 `ResourceIngress` 作为路由名的登记类别，只用于同应用内的名字去重，不影响行为。Helm values、ClusterRole 规则、`templates/gateway.yaml`、安装器与 Helm/服务端共用边界用例属于 2b。真实 Istio 验收见 §10。
 
 ### 9.3 PR 2b 实现记录
@@ -751,7 +751,7 @@ PR 2a 只做服务端，`gatewayapi` 可以通过 `--gateway-*` flag 启用；Ch
 - 配置：`Config.Validate` 与 Helm `fail` 用同一组边界用例覆盖 §6.1 规则表中两者重叠的部分（各 provider 的缺失、多余与格式错误，未知 provider）；`provider` 为空时 gateway 被拒绝；账号配置 Secret 含 `ingressDomain` 等旧字段或 `gateway` 字段时启动失败；`PrepareResource`、`APIClient` 路径拿到的 `WorkspaceConfig.Gateway` 非空；按真实启动顺序（`ApplyEnvOverrides` → `Config.Validate`），只设置 `gatewayapi` 所需 flag 的配置通过校验且 `ParentRef.SectionName` 为 `https`，`ingress` 与空 provider 下它保持为空。
 - Helm 模板：`provider` 为空时不渲染入口规则、Gateway 与 `ERUUN_GATEWAY_*` 中的后端值；`ingress` 只渲染 `ingresses` 规则、不渲染 Gateway；`gatewayapi` 只渲染 `httproutes` 规则，并渲染含 `https`/`http` 监听器、`eruun.io/workspace-id` 选择器的 Gateway 与重定向路由；values 不一致时 `fail`；`values.env` 设置任一 `ERUUN_GATEWAY_*` 时 `fail`；入口规则 verbs 与 `namespace.go` 生成的空间 Role 入口规则相等。
 - 安装器：manifest 与 helm 两种模式都渲染出一致的 `ERUUN_GATEWAY_*` 与入口规则。
-- 启动检查：Discovery 返回 API 缺失时 readiness 失败；返回 403 时报告无法检查。
+- 启动检查：Discovery 返回 API 缺失时判定为缺失，返回 403 时报告无法检查；readiness 不受检查结果影响；路由 Job 的 NotFound 错误写明该资源。
 - 接口：DTO、`externalLinks`、gRPC 映射、canonical Schema 契约（含 `egress` 被拒）；YAML 导入的转换与各类报错。
 
 真实环境验收（本地与 fake 测试不能证明）：

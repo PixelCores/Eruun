@@ -6,12 +6,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 	networkingv1 "k8s.io/api/networking/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -204,6 +206,35 @@ func TestDeployRouteJobKeepsExistingRouteAndSkipsUnchangedUpdate(t *testing.T) {
 	ctl.Clean(ctx)
 	_, err := dynamicClient.Resource(ingressGVR).Namespace("team-a").Get(context.Background(), "web-ingress", metav1.GetOptions{})
 	require.NoError(t, err, "failure cleanup must keep a route this job did not create")
+}
+
+// A NotFound that escapes route reconciliation names the resource and both
+// causes: the cluster not serving it, or the route vanishing during an update.
+func TestDeployRouteJobReportsRouteNotFound(t *testing.T) {
+	desired := newRouteForTest(t, "web-ingress", ingressSpecForTest("web.team-a.apps.example.com", "/", networkingv1.PathTypePrefix), map[string]string{"app": "web"}, nil)
+	stale := newRouteForTest(t, "web-ingress", ingressSpecForTest("web.team-a.apps.example.com", "/old", networkingv1.PathTypePrefix), map[string]string{"app": "web"}, nil)
+	for _, tc := range []struct {
+		name     string
+		existing []runtime.Object
+		verb     string
+	}{
+		{name: "resource not served", verb: "*"},
+		{name: "route deleted during update", existing: []runtime.Object{stale}, verb: "update"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+				map[schema.GroupVersionResource]string{ingressGVR: "IngressList"}, tc.existing...)
+			dynamicClient.PrependReactor(tc.verb, "ingresses", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, k8serrors.NewNotFound(ingressGVR.GroupResource(), "web-ingress")
+			})
+			jobTask := &model.JobTask{Name: "web-ingress", Namespace: "team-a", JobType: string(config.JobDeployRoute), JobInfo: desired.DeepCopy()}
+			ctl := NewDeployRouteJobCtl(jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Dynamic: dynamicClient}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
+
+			err := ctl.run(jobexec.WithCleanupTracker(context.Background()))
+			require.True(t, k8serrors.IsNotFound(err))
+			require.ErrorContains(t, err, "deleted concurrently or the cluster does not serve networking.k8s.io/v1, Resource=ingresses")
+		})
+	}
 }
 
 // HTTPRoute readiness follows design §7.2: only conditions of the current
