@@ -75,8 +75,6 @@ type restServer struct {
 	leaderServiceDone         <-chan struct{}
 	// platformDiscovery reads API metadata with the platform identity.
 	platformDiscovery discovery.DiscoveryInterface
-	// gatewayIssue explains why the current Leader cannot serve component routes.
-	gatewayIssue string
 }
 
 func (s *restServer) RuntimeRole() string {
@@ -90,13 +88,9 @@ func (s *restServer) RuntimeReady() (bool, string) {
 	if s.leading.Load() {
 		s.leaderMu.RLock()
 		ready := s.leaderCtx != nil && s.leaderCtx.Err() == nil
-		gatewayIssue := s.gatewayIssue
 		s.leaderMu.RUnlock()
 		if !ready {
 			return false, "leader is initializing or stopping"
-		}
-		if gatewayIssue != "" {
-			return false, gatewayIssue
 		}
 		return true, ""
 	}

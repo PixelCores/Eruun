@@ -1,7 +1,6 @@
 package apiserver
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -16,8 +15,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-// The Leader reports the gateway provider's API as a readiness reason only when
-// the cluster proves it is missing; a forbidden discovery URL is not proof.
+// The Leader reports the gateway provider's API as missing only when the
+// cluster proves it; a forbidden discovery URL is not proof.
 func TestGatewayAPIIssue(t *testing.T) {
 	served := func(groupVersion string, resources ...string) *metav1.APIResourceList {
 		list := &metav1.APIResourceList{GroupVersion: groupVersion}
@@ -59,63 +58,4 @@ func TestGatewayAPIIssue(t *testing.T) {
 			require.Contains(t, issue, tc.issue)
 		})
 	}
-}
-
-func TestRuntimeReadyReportsGatewayIssue(t *testing.T) {
-	s := &restServer{}
-	s.leading.Store(true)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	s.leaderCtx = ctx
-	ready, reason := s.RuntimeReady()
-	require.True(t, ready, reason)
-
-	s.gatewayIssue = "gateway provider gatewayapi requires API gateway.networking.k8s.io/v1, which the cluster does not serve"
-	ready, reason = s.RuntimeReady()
-	require.False(t, ready)
-	require.Equal(t, s.gatewayIssue, reason)
-}
-
-// A recheck clears the readiness reason once the API is served again and sets
-// it when the API disappears, but never writes into another term.
-func TestRefreshGatewayIssueFollowsCurrentTerm(t *testing.T) {
-	missing := &fakediscovery.FakeDiscovery{Fake: &ktesting.Fake{}}
-	served := &fakediscovery.FakeDiscovery{Fake: &ktesting.Fake{Resources: []*metav1.APIResourceList{{
-		GroupVersion: "gateway.networking.k8s.io/v1", APIResources: []metav1.APIResource{{Name: "httproutes"}},
-	}}}}
-	term, endTerm := context.WithCancel(context.Background())
-	s := &restServer{platformDiscovery: served}
-	s.cfg.Gateway.Provider = spec.GatewayProviderGatewayAPI
-	s.leading.Store(true)
-	s.leaderCtx = term
-	s.gatewayIssue = "gateway provider gatewayapi requires API gateway.networking.k8s.io/v1, which the cluster does not serve"
-
-	s.refreshGatewayIssue(term)
-	ready, reason := s.RuntimeReady()
-	require.True(t, ready, reason)
-
-	s.platformDiscovery = missing
-	s.refreshGatewayIssue(term)
-	ready, reason = s.RuntimeReady()
-	require.False(t, ready)
-	require.Contains(t, reason, "does not serve")
-
-	// An undecided recheck keeps the previous conclusion.
-	forbidden := &fakediscovery.FakeDiscovery{Fake: &ktesting.Fake{}}
-	forbidden.AddReactor("get", "resource", func(ktesting.Action) (bool, runtime.Object, error) {
-		return true, nil, k8serrors.NewForbidden(schema.GroupResource{}, "", errors.New("denied"))
-	})
-	s.platformDiscovery = forbidden
-	s.refreshGatewayIssue(term)
-	ready, _ = s.RuntimeReady()
-	require.False(t, ready, "a 403 must not clear a missing API")
-
-	// A check that finishes after its term ended must not touch the next term.
-	s.platformDiscovery = missing
-	nextTerm, endNext := context.WithCancel(context.Background())
-	defer endNext()
-	endTerm()
-	s.leaderCtx, s.gatewayIssue = nextTerm, ""
-	s.refreshGatewayIssue(term)
-	require.Empty(t, s.gatewayIssue)
 }

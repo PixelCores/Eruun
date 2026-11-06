@@ -123,6 +123,12 @@ func (c *DeployRouteJobCtl) run(ctx context.Context) error {
 		},
 		OnExisting: updateRoute,
 	})
+	if k8serrors.IsNotFound(err) {
+		// A NotFound that escapes means either the object vanished during the
+		// update, or the cluster does not serve the provider's route resource;
+		// the error alone cannot tell them apart.
+		return fmt.Errorf("ensure route %s %s/%s failed: not found; the route was deleted concurrently or the cluster does not serve %s: %w", route.GetKind(), namespace, name, resource.GVR, err)
+	}
 	if err != nil {
 		return fmt.Errorf("ensure route %s %s/%s failed: %w", route.GetKind(), namespace, name, err)
 	}
