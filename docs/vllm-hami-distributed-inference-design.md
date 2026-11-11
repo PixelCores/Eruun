@@ -54,6 +54,8 @@ Eruun 的公共能力应表达：
 
 它不应把 Ray rank、vLLM 参数或模型层变成数据库实体。选择哪种 adapter 必须有版本兼容矩阵和集群验收，而不是由本文永久固定。
 
+多节点副本组的具体设计（`traits.group`、LeaderWorkerSet、GPU 后端与节点清单）见 [多节点模型服务：副本组设计](model-serving-group-design.md)。
+
 ## 4. 模型制品
 
 模型 ID 或可变 tag 不足以保证重复部署。每次部署应绑定不可变 revision，并记录来源、下载器版本、文件清单、大小和校验摘要。

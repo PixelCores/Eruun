@@ -199,6 +199,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | [`gateway-trait-design.md`](gateway-trait-design.md) | Draft / Proposal | 以 `traits.gateway` 直接替换 `traits.ingress`，定义为组件跨空间的入站与出站声明（首期只实现入站）：平台选择 Gateway API（含 Istio）或 Ingress 后端，统一 LLM 与 Agent 的对外入口、请求超时与单层 host 命名。PR 1（`ingress` 后端）与 PR 2（`gatewayapi` 后端：服务端与 Chart 创建的平台 Gateway）已实现，现行契约见 `validation-api-guide.md` 与 `helm-deployment.md`；真实 Istio 验收未进行 |
 | `vectorization-job-design.md` | Draft / Proposal | Provider-neutral 向量化批处理方向 |
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
+| [`model-serving-group-design.md`](model-serving-group-design.md) | Draft / Proposal | Profile B 的具体设计：`traits.group` 以 LeaderWorkerSet 承载跨节点模型副本组，模型切分交给推理引擎；GPU 后端（HAMi）与 RDMA、共享内存字段、节点池拓扑键与容量清单；M1–M10 已确认，M11 安全基线与 S0 真实集群实验待完成 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
 | [`node-pool-design.md`](node-pool-design.md) | Draft / Proposal | 管理员定义节点池，组件使用 `nodePool`；显式解析、渲染、组件 RBAC 删除和后续权限收敛 |
